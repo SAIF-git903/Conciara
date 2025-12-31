@@ -41,7 +41,7 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { customer_type_id, name, description } = req.body;
+    const { customer_type_id, name, description, domain } = req.body;
     
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'Name is required' });
@@ -51,7 +51,7 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Customer type ID is required' });
     }
     
-    const website = await createWebsite(customer_type_id, name, description);
+    const website = await createWebsite(customer_type_id, name, description, domain);
     res.status(201).json(website);
   } catch (error) {
     console.error('Error creating website:', error);
@@ -62,13 +62,13 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name, description } = req.body;
+    const { name, description, domain } = req.body;
     
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'Name is required' });
     }
     
-    const website = await updateWebsite(id, name, description);
+    const website = await updateWebsite(id, name, description, domain);
     
     if (!website) {
       return res.status(404).json({ error: 'Website not found' });

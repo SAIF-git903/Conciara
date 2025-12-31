@@ -68,6 +68,17 @@ export async function migrate() {
       );
     `);
 
+    // Add domain column if it doesn't exist
+    await pool.query(`
+      ALTER TABLE websites 
+      ADD COLUMN IF NOT EXISTS domain VARCHAR(255);
+    `);
+    
+    // Add domain index for fast lookups
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_websites_domain ON websites(domain) WHERE domain IS NOT NULL;
+    `);
+
     // Create skins table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS skins (

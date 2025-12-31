@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react'
 import ChatbotWidget from '@/components/ChatbotWidget'
 
 export default function WidgetPage() {
-  const [treeId, setTreeId] = useState<number>(1)
+  const [treeId, setTreeId] = useState<number | null>(null)
+  const [websiteId, setWebsiteId] = useState<number | null>(null)
+  const [domain, setDomain] = useState<string | null>(null)
   const [apiUrl, setApiUrl] = useState<string>('http://localhost:3001/api')
   const [mounted, setMounted] = useState(false)
 
@@ -15,10 +17,20 @@ export default function WidgetPage() {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search)
       const treeIdParam = params.get('treeId')
+      const websiteIdParam = params.get('websiteId')
+      const domainParam = params.get('domain')
       const apiUrlParam = params.get('apiUrl')
       
       if (treeIdParam) {
         setTreeId(parseInt(treeIdParam))
+      }
+      
+      if (websiteIdParam) {
+        setWebsiteId(parseInt(websiteIdParam))
+      }
+      
+      if (domainParam) {
+        setDomain(domainParam)
       }
       
       if (apiUrlParam) {
@@ -45,7 +57,9 @@ export default function WidgetPage() {
     }}>
       <ChatbotWidget
         apiUrl={apiUrl}
-        treeId={treeId}
+        treeId={treeId || undefined}
+        websiteId={websiteId || undefined}
+        domain={domain || undefined}
         position="bottom-right"
       />
     </div>

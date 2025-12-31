@@ -18,7 +18,9 @@
   // Default configuration
   const defaults = {
     apiUrl: 'http://localhost:3001/api',
-    treeId: 1,
+    treeId: null,
+    websiteId: null,
+    domain: null,
     position: 'bottom-right',
     primaryColor: '#6366f1',
     backgroundColor: '#ffffff',
@@ -30,7 +32,8 @@
   // Widget class
   class ConversaTreeWidget {
     constructor(config) {
-      this.config = { ...defaults, ...config };
+      this.rawConfig = { ...defaults, ...config };
+      this.config = { ...defaults };
       this.sessionId = null;
       this.isOpen = false;
       this.isMinimized = false;
@@ -38,11 +41,110 @@
       this.quickReplies = [];
       this.isLoading = false;
       this.container = null;
+      this.configLoaded = false;
       
-      this.init();
+      // Load config asynchronously if websiteId or domain is provided
+      this.loadConfig().then(() => {
+        this.init();
+      });
+    }
+
+    async loadConfig() {
+      // If treeId is provided directly, use it (manual mode)
+      if (this.rawConfig.treeId) {
+        this.config = { ...this.rawConfig };
+        this.configLoaded = true;
+        return;
+      }
+
+      // If websiteId or domain is provided, fetch config from API
+      if (this.rawConfig.websiteId || this.rawConfig.domain) {
+        try {
+          const params = new URLSearchParams();
+          if (this.rawConfig.websiteId) {
+            params.append('websiteId', this.rawConfig.websiteId);
+          } else if (this.rawConfig.domain) {
+            params.append('domain', this.rawConfig.domain);
+          }
+
+          const response = await fetch(`${this.rawConfig.apiUrl}/widget/config?${params.toString()}`);
+          
+          if (!response.ok) {
+            throw new Error(`Failed to load widget config: ${response.statusText}`);
+          }
+
+          const widgetConfig = await response.json();
+
+          // Merge API config with manual overrides
+          this.config = {
+            ...defaults,
+            ...this.rawConfig, // Manual overrides take precedence
+            treeId: widgetConfig.treeId || this.rawConfig.treeId,
+            primaryColor: this.rawConfig.primaryColor || widgetConfig.theme?.primaryColor || defaults.primaryColor,
+            backgroundColor: this.rawConfig.backgroundColor || widgetConfig.theme?.backgroundColor || defaults.backgroundColor,
+            textColor: this.rawConfig.textColor || widgetConfig.theme?.textColor || defaults.textColor,
+            position: this.rawConfig.position || widgetConfig.position || defaults.position,
+            title: this.rawConfig.title || widgetConfig.title || defaults.title
+          };
+
+          if (!this.config.treeId) {
+            console.warn('No dialog tree found for this website. Please create a dialog tree in the admin panel.');
+          }
+
+          this.configLoaded = true;
+        } catch (error) {
+          console.error('Error loading widget config:', error);
+          // Fallback to defaults
+          this.config = { ...defaults, ...this.rawConfig };
+          this.configLoaded = true;
+        }
+      } else {
+        // Auto-detect domain if neither treeId, websiteId, nor domain is provided
+        const currentDomain = window.location.hostname;
+        if (currentDomain && currentDomain !== 'localhost' && currentDomain !== '127.0.0.1') {
+          try {
+            const response = await fetch(`${this.rawConfig.apiUrl}/widget/config?domain=${encodeURIComponent(currentDomain)}`);
+            
+            if (response.ok) {
+              const widgetConfig = await response.json();
+              this.config = {
+                ...defaults,
+                ...this.rawConfig,
+                treeId: widgetConfig.treeId,
+                primaryColor: this.rawConfig.primaryColor || widgetConfig.theme?.primaryColor || defaults.primaryColor,
+                backgroundColor: this.rawConfig.backgroundColor || widgetConfig.theme?.backgroundColor || defaults.backgroundColor,
+                textColor: this.rawConfig.textColor || widgetConfig.theme?.textColor || defaults.textColor,
+                position: this.rawConfig.position || widgetConfig.position || defaults.position,
+                title: this.rawConfig.title || widgetConfig.title || defaults.title
+              };
+            } else {
+              // Domain not found, use defaults
+              this.config = { ...defaults, ...this.rawConfig };
+            }
+          } catch (error) {
+            console.warn('Auto-detection failed, using defaults:', error);
+            this.config = { ...defaults, ...this.rawConfig };
+          }
+        } else {
+          // No domain to detect, use defaults
+          this.config = { ...defaults, ...this.rawConfig };
+        }
+        this.configLoaded = true;
+      }
     }
 
     init() {
+      if (!this.configLoaded) {
+        // Wait for config to load
+        setTimeout(() => this.init(), 100);
+        return;
+      }
+
+      if (!this.config.treeId) {
+        console.warn('ConversaTree: No treeId available. Widget will not be displayed.');
+        return;
+      }
+
       // Create widget container
       this.container = document.createElement('div');
       this.container.id = 'conversatree-widget';
@@ -611,9 +713,13 @@
     if (script) {
       const config = {
         apiUrl: script.getAttribute('data-api-url') || defaults.apiUrl,
-        treeId: parseInt(script.getAttribute('data-tree-id')) || defaults.treeId,
+        treeId: script.getAttribute('data-tree-id') ? parseInt(script.getAttribute('data-tree-id')) : null,
+        websiteId: script.getAttribute('data-website-id') ? parseInt(script.getAttribute('data-website-id')) : null,
+        domain: script.getAttribute('data-domain') || null,
         position: script.getAttribute('data-position') || defaults.position,
-        primaryColor: script.getAttribute('data-primary-color') || defaults.primaryColor,
+        primaryColor: script.getAttribute('data-primary-color') || null,
+        backgroundColor: script.getAttribute('data-background-color') || null,
+        textColor: script.getAttribute('data-text-color') || null,
         title: script.getAttribute('data-title') || defaults.title
       };
       window.ConversaTree.init(config);

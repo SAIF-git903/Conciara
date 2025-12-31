@@ -11,6 +11,7 @@ import websiteRoutes from './routes/website.js';
 import skinRoutes from './routes/skin.js';
 import abVariationRoutes from './routes/abVariation.js';
 import chatRoutes from './routes/chat.js';
+import widgetRoutes from './routes/widget.js';
 
 dotenv.config();
 
@@ -47,6 +48,7 @@ app.use('/api/website', websiteRoutes);
 app.use('/api/skin', skinRoutes);
 app.use('/api/ab-variation', abVariationRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/widget', widgetRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

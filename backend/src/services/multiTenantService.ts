@@ -24,6 +24,7 @@ export interface Skin {
   name: string;
   description: string | null;
   theme_config: any;
+  is_active: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -96,11 +97,12 @@ export async function getWebsiteById(id: number): Promise<Website | null> {
 export async function createWebsite(
   customerTypeId: number,
   name: string,
-  description?: string
+  description?: string,
+  domain?: string
 ): Promise<Website> {
   const result = await pool.query(
-    'INSERT INTO websites (customer_type_id, name, description) VALUES ($1, $2, $3) RETURNING *',
-    [customerTypeId, name, description || null]
+    'INSERT INTO websites (customer_type_id, name, description, domain) VALUES ($1, $2, $3, $4) RETURNING *',
+    [customerTypeId, name, description || null, domain || null]
   );
   return result.rows[0];
 }
@@ -108,11 +110,12 @@ export async function createWebsite(
 export async function updateWebsite(
   id: number,
   name: string,
-  description?: string
+  description?: string,
+  domain?: string
 ): Promise<Website | null> {
   const result = await pool.query(
-    'UPDATE websites SET name = $1, description = $2, updated_at = NOW() WHERE id = $3 RETURNING *',
-    [name, description || null, id]
+    'UPDATE websites SET name = $1, description = $2, domain = $3, updated_at = NOW() WHERE id = $4 RETURNING *',
+    [name, description || null, domain || null, id]
   );
   return result.rows[0] || null;
 }
