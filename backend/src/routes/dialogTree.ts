@@ -9,10 +9,13 @@ import {
 
 const router = express.Router();
 
-// Get all dialog trees
+// Get all dialog trees (optionally filtered by ab_variation_id)
 router.get('/', async (req, res) => {
   try {
-    const trees = await getAllDialogTrees();
+    const abVariationId = req.query.ab_variation_id ? parseInt(req.query.ab_variation_id as string) : undefined;
+    console.log(`[GET /dialog-tree] ab_variation_id query param: ${req.query.ab_variation_id}, parsed: ${abVariationId}`);
+    const trees = await getAllDialogTrees(abVariationId);
+    console.log(`[GET /dialog-tree] Returning ${trees.length} trees`);
     res.json(trees);
   } catch (error: any) {
     console.error('Error fetching dialog trees:', error);
@@ -45,13 +48,13 @@ router.get('/:id', async (req, res) => {
 // Create new dialog tree
 router.post('/', async (req, res) => {
   try {
-    const { name, description } = req.body;
+    const { name, description, ab_variation_id } = req.body;
     
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'Name is required' });
     }
     
-    const tree = await createDialogTree(name, description);
+    const tree = await createDialogTree(name, description, ab_variation_id);
     res.status(201).json(tree);
   } catch (error) {
     console.error('Error creating dialog tree:', error);

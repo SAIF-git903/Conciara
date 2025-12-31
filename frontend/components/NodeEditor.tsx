@@ -373,9 +373,9 @@ export default function NodeEditor({
                   onChange={(e) => setNewBotResponse(e.target.value)}
                   className="w-full p-2.5 border-2 border-green-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 placeholder:text-gray-400 resize-none text-sm transition-all"
                   rows={4}
-                  placeholder="How should the bot respond? (e.g., 'Hello! How can I help you today?', 'I understand you need assistance...')"
+                  placeholder="How should the bot respond? (e.g., &apos;Hello! How can I help you today?&apos;, &apos;I understand you need assistance...&apos;)"
                 />
-                <p className="text-xs text-green-600 mt-1.5">The bot's response to the user's input</p>
+                <p className="text-xs text-green-600 mt-1.5">The bot&apos;s response to the user&apos;s input</p>
               </div>
             </div>
             

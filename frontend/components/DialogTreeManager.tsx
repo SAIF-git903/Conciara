@@ -11,9 +11,13 @@ import Toast, { ToastType } from './Toast'
 import ConfirmDialog from './ConfirmDialog'
 import LoadingSpinner from './LoadingSpinner'
 
-export default function DialogTreeManager() {
+interface DialogTreeManagerProps {
+  initialTree?: DialogTree | null
+}
+
+export default function DialogTreeManager({ initialTree }: DialogTreeManagerProps = {}) {
   const [trees, setTrees] = useState<DialogTree[]>([])
-  const [selectedTree, setSelectedTree] = useState<DialogTree | null>(null)
+  const [selectedTree, setSelectedTree] = useState<DialogTree | null>(initialTree || null)
   const [preprompt, setPreprompt] = useState<Preprompt | null>(null)
   const [nodes, setNodes] = useState<DialogNode[]>([])
   const [loading, setLoading] = useState(false)
@@ -32,12 +36,17 @@ export default function DialogTreeManager() {
     onConfirm: () => {},
   })
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'editor' | 'visualization'>('editor')
 
   useEffect(() => {
-    loadTrees()
-  }, [])
+    if (initialTree) {
+      setSelectedTree(initialTree)
+    }
+  }, [initialTree])
+
+  // Don't load trees independently - they come from MultiTenantNavigator
+  // Removed: useEffect(() => { loadTrees() }, [])
 
   useEffect(() => {
     if (selectedTree) {
@@ -82,25 +91,11 @@ export default function DialogTreeManager() {
   }
 
   const handleCreateTree = async () => {
-    if (!newTreeName.trim()) {
-      showToast('Tree name is required', 'error')
-      return
-    }
-
-    try {
-      setError(null)
-      const newTree = await dialogTreeApi.create(newTreeName.trim(), newTreeDescription.trim() || undefined)
-      setTrees([...trees, newTree])
-      setSelectedTree(newTree)
-      setShowCreateTreeModal(false)
-      setNewTreeName('')
-      setNewTreeDescription('')
-      showToast('Dialog tree created successfully!', 'success')
-    } catch (err: any) {
-      const errorMsg = err.message || 'Failed to create tree'
-      setError(errorMsg)
-      showToast(errorMsg, 'error')
-    }
+    // Trees should be created through MultiTenantNavigator to ensure proper linking to A/B variations
+    // This modal should not be accessible anymore
+    setShowCreateTreeModal(false)
+    setNewTreeName('')
+    setNewTreeDescription('')
   }
 
   const handleSelectTree = (tree: DialogTree) => {
@@ -209,7 +204,8 @@ export default function DialogTreeManager() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      {/* Compact Sidebar */}
+      {/* Compact Sidebar - Hidden since we use MultiTenantNavigator now */}
+      {false && (
       <div className={`${sidebarOpen ? 'w-64' : 'w-16'} bg-white border-r border-gray-200 transition-all duration-300 flex flex-col`}>
         {/* Sidebar Header */}
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
@@ -264,17 +260,10 @@ export default function DialogTreeManager() {
           )}
         </div>
 
-        {/* Sidebar Footer */}
-        <div className="p-2 border-t border-gray-200">
-          <button
-            onClick={() => setShowCreateTreeModal(true)}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-lg hover:from-primary-700 hover:to-primary-800 text-sm font-semibold transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            {sidebarOpen && <span>New Tree</span>}
-          </button>
-        </div>
+        {/* Sidebar Footer - Removed "New Tree" button since trees are created via MultiTenantNavigator */}
+        {/* Trees should be created through the multi-tenant structure to ensure proper linking */}
       </div>
+      )}
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">

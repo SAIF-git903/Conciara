@@ -30,6 +30,7 @@ export interface DialogTree {
   id: number;
   name: string;
   description: string | null;
+  ab_variation_id: number | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -78,12 +79,22 @@ async function useService<T>(
 }
 
 // Dialog Tree operations
-export async function getAllDialogTrees(): Promise<DialogTree[]> {
+export async function getAllDialogTrees(abVariationId?: number): Promise<DialogTree[]> {
   return useService(
     async () => {
-      const result = await pool.query(
-        'SELECT * FROM dialog_trees ORDER BY updated_at DESC'
-      );
+      let query = 'SELECT * FROM dialog_trees';
+      const params: any[] = [];
+      
+      if (abVariationId !== undefined && abVariationId !== null) {
+        query += ' WHERE ab_variation_id = $1';
+        params.push(abVariationId);
+      }
+      // If abVariationId is undefined, return all trees (for backward compatibility)
+      
+      query += ' ORDER BY updated_at DESC';
+      
+      const result = await pool.query(query, params);
+      console.log(`[getAllDialogTrees] abVariationId: ${abVariationId}, found ${result.rows.length} trees`);
       return result.rows;
     },
     () => mockService.getAllDialogTrees()
@@ -102,13 +113,14 @@ export async function getDialogTreeById(id: number): Promise<DialogTree | null> 
 
 export async function createDialogTree(
   name: string,
-  description?: string
+  description?: string,
+  abVariationId?: number
 ): Promise<DialogTree> {
   return useService(
     async () => {
       const result = await pool.query(
-        'INSERT INTO dialog_trees (name, description) VALUES ($1, $2) RETURNING *',
-        [name, description || null]
+        'INSERT INTO dialog_trees (name, description, ab_variation_id) VALUES ($1, $2, $3) RETURNING *',
+        [name, description || null, abVariationId || null]
       );
       return result.rows[0];
     },

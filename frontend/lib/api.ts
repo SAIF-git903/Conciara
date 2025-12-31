@@ -13,6 +13,45 @@ export interface DialogTree {
   id: number;
   name: string;
   description: string | null;
+  ab_variation_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CustomerType {
+  id: number;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Website {
+  id: number;
+  customer_type_id: number;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Skin {
+  id: number;
+  website_id: number;
+  name: string;
+  description: string | null;
+  theme_config: any;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ABVariation {
+  id: number;
+  skin_id: number;
+  name: string;
+  description: string | null;
+  variation_config: any;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -38,16 +77,23 @@ export interface Preprompt {
 
 // Dialog Tree API
 export const dialogTreeApi = {
-  getAll: async (): Promise<DialogTree[]> => {
-    const response = await api.get('/dialog-tree');
-    return response.data;
+  getAll: async (abVariationId?: number): Promise<DialogTree[]> => {
+    // Always include ab_variation_id in params, even if undefined (backend will handle it)
+    const params: any = {};
+    if (abVariationId !== undefined && abVariationId !== null) {
+      params.ab_variation_id = abVariationId;
+    }
+    console.log('[dialogTreeApi.getAll] Calling with abVariationId:', abVariationId, 'params:', params);
+    const response = await api.get('/dialog-tree', { params });
+    console.log('[dialogTreeApi.getAll] Received', response.data?.length || 0, 'trees:', response.data?.map((t: any) => t.name));
+    return response.data || [];
   },
   getById: async (id: number): Promise<DialogTree> => {
     const response = await api.get(`/dialog-tree/${id}`);
     return response.data;
   },
-  create: async (name: string, description?: string): Promise<DialogTree> => {
-    const response = await api.post('/dialog-tree', { name, description });
+  create: async (name: string, description?: string, abVariationId?: number): Promise<DialogTree> => {
+    const response = await api.post('/dialog-tree', { name, description, ab_variation_id: abVariationId });
     return response.data;
   },
   update: async (id: number, name: string, description?: string): Promise<DialogTree> => {
@@ -118,6 +164,98 @@ export const prepromptApi = {
   },
   delete: async (id: number): Promise<void> => {
     await api.delete(`/preprompt/${id}`);
+  },
+};
+
+// Customer Type API
+export const customerTypeApi = {
+  getAll: async (): Promise<CustomerType[]> => {
+    const response = await api.get('/customer-type');
+    return response.data;
+  },
+  getById: async (id: number): Promise<CustomerType> => {
+    const response = await api.get(`/customer-type/${id}`);
+    return response.data;
+  },
+  create: async (name: string, description?: string): Promise<CustomerType> => {
+    const response = await api.post('/customer-type', { name, description });
+    return response.data;
+  },
+  update: async (id: number, name: string, description?: string): Promise<CustomerType> => {
+    const response = await api.put(`/customer-type/${id}`, { name, description });
+    return response.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/customer-type/${id}`);
+  },
+};
+
+// Website API
+export const websiteApi = {
+  getByCustomerType: async (customerTypeId: number): Promise<Website[]> => {
+    const response = await api.get(`/website/customer-type/${customerTypeId}`);
+    return response.data;
+  },
+  getById: async (id: number): Promise<Website> => {
+    const response = await api.get(`/website/${id}`);
+    return response.data;
+  },
+  create: async (customerTypeId: number, name: string, description?: string): Promise<Website> => {
+    const response = await api.post('/website', { customer_type_id: customerTypeId, name, description });
+    return response.data;
+  },
+  update: async (id: number, name: string, description?: string): Promise<Website> => {
+    const response = await api.put(`/website/${id}`, { name, description });
+    return response.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/website/${id}`);
+  },
+};
+
+// Skin API
+export const skinApi = {
+  getByWebsite: async (websiteId: number): Promise<Skin[]> => {
+    const response = await api.get(`/skin/website/${websiteId}`);
+    return response.data;
+  },
+  getById: async (id: number): Promise<Skin> => {
+    const response = await api.get(`/skin/${id}`);
+    return response.data;
+  },
+  create: async (websiteId: number, name: string, description?: string, themeConfig?: any): Promise<Skin> => {
+    const response = await api.post('/skin', { website_id: websiteId, name, description, theme_config: themeConfig });
+    return response.data;
+  },
+  update: async (id: number, name: string, description?: string, themeConfig?: any): Promise<Skin> => {
+    const response = await api.put(`/skin/${id}`, { name, description, theme_config: themeConfig });
+    return response.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/skin/${id}`);
+  },
+};
+
+// A/B Variation API
+export const abVariationApi = {
+  getBySkin: async (skinId: number): Promise<ABVariation[]> => {
+    const response = await api.get(`/ab-variation/skin/${skinId}`);
+    return response.data;
+  },
+  getById: async (id: number): Promise<ABVariation> => {
+    const response = await api.get(`/ab-variation/${id}`);
+    return response.data;
+  },
+  create: async (skinId: number, name: string, description?: string, variationConfig?: any, isActive?: boolean): Promise<ABVariation> => {
+    const response = await api.post('/ab-variation', { skin_id: skinId, name, description, variation_config: variationConfig, is_active: isActive });
+    return response.data;
+  },
+  update: async (id: number, name: string, description?: string, variationConfig?: any, isActive?: boolean): Promise<ABVariation> => {
+    const response = await api.put(`/ab-variation/${id}`, { name, description, variation_config: variationConfig, is_active: isActive });
+    return response.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/ab-variation/${id}`);
   },
 };
 

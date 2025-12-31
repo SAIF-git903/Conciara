@@ -197,17 +197,11 @@ export default function TreeVisualization({
               scaleExtent={{ min: 0.5, max: 2 }}
               onNodeClick={handleNodeClick}
               pathClassFunc={() => 'tree-link'}
-              styles={{
-                links: {
-                  stroke: '#6366f1',
-                  strokeWidth: 2,
-                }
-              }}
               enableLegacyTransitions={true}
               transitionDuration={300}
               renderCustomNodeElement={(rd3tProps) => {
                 const { nodeDatum } = rd3tProps
-                const nodeId = nodeDatum.attributes?.nodeId || nodeDatum.nodeId
+                const nodeId = (nodeDatum.attributes as any)?.nodeId
                 const isSelected = selectedNodeId === nodeId
                 const isHovered = hoveredNodeId === nodeId
                 const hasChildren = nodeDatum.children && nodeDatum.children.length > 0
