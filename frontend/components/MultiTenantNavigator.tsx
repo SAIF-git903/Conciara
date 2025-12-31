@@ -47,7 +47,7 @@ export default function MultiTenantNavigator({ onSelectTree, selectedTreeId }: M
     type: 'customerType' | 'website' | 'skin' | 'variation' | 'tree' | null
     data?: any
   }>({ type: null })
-  const [formData, setFormData] = useState({ name: '', description: '' })
+  const [formData, setFormData] = useState({ name: '', description: '', domain: '' })
 
   useEffect(() => {
     loadCustomerTypes()
@@ -202,7 +202,12 @@ export default function MultiTenantNavigator({ onSelectTree, selectedTreeId }: M
             showToast('Please select a customer type first', 'error')
             return
           }
-          newItem = await websiteApi.create(selectedCustomerType.id, formData.name, formData.description || undefined)
+          newItem = await websiteApi.create(
+            selectedCustomerType.id, 
+            formData.name, 
+            formData.description || undefined,
+            formData.domain || undefined
+          )
           setWebsites([...websites, newItem])
           showToast('Website created successfully!', 'success')
           break
@@ -236,13 +241,14 @@ export default function MultiTenantNavigator({ onSelectTree, selectedTreeId }: M
       }
 
       setShowCreateModal({ type: null })
-      setFormData({ name: '', description: '' })
+      setFormData({ name: '', description: '', domain: '' })
     } catch (err: any) {
       showToast(err.message || 'Failed to create item', 'error')
     } finally {
       setLoading(false)
     }
   }
+
 
   return (
     <div className="h-full flex flex-col bg-white border-r border-gray-200">
@@ -454,7 +460,7 @@ export default function MultiTenantNavigator({ onSelectTree, selectedTreeId }: M
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowCreateModal({ type: null })
-              setFormData({ name: '', description: '' })
+              setFormData({ name: '', description: '', domain: '' })
             }
           }}
         >
@@ -469,7 +475,7 @@ export default function MultiTenantNavigator({ onSelectTree, selectedTreeId }: M
               <button
                 onClick={() => {
                   setShowCreateModal({ type: null })
-                  setFormData({ name: '', description: '' })
+                  setFormData({ name: '', description: '', domain: '' })
                 }}
                 className="text-gray-400 hover:text-gray-600"
               >
@@ -504,13 +510,32 @@ export default function MultiTenantNavigator({ onSelectTree, selectedTreeId }: M
                   placeholder="Enter description..."
                 />
               </div>
+
+              {/* Domain field - only for websites */}
+              {showCreateModal.type === 'website' && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    Domain <span className="text-gray-400 text-xs font-normal">(optional)</span>
+                    <span className="block text-xs text-gray-500 font-normal mt-1">
+                      e.g., techstore.com (used for auto-detection in widget)
+                    </span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.domain}
+                    onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
+                    className="w-full p-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    placeholder="techstore.com"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2 mt-6">
               <button
                 onClick={() => {
                   setShowCreateModal({ type: null })
-                  setFormData({ name: '', description: '' })
+                  setFormData({ name: '', description: '', domain: '' })
                 }}
                 className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium"
               >

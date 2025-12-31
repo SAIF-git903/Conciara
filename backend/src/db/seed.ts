@@ -48,23 +48,23 @@ async function seedDatabase() {
     const websites = [];
     
     const websiteData = [
-      { customerType: 0, name: 'TechStore Pro', description: 'Premium electronics and gadgets online store' },
-      { customerType: 0, name: 'FashionHub', description: 'Trendy fashion and accessories marketplace' },
-      { customerType: 1, name: 'CloudSync', description: 'Enterprise cloud storage and collaboration platform' },
-      { customerType: 1, name: 'TaskMaster', description: 'Project management and productivity SaaS' },
-      { customerType: 2, name: 'HealthCare Plus', description: 'Telemedicine and health consultation platform' },
-      { customerType: 3, name: 'LearnOnline Academy', description: 'Online courses and educational content' },
-      { customerType: 4, name: 'PropertyFinder', description: 'Real estate listings and property search' }
+      { customerType: 0, name: 'TechStore Pro', description: 'Premium electronics and gadgets online store', domain: 'techstore.com' },
+      { customerType: 0, name: 'FashionHub', description: 'Trendy fashion and accessories marketplace', domain: 'fashionhub.com' },
+      { customerType: 1, name: 'CloudSync', description: 'Enterprise cloud storage and collaboration platform', domain: 'cloudsync.io' },
+      { customerType: 1, name: 'TaskMaster', description: 'Project management and productivity SaaS', domain: 'taskmaster.app' },
+      { customerType: 2, name: 'HealthCare Plus', description: 'Telemedicine and health consultation platform', domain: 'healthcareplus.com' },
+      { customerType: 3, name: 'LearnOnline Academy', description: 'Online courses and educational content', domain: 'learnonline.edu' },
+      { customerType: 4, name: 'PropertyFinder', description: 'Real estate listings and property search', domain: 'propertyfinder.com' }
     ];
 
     for (const website of websiteData) {
       const result = await pool.query(`
-        INSERT INTO websites (customer_type_id, name, description)
-        VALUES ($1, $2, $3)
+        INSERT INTO websites (customer_type_id, name, description, domain)
+        VALUES ($1, $2, $3, $4)
         RETURNING *;
-      `, [customerTypes[website.customerType].id, website.name, website.description]);
+      `, [customerTypes[website.customerType].id, website.name, website.description, website.domain]);
       websites.push(result.rows[0]);
-      console.log(`✅ Created: ${result.rows[0].name}`);
+      console.log(`✅ Created: ${result.rows[0].name} (${website.domain})`);
     }
     console.log('');
 

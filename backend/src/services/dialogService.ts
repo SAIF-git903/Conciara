@@ -93,6 +93,9 @@ export async function updateDialogTree(
     'UPDATE dialog_trees SET name = $1, description = $2, updated_at = NOW() WHERE id = $3 RETURNING *',
     [name, description || null, id]
   );
+  if (result.rows.length === 0) {
+    throw new Error('Dialog tree not found');
+  }
   return result.rows[0];
 }
 

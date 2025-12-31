@@ -5,7 +5,9 @@ import { Send, X, Minimize2, Maximize2, Bot, User } from 'lucide-react'
 
 interface ChatbotWidgetProps {
   apiUrl?: string
-  treeId: number
+  treeId?: number
+  websiteId?: number
+  domain?: string
   position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
   theme?: {
     primaryColor?: string
@@ -24,6 +26,8 @@ interface Message {
 export default function ChatbotWidget({
   apiUrl = 'http://localhost:3001/api',
   treeId,
+  websiteId,
+  domain,
   position = 'bottom-right',
   theme = {}
 }: ChatbotWidgetProps) {
@@ -34,8 +38,75 @@ export default function ChatbotWidget({
   const [isLoading, setIsLoading] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [quickReplies, setQuickReplies] = useState<string[]>([])
+  const [resolvedTreeId, setResolvedTreeId] = useState<number | null>(treeId || null)
+  const [resolvedTheme, setResolvedTheme] = useState(theme)
+  const [configLoaded, setConfigLoaded] = useState(!!treeId)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Load widget config if websiteId or domain is provided
+  useEffect(() => {
+    const loadConfig = async () => {
+      if (treeId) {
+        // Manual treeId provided, use it
+        setConfigLoaded(true)
+        return
+      }
+
+      if (websiteId || domain) {
+        try {
+          const params = new URLSearchParams()
+          if (websiteId) {
+            params.append('websiteId', websiteId.toString())
+          } else if (domain) {
+            params.append('domain', domain)
+          }
+
+          const response = await fetch(`${apiUrl}/widget/config?${params.toString()}`)
+          
+          if (response.ok) {
+            const widgetConfig = await response.json()
+            setResolvedTreeId(widgetConfig.treeId)
+            setResolvedTheme({
+              primaryColor: theme.primaryColor || widgetConfig.theme?.primaryColor,
+              backgroundColor: theme.backgroundColor || widgetConfig.theme?.backgroundColor,
+              textColor: theme.textColor || widgetConfig.theme?.textColor
+            })
+            setConfigLoaded(true)
+          } else {
+            console.error('Failed to load widget config')
+            setConfigLoaded(true)
+          }
+        } catch (error) {
+          console.error('Error loading widget config:', error)
+          setConfigLoaded(true)
+        }
+      } else {
+        // Try auto-detect from domain
+        const currentDomain = typeof window !== 'undefined' ? window.location.hostname : null
+        if (currentDomain && currentDomain !== 'localhost' && currentDomain !== '127.0.0.1') {
+          try {
+            const response = await fetch(`${apiUrl}/widget/config?domain=${encodeURIComponent(currentDomain)}`)
+            if (response.ok) {
+              const widgetConfig = await response.json()
+              setResolvedTreeId(widgetConfig.treeId)
+              setResolvedTheme({
+                primaryColor: theme.primaryColor || widgetConfig.theme?.primaryColor,
+                backgroundColor: theme.backgroundColor || widgetConfig.theme?.backgroundColor,
+                textColor: theme.textColor || widgetConfig.theme?.textColor
+              })
+            }
+          } catch (error) {
+            console.warn('Auto-detection failed:', error)
+          }
+        }
+        setConfigLoaded(true)
+      }
+    }
+
+    loadConfig()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [websiteId, domain, apiUrl])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -60,13 +131,18 @@ export default function ChatbotWidget({
   }, [isOpen])
 
   const initializeConversation = async () => {
+    if (!resolvedTreeId) {
+      addMessage('bot', "Sorry, no chatbot is configured for this website. Please contact support.")
+      return
+    }
+
     try {
       setIsLoading(true)
       const response = await fetch(`${apiUrl}/chat/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tree_id: treeId,
+          tree_id: resolvedTreeId,
           user_message: '__START__', // Special message to start conversation
           session_id: null
         })
@@ -110,11 +186,16 @@ export default function ChatbotWidget({
     setIsLoading(true)
 
     try {
+      if (!resolvedTreeId) {
+        addMessage('bot', "Sorry, no chatbot is configured for this website.")
+        return
+      }
+
       const response = await fetch(`${apiUrl}/chat/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tree_id: treeId,
+          tree_id: resolvedTreeId,
           user_message: userMessage,
           session_id: sessionId
         })
@@ -159,9 +240,14 @@ export default function ChatbotWidget({
     'top-left': 'top-4 left-4',
   }
 
-  const primaryColor = theme.primaryColor || '#6366f1'
-  const backgroundColor = theme.backgroundColor || '#ffffff'
-  const textColor = theme.textColor || '#1f2937'
+  const primaryColor = resolvedTheme.primaryColor || theme.primaryColor || '#6366f1'
+  const backgroundColor = resolvedTheme.backgroundColor || theme.backgroundColor || '#ffffff'
+  const textColor = resolvedTheme.textColor || theme.textColor || '#1f2937'
+
+  // Don't render if config not loaded or no treeId
+  if (!configLoaded || !resolvedTreeId) {
+    return null
+  }
 
   return (
     <div className={`fixed ${positionClasses[position]} z-50`}>
