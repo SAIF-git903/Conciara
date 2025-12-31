@@ -114,6 +114,31 @@ export async function migrate() {
       );
     `);
 
+    // Create conversation_sessions table for tracking chat sessions
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS conversation_sessions (
+        id SERIAL PRIMARY KEY,
+        session_id VARCHAR(255) NOT NULL UNIQUE,
+        tree_id INT REFERENCES dialog_trees(id) ON DELETE CASCADE,
+        current_node_id INT REFERENCES dialog_nodes(id) ON DELETE SET NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // Create conversation_history table for logging conversations
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS conversation_history (
+        id SERIAL PRIMARY KEY,
+        session_id VARCHAR(255) NOT NULL,
+        tree_id INT REFERENCES dialog_trees(id) ON DELETE CASCADE,
+        node_id INT REFERENCES dialog_nodes(id) ON DELETE SET NULL,
+        user_message TEXT,
+        bot_response TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
     // Create indexes for better performance
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_dialog_nodes_tree_id ON dialog_nodes(tree_id);
@@ -123,6 +148,10 @@ export async function migrate() {
       CREATE INDEX IF NOT EXISTS idx_skins_website_id ON skins(website_id);
       CREATE INDEX IF NOT EXISTS idx_ab_variations_skin_id ON ab_variations(skin_id);
       CREATE INDEX IF NOT EXISTS idx_dialog_trees_ab_variation_id ON dialog_trees(ab_variation_id);
+      CREATE INDEX IF NOT EXISTS idx_conversation_sessions_session_id ON conversation_sessions(session_id);
+      CREATE INDEX IF NOT EXISTS idx_conversation_sessions_tree_id ON conversation_sessions(tree_id);
+      CREATE INDEX IF NOT EXISTS idx_conversation_history_session_id ON conversation_history(session_id);
+      CREATE INDEX IF NOT EXISTS idx_conversation_history_tree_id ON conversation_history(tree_id);
     `);
 
     console.log('Migration completed successfully');
@@ -132,4 +161,15 @@ export async function migrate() {
   }
 }
 
+// Run migration if this file is executed directly
+if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.includes('migrate.ts')) {
+  migrate()
+    .then(() => {
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error('Migration error:', error);
+      process.exit(1);
+    });
+}
 
