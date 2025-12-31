@@ -1,0 +1,623 @@
+/**
+ * ConversaTree Chatbot Widget
+ * Standalone JavaScript widget - no iframe needed
+ * 
+ * Usage:
+ * <script src="http://localhost:3000/widget.js"></script>
+ * <script>
+ *   ConversaTree.init({
+ *     apiUrl: 'http://localhost:3001/api',
+ *     treeId: 1
+ *   });
+ * </script>
+ */
+
+(function() {
+  'use strict';
+
+  // Default configuration
+  const defaults = {
+    apiUrl: 'http://localhost:3001/api',
+    treeId: 1,
+    position: 'bottom-right',
+    primaryColor: '#6366f1',
+    backgroundColor: '#ffffff',
+    textColor: '#1f2937',
+    buttonText: 'Chat',
+    title: 'Chat Assistant'
+  };
+
+  // Widget class
+  class ConversaTreeWidget {
+    constructor(config) {
+      this.config = { ...defaults, ...config };
+      this.sessionId = null;
+      this.isOpen = false;
+      this.isMinimized = false;
+      this.messages = [];
+      this.quickReplies = [];
+      this.isLoading = false;
+      this.container = null;
+      
+      this.init();
+    }
+
+    init() {
+      // Create widget container
+      this.container = document.createElement('div');
+      this.container.id = 'conversatree-widget';
+      this.container.innerHTML = this.renderButton();
+      document.body.appendChild(this.container);
+
+      // Add styles
+      this.injectStyles();
+
+      // Add event listeners
+      this.attachEventListeners();
+    }
+
+    injectStyles() {
+      if (document.getElementById('conversatree-styles')) return;
+
+      const style = document.createElement('style');
+      style.id = 'conversatree-styles';
+      style.textContent = `
+        #conversatree-widget {
+          position: fixed;
+          ${this.getPositionStyles()}
+          z-index: 9999;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+
+        .ct-button {
+          width: 56px;
+          height: 56px;
+          border-radius: 50%;
+          background-color: ${this.config.primaryColor};
+          color: white;
+          border: none;
+          cursor: pointer;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .ct-button:hover {
+          transform: scale(1.1);
+          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        .ct-window {
+          width: 384px;
+          height: 600px;
+          background: ${this.config.backgroundColor};
+          border-radius: 8px;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+
+        .ct-window.minimized {
+          height: 48px;
+        }
+
+        .ct-header {
+          background-color: ${this.config.primaryColor};
+          color: white;
+          padding: 12px 16px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-shrink: 0;
+        }
+
+        .ct-header-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-weight: 600;
+          font-size: 14px;
+        }
+
+        .ct-header-actions {
+          display: flex;
+          gap: 8px;
+        }
+
+        .ct-header-button {
+          background: transparent;
+          border: none;
+          color: white;
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+          transition: background-color 0.2s;
+        }
+
+        .ct-header-button:hover {
+          background-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .ct-messages {
+          flex: 1;
+          overflow-y: auto;
+          padding: 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          background: ${this.config.backgroundColor};
+        }
+
+        .ct-message {
+          display: flex;
+          gap: 8px;
+          max-width: 80%;
+        }
+
+        .ct-message.user {
+          align-self: flex-end;
+          flex-direction: row-reverse;
+        }
+
+        .ct-message.bot {
+          align-self: flex-start;
+        }
+
+        .ct-message-avatar {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          font-size: 16px;
+        }
+
+        .ct-message.user .ct-message-avatar {
+          background-color: #e5e7eb;
+          color: #374151;
+        }
+
+        .ct-message.bot .ct-message-avatar {
+          background-color: ${this.config.primaryColor};
+          color: white;
+        }
+
+        .ct-message-content {
+          padding: 10px 14px;
+          border-radius: 12px;
+          font-size: 14px;
+          line-height: 1.5;
+          word-wrap: break-word;
+        }
+
+        .ct-message.user .ct-message-content {
+          background-color: #f3f4f6;
+          color: #111827;
+        }
+
+        .ct-message.bot .ct-message-content {
+          background-color: ${this.config.primaryColor};
+          color: white;
+        }
+
+        .ct-loading {
+          display: flex;
+          gap: 4px;
+          padding: 10px 14px;
+        }
+
+        .ct-loading-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background-color: #9ca3af;
+          animation: ct-bounce 1.4s infinite ease-in-out;
+        }
+
+        .ct-loading-dot:nth-child(1) {
+          animation-delay: -0.32s;
+        }
+
+        .ct-loading-dot:nth-child(2) {
+          animation-delay: -0.16s;
+        }
+
+        @keyframes ct-bounce {
+          0%, 80%, 100% {
+            transform: scale(0);
+          }
+          40% {
+            transform: scale(1);
+          }
+        }
+
+        .ct-quick-replies {
+          padding: 8px 16px;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          border-top: 1px solid #e5e7eb;
+          background: ${this.config.backgroundColor};
+        }
+
+        .ct-quick-reply {
+          padding: 6px 12px;
+          border: 1px solid ${this.config.primaryColor};
+          border-radius: 16px;
+          background: transparent;
+          color: ${this.config.primaryColor};
+          font-size: 12px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .ct-quick-reply:hover {
+          background-color: ${this.config.primaryColor};
+          color: white;
+        }
+
+        .ct-input-container {
+          padding: 16px;
+          border-top: 1px solid #e5e7eb;
+          background: ${this.config.backgroundColor};
+        }
+
+        .ct-input-form {
+          display: flex;
+          gap: 8px;
+        }
+
+        .ct-input {
+          flex: 1;
+          padding: 10px 14px;
+          border: 1px solid #d1d5db;
+          border-radius: 8px;
+          font-size: 14px;
+          outline: none;
+          transition: border-color 0.2s;
+        }
+
+        .ct-input:focus {
+          border-color: ${this.config.primaryColor};
+        }
+
+        .ct-send-button {
+          padding: 10px 16px;
+          background-color: ${this.config.primaryColor};
+          color: white;
+          border: none;
+          border-radius: 8px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          transition: opacity 0.2s;
+        }
+
+        .ct-send-button:hover:not(:disabled) {
+          opacity: 0.9;
+        }
+
+        .ct-send-button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .ct-icon {
+          width: 20px;
+          height: 20px;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    getPositionStyles() {
+      const positions = {
+        'bottom-right': 'bottom: 20px; right: 20px;',
+        'bottom-left': 'bottom: 20px; left: 20px;',
+        'top-right': 'top: 20px; right: 20px;',
+        'top-left': 'top: 20px; left: 20px;'
+      };
+      return positions[this.config.position] || positions['bottom-right'];
+    }
+
+    renderButton() {
+      return `
+        <button class="ct-button" aria-label="Open chat">
+          <svg class="ct-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+        </button>
+      `;
+    }
+
+    renderWindow() {
+      return `
+        <div class="ct-window ${this.isMinimized ? 'minimized' : ''}">
+          <div class="ct-header">
+            <div class="ct-header-title">
+              <svg class="ct-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              <span>${this.config.title}</span>
+            </div>
+            <div class="ct-header-actions">
+              <button class="ct-header-button ct-minimize" aria-label="Minimize">
+                <svg class="ct-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" />
+                </svg>
+              </button>
+              <button class="ct-header-button ct-close" aria-label="Close">
+                <svg class="ct-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          ${!this.isMinimized ? `
+            <div class="ct-messages" id="ct-messages">
+              ${this.messages.length === 0 && !this.isLoading ? `
+                <div style="text-align: center; color: #6b7280; padding: 20px; font-size: 14px;">
+                  Starting conversation...
+                </div>
+              ` : ''}
+              ${this.messages.map(msg => this.renderMessage(msg)).join('')}
+              ${this.isLoading ? this.renderLoading() : ''}
+            </div>
+            ${this.quickReplies.length > 0 ? this.renderQuickReplies() : ''}
+            <div class="ct-input-container">
+              <form class="ct-input-form" id="ct-form">
+                <input 
+                  type="text" 
+                  class="ct-input" 
+                  id="ct-input" 
+                  placeholder="Type your message..."
+                  autocomplete="off"
+                />
+                <button type="submit" class="ct-send-button" id="ct-send" ${this.isLoading ? 'disabled' : ''}>
+                  <svg class="ct-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </button>
+              </form>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    renderMessage(message) {
+      const isUser = message.type === 'user';
+      return `
+        <div class="ct-message ${message.type}">
+          <div class="ct-message-avatar">
+            ${isUser ? '👤' : '🤖'}
+          </div>
+          <div class="ct-message-content">
+            ${this.escapeHtml(message.content)}
+          </div>
+        </div>
+      `;
+    }
+
+    renderLoading() {
+      return `
+        <div class="ct-message bot">
+          <div class="ct-message-avatar">🤖</div>
+          <div class="ct-loading">
+            <div class="ct-loading-dot"></div>
+            <div class="ct-loading-dot"></div>
+            <div class="ct-loading-dot"></div>
+          </div>
+        </div>
+      `;
+    }
+
+    renderQuickReplies() {
+      return `
+        <div class="ct-quick-replies">
+          ${this.quickReplies.map(reply => `
+            <button class="ct-quick-reply" data-reply="${this.escapeHtml(reply)}">
+              ${this.escapeHtml(reply)}
+            </button>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    attachEventListeners() {
+      // Use event delegation since content changes
+      this.container.addEventListener('click', (e) => {
+        if (e.target.closest('.ct-button')) {
+          this.toggleChat();
+        } else if (e.target.closest('.ct-close')) {
+          this.closeChat();
+        } else if (e.target.closest('.ct-minimize')) {
+          this.toggleMinimize();
+        } else if (e.target.closest('.ct-quick-reply')) {
+          const reply = e.target.closest('.ct-quick-reply').dataset.reply;
+          this.sendMessage(reply);
+        }
+      });
+
+      this.container.addEventListener('submit', (e) => {
+        if (e.target.id === 'ct-form') {
+          e.preventDefault();
+          const input = this.container.querySelector('#ct-input');
+          if (input && input.value.trim()) {
+            this.sendMessage(input.value.trim());
+            input.value = '';
+          }
+        }
+      });
+    }
+
+    toggleChat() {
+      this.isOpen = !this.isOpen;
+      this.isMinimized = false;
+      this.updateView();
+      
+      if (this.isOpen && this.messages.length === 0) {
+        this.initializeConversation();
+      }
+    }
+
+    closeChat() {
+      this.isOpen = false;
+      this.isMinimized = false;
+      this.updateView();
+    }
+
+    toggleMinimize() {
+      this.isMinimized = !this.isMinimized;
+      this.updateView();
+    }
+
+    updateView() {
+      if (this.isOpen) {
+        this.container.innerHTML = this.renderWindow();
+        this.scrollToBottom();
+        const input = this.container.querySelector('#ct-input');
+        if (input && !this.isMinimized) {
+          setTimeout(() => input.focus(), 100);
+        }
+      } else {
+        this.container.innerHTML = this.renderButton();
+      }
+    }
+
+    scrollToBottom() {
+      const messagesContainer = this.container.querySelector('#ct-messages');
+      if (messagesContainer) {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
+    }
+
+    async initializeConversation() {
+      this.isLoading = true;
+      this.updateView();
+
+      try {
+        const response = await fetch(`${this.config.apiUrl}/chat/message`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tree_id: this.config.treeId,
+            user_message: '__START__',
+            session_id: null
+          })
+        });
+
+        const data = await response.json();
+        this.sessionId = data.session_id;
+
+        if (data.bot_response) {
+          this.addMessage('bot', data.bot_response);
+          if (data.options && data.options.length > 0) {
+            this.quickReplies = data.options;
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing conversation:', error);
+        this.addMessage('bot', "Sorry, I'm having trouble connecting. Please try again.");
+      } finally {
+        this.isLoading = false;
+        this.updateView();
+      }
+    }
+
+    async sendMessage(message) {
+      this.addMessage('user', message);
+      this.quickReplies = [];
+      this.isLoading = true;
+      this.updateView();
+
+      try {
+        const response = await fetch(`${this.config.apiUrl}/chat/message`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tree_id: this.config.treeId,
+            user_message: message,
+            session_id: this.sessionId
+          })
+        });
+
+        const data = await response.json();
+
+        if (!this.sessionId) {
+          this.sessionId = data.session_id;
+        }
+
+        if (data.bot_response) {
+          this.addMessage('bot', data.bot_response);
+          if (data.options && data.options.length > 0) {
+            this.quickReplies = data.options;
+          }
+        }
+      } catch (error) {
+        console.error('Error sending message:', error);
+        this.addMessage('bot', "Sorry, I'm having trouble. Please try again.");
+      } finally {
+        this.isLoading = false;
+        this.updateView();
+      }
+    }
+
+    addMessage(type, content) {
+      this.messages.push({
+        type,
+        content,
+        id: Date.now() + Math.random()
+      });
+      this.updateView();
+    }
+  }
+
+  // Global API
+  window.ConversaTree = {
+    init: function(config) {
+      if (window.ConversaTree.instance) {
+        console.warn('ConversaTree widget already initialized');
+        return window.ConversaTree.instance;
+      }
+      window.ConversaTree.instance = new ConversaTreeWidget(config);
+      return window.ConversaTree.instance;
+    },
+    instance: null
+  };
+
+  // Auto-initialize if data attributes are present
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', autoInit);
+  } else {
+    autoInit();
+  }
+
+  function autoInit() {
+    const script = document.querySelector('script[data-conversatree]');
+    if (script) {
+      const config = {
+        apiUrl: script.getAttribute('data-api-url') || defaults.apiUrl,
+        treeId: parseInt(script.getAttribute('data-tree-id')) || defaults.treeId,
+        position: script.getAttribute('data-position') || defaults.position,
+        primaryColor: script.getAttribute('data-primary-color') || defaults.primaryColor,
+        title: script.getAttribute('data-title') || defaults.title
+      };
+      window.ConversaTree.init(config);
+    }
+  }
+})();
+

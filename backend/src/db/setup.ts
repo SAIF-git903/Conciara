@@ -6,45 +6,66 @@ dotenv.config();
 
 const { Client } = pg;
 
+function getDatabaseUrl(): string {
+  // If DATABASE_URL is set, use it directly
+  if (process.env.DATABASE_URL) {
+    return process.env.DATABASE_URL;
+  }
+  
+  // Otherwise, build from individual variables
+  const user = process.env.DB_USER;
+  const password = process.env.DB_PASSWORD;
+  const host = process.env.DB_HOST || 'localhost';
+  const port = process.env.DB_PORT || '5432';
+  const database = process.env.DB_NAME || 'dialog_trees';
+  
+  if (!user) {
+    const systemUser = process.env.USER || 'saif';
+    return `postgresql://${systemUser}@localhost:5432/${database}`;
+  }
+  
+  // Construct connection string
+  if (password) {
+    return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
+  } else {
+    return `postgresql://${encodeURIComponent(user)}@${host}:${port}/${database}`;
+  }
+}
+
 async function setupDatabase() {
-  // Get the current system user (Homebrew PostgreSQL uses this as default)
-  const systemUser = process.env.USER || 'saif';
+  // Get database URL from env variables
+  const dbUrl = getDatabaseUrl();
   
-  // Parse DATABASE_URL or construct default
-  let dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl) {
-    dbUrl = `postgresql://${systemUser}@localhost:5432/dialog_trees`;
-    console.log(`ℹ️  DATABASE_URL not set, using default: ${dbUrl}`);
+  // Parse the DATABASE_URL properly
+  // Format: postgresql://[user[:password]@]host[:port][/database]
+  // Use a simpler approach: replace the database name in the URL
+  let adminUrl: string;
+  
+  // Check if URL has a database name and replace it with 'postgres'
+  if (dbUrl.includes('/') && dbUrl.split('/').length > 3) {
+    // Has database name - replace it with 'postgres'
+    const parts = dbUrl.split('/');
+    parts[parts.length - 1] = 'postgres';
+    adminUrl = parts.join('/');
+  } else {
+    // No database name - append '/postgres'
+    adminUrl = dbUrl.endsWith('/') ? `${dbUrl}postgres` : `${dbUrl}/postgres`;
   }
   
-  // Extract username from DATABASE_URL, default to system user
-  const urlMatch = dbUrl.match(/postgresql:\/\/([^:]+)(?::([^@]+))?@/);
-  let username = systemUser;
-  let password = '';
-  
-  if (urlMatch) {
-    username = urlMatch[1];
-    if (urlMatch[2]) {
-      password = `:${urlMatch[2]}`;
-    }
-  }
-  
-  // Connect to 'postgres' database to create our database
-  const adminUrl = `postgresql://${username}${password}@localhost:5432/postgres`;
-  
+  // Extract username for logging
+  const userMatch = adminUrl.match(/postgresql:\/\/([^:@]+)/);
+  const username = userMatch ? userMatch[1] : 'postgres';
   console.log(`🔌 Connecting as user: ${username}`);
   
-  const adminClient = new Client({
-    connectionString: adminUrl,
-  });
+  // Use connection string directly - pg library handles password encoding properly
+  const adminClient = new Client({ connectionString: adminUrl });
 
   try {
     console.log('🔌 Connecting to PostgreSQL...');
     await adminClient.connect();
     console.log('✅ Connected to PostgreSQL');
 
-    // Extract database name from DATABASE_URL
-    const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/dialog_trees';
+    // Extract database name from original DATABASE_URL
     const dbName = dbUrl.split('/').pop()?.split('?')[0] || 'dialog_trees';
 
     console.log(`📦 Creating database '${dbName}' if it doesn't exist...`);
@@ -97,11 +118,20 @@ async function setupDatabase() {
     console.error('❌ Error setting up database:', error.message);
     if (error.code === 'ECONNREFUSED') {
       console.error('\n💡 Make sure PostgreSQL is running:');
+      console.error('   - On Windows: Check Services or run: pg_ctl start');
       console.error('   - On macOS: brew services start postgresql@15');
-      console.error('   - Or check your PostgreSQL installation');
-    } else if (error.code === '28P01') {
+      console.error('   - On Linux: sudo systemctl start postgresql');
+    } else if (error.code === '28P01' || error.message?.includes('password')) {
       console.error('\n💡 Authentication failed. Check your DATABASE_URL in .env file');
-      console.error('   Current format: postgresql://username:password@localhost:5432/database');
+      console.error('   Format: postgresql://username:password@localhost:5432/database');
+      console.error('   If no password, use: postgresql://username@localhost:5432/database');
+      console.error(`   Current DATABASE_URL: ${process.env.DATABASE_URL ? '***set***' : 'not set'}`);
+    } else {
+      console.error('\n💡 Common issues:');
+      console.error('   1. PostgreSQL is not running');
+      console.error('   2. DATABASE_URL format is incorrect');
+      console.error('   3. Username/password is wrong');
+      console.error('   4. Database user does not have permission to create databases');
     }
     process.exit(1);
   }

@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+// Import connection early to validate DATABASE_URL
+import './db/connection.js';
 import dialogTreeRoutes from './routes/dialogTree.js';
 import dialogNodeRoutes from './routes/dialogNode.js';
 import prepromptRoutes from './routes/preprompt.js';
@@ -8,13 +10,32 @@ import customerTypeRoutes from './routes/customerType.js';
 import websiteRoutes from './routes/website.js';
 import skinRoutes from './routes/skin.js';
 import abVariationRoutes from './routes/abVariation.js';
+import chatRoutes from './routes/chat.js';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+// CORS configuration - allow all localhost ports for development
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, Postman, or iframe from same origin)
+    if (!origin) return callback(null, true);
+    
+    // Allow all localhost ports for development
+    if (origin.match(/^http:\/\/localhost:\d+$/) || 
+        origin.match(/^http:\/\/127\.0\.0\.1:\d+$/)) {
+      return callback(null, true);
+    }
+    
+    // In production, you'd want to whitelist specific origins
+    callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // Routes
@@ -25,6 +46,7 @@ app.use('/api/customer-type', customerTypeRoutes);
 app.use('/api/website', websiteRoutes);
 app.use('/api/skin', skinRoutes);
 app.use('/api/ab-variation', abVariationRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

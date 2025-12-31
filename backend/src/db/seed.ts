@@ -18,64 +18,125 @@ async function seedDatabase() {
     await pool.query('DELETE FROM customer_types');
     console.log('✅ All existing data cleared\n');
 
-    // Step 2: Create Customer Type
-    console.log('📦 Creating customer type...');
-    const customerTypeResult = await pool.query(`
+    // Step 2: Create Multiple Customer Types
+    console.log('📦 Creating customer types...');
+    const customerTypes = [];
+    
+    const wineryResult = await pool.query(`
       INSERT INTO customer_types (name, description)
       VALUES ('Winery', 'Wine producers and vineyards')
       RETURNING *;
     `);
-    const customerType = customerTypeResult.rows[0];
-    console.log(`✅ Created customer type: ${customerType.name} (ID: ${customerType.id})\n`);
+    customerTypes.push(wineryResult.rows[0]);
+    console.log(`✅ Created: ${wineryResult.rows[0].name}`);
 
-    // Step 3: Create Website
-    console.log('🌐 Creating website...');
-    const websiteResult = await pool.query(`
+    const restaurantResult = await pool.query(`
+      INSERT INTO customer_types (name, description)
+      VALUES ('Restaurant', 'Fine dining and casual restaurants')
+      RETURNING *;
+    `);
+    customerTypes.push(restaurantResult.rows[0]);
+    console.log(`✅ Created: ${restaurantResult.rows[0].name}`);
+
+    const retailResult = await pool.query(`
+      INSERT INTO customer_types (name, description)
+      VALUES ('Retail', 'Wine shops and specialty stores')
+      RETURNING *;
+    `);
+    customerTypes.push(retailResult.rows[0]);
+    console.log(`✅ Created: ${retailResult.rows[0].name}\n`);
+
+    // Step 3: Create Multiple Websites
+    console.log('🌐 Creating websites...');
+    const websites = [];
+    
+    const domaineCarnerosResult = await pool.query(`
       INSERT INTO websites (customer_type_id, name, description)
       VALUES ($1, 'Domaine Carneros', 'Premium sparkling wine producer in Napa Valley')
       RETURNING *;
-    `, [customerType.id]);
-    const website = websiteResult.rows[0];
-    console.log(`✅ Created website: ${website.name} (ID: ${website.id})\n`);
+    `, [customerTypes[0].id]);
+    websites.push(domaineCarnerosResult.rows[0]);
+    console.log(`✅ Created: ${domaineCarnerosResult.rows[0].name}`);
 
-    // Step 4: Create Skin
-    console.log('🎨 Creating skin...');
-    const skinResult = await pool.query(`
+    const vineyardResult = await pool.query(`
+      INSERT INTO websites (customer_type_id, name, description)
+      VALUES ($1, 'Sunset Vineyards', 'Boutique winery specializing in Pinot Noir')
+      RETURNING *;
+    `, [customerTypes[0].id]);
+    websites.push(vineyardResult.rows[0]);
+    console.log(`✅ Created: ${vineyardResult.rows[0].name}\n`);
+
+    // Step 4: Create Multiple Skins
+    console.log('🎨 Creating skins...');
+    const skins = [];
+    
+    const defaultSkinResult = await pool.query(`
       INSERT INTO skins (website_id, name, description, theme_config)
-      VALUES ($1, 'Default Theme', 'Main theme for Domaine Carneros website', '{"primaryColor": "#8B2635", "secondaryColor": "#F4E4BC", "fontFamily": "serif"}')
+      VALUES ($1, 'Default Theme', 'Main theme for Domaine Carneros', '{"primaryColor": "#8B2635", "secondaryColor": "#F4E4BC", "fontFamily": "serif", "accentColor": "#D4AF37"}')
       RETURNING *;
-    `, [website.id]);
-    const skin = skinResult.rows[0];
-    console.log(`✅ Created skin: ${skin.name} (ID: ${skin.id})\n`);
+    `, [websites[0].id]);
+    skins.push(defaultSkinResult.rows[0]);
+    console.log(`✅ Created: ${defaultSkinResult.rows[0].name}`);
 
-    // Step 5: Create A/B Variation
-    console.log('🔀 Creating A/B variation...');
-    const variationResult = await pool.query(`
+    const modernSkinResult = await pool.query(`
+      INSERT INTO skins (website_id, name, description, theme_config)
+      VALUES ($1, 'Modern Theme', 'Contemporary design for younger audience', '{"primaryColor": "#2C3E50", "secondaryColor": "#ECF0F1", "fontFamily": "sans-serif", "accentColor": "#E74C3C"}')
+      RETURNING *;
+    `, [websites[0].id]);
+    skins.push(modernSkinResult.rows[0]);
+    console.log(`✅ Created: ${modernSkinResult.rows[0].name}\n`);
+
+    // Step 5: Create Multiple A/B Variations
+    console.log('🔀 Creating A/B variations...');
+    const variations = [];
+    
+    const controlResult = await pool.query(`
       INSERT INTO ab_variations (skin_id, name, description, variation_config, is_active)
-      VALUES ($1, 'Control', 'Default variation for testing', '{"version": "control", "features": ["standard_layout"]}', true)
+      VALUES ($1, 'Control', 'Default variation', '{"version": "control", "features": ["standard_layout", "basic_chat"]}', true)
       RETURNING *;
-    `, [skin.id]);
-    const variation = variationResult.rows[0];
-    console.log(`✅ Created A/B variation: ${variation.name} (ID: ${variation.id})\n`);
+    `, [skins[0].id]);
+    variations.push(controlResult.rows[0]);
+    console.log(`✅ Created: ${controlResult.rows[0].name}`);
 
-    // Step 6: Create Dialog Tree
-    console.log('🌳 Creating dialog tree...');
-    const treeResult = await pool.query(`
+    const variantAResult = await pool.query(`
+      INSERT INTO ab_variations (skin_id, name, description, variation_config, is_active)
+      VALUES ($1, 'Variant A', 'Enhanced features', '{"version": "variant_a", "features": ["enhanced_layout", "quick_replies", "product_carousel"]}', true)
+      RETURNING *;
+    `, [skins[0].id]);
+    variations.push(variantAResult.rows[0]);
+    console.log(`✅ Created: ${variantAResult.rows[0].name}\n`);
+
+    // Step 6: Create Multiple Dialog Trees
+    console.log('🌳 Creating dialog trees...');
+    const trees = [];
+    
+    // Tree 1: Wine Consultation Flow
+    const wineConsultTreeResult = await pool.query(`
       INSERT INTO dialog_trees (name, description, ab_variation_id)
       VALUES ('Wine Consultation Flow', 'Main conversation flow for wine recommendations and consultations', $1)
       RETURNING *;
-    `, [variation.id]);
-    const tree = treeResult.rows[0];
-    console.log(`✅ Created dialog tree: ${tree.name} (ID: ${tree.id})\n`);
+    `, [variations[0].id]);
+    trees.push(wineConsultTreeResult.rows[0]);
+    console.log(`✅ Created: ${wineConsultTreeResult.rows[0].name}`);
 
-    // Step 7: Create Preprompt
-    console.log('📝 Creating preprompt...');
-    const prepromptResult = await pool.query(`
+    // Tree 2: Customer Support Flow
+    const supportTreeResult = await pool.query(`
+      INSERT INTO dialog_trees (name, description, ab_variation_id)
+      VALUES ('Customer Support Flow', 'Handles customer inquiries, orders, and support requests', $1)
+      RETURNING *;
+    `, [variations[0].id]);
+    trees.push(supportTreeResult.rows[0]);
+    console.log(`✅ Created: ${supportTreeResult.rows[0].name}\n`);
+
+    // Step 7: Create Preprompts
+    console.log('📝 Creating preprompts...');
+    
+    const winePrepromptResult = await pool.query(`
       INSERT INTO preprompts (tree_id, content)
       VALUES ($1, $2)
       RETURNING *;
     `, [
-      tree.id,
+      trees[0].id,
       `You are a knowledgeable wine consultant for Domaine Carneros, a premium sparkling wine producer in Napa Valley. 
 Your role is to help customers discover the perfect wine for their occasion, taste preferences, and budget.
 
@@ -92,64 +153,135 @@ Guidelines:
 - Share interesting facts about the winery and winemaking process
 - Always maintain a premium brand image while being accessible`
     ]);
-    console.log(`✅ Created preprompt (ID: ${prepromptResult.rows[0].id})\n`);
+    console.log(`✅ Created preprompt for Wine Consultation Flow`);
 
-    // Step 8: Create Sample Dialog Nodes
-    console.log('💬 Creating sample dialog nodes...');
+    const supportPrepromptResult = await pool.query(`
+      INSERT INTO preprompts (tree_id, content)
+      VALUES ($1, $2)
+      RETURNING *;
+    `, [
+      trees[1].id,
+      `You are a helpful customer support representative for Domaine Carneros. 
+Your role is to assist customers with orders, shipping inquiries, returns, and general questions.
+
+Guidelines:
+- Be friendly, patient, and solution-oriented
+- Provide accurate information about orders and shipping
+- Help resolve issues quickly and efficiently
+- Escalate complex issues when necessary
+- Always maintain a professional and courteous tone`
+    ]);
+    console.log(`✅ Created preprompt for Customer Support Flow\n`);
+
+    // Step 8: Create Comprehensive Dialog Nodes for Tree 1 (Wine Consultation)
+    console.log('💬 Creating dialog nodes for Wine Consultation Flow...');
     
     // Root node - Welcome
-    const rootNodeResult = await pool.query(`
+    const rootNode1Result = await pool.query(`
       INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
-      VALUES ($1, NULL, NULL, 'Welcome to Domaine Carneros! I''m here to help you find the perfect wine. Are you looking for something for a special occasion, or would you like to explore our collection?')
+      VALUES ($1, NULL, NULL, 'Welcome to Domaine Carneros! 🍾 I''m here to help you find the perfect wine. Are you looking for something for a special occasion, or would you like to explore our collection?')
       RETURNING *;
-    `, [tree.id]);
-    const rootNode = rootNodeResult.rows[0];
-    console.log(`✅ Created root node: Welcome message (ID: ${rootNode.id})`);
+    `, [trees[0].id]);
+    const rootNode1 = rootNode1Result.rows[0];
+    console.log(`✅ Created root node: Welcome message`);
 
-    // Node 1 - Special Occasion
+    // Branch 1: Special Occasion
     const occasionNodeResult = await pool.query(`
       INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
       VALUES ($1, $2, 'I''m looking for something for a special occasion', 'Wonderful! Special occasions call for something memorable. What type of celebration are you planning? Is it a wedding, anniversary, birthday, or another milestone?')
       RETURNING *;
-    `, [tree.id, rootNode.id]);
-    console.log(`✅ Created node: Special occasion (ID: ${occasionNodeResult.rows[0].id})`);
+    `, [trees[0].id, rootNode1.id]);
+    const occasionNode = occasionNodeResult.rows[0];
 
-    // Node 2 - Explore Collection
+    // Branch 2: Explore Collection
     const exploreNodeResult = await pool.query(`
       INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
       VALUES ($1, $2, 'I''d like to explore your collection', 'Excellent choice! Our collection includes both sparkling and still wines. Are you more interested in our méthode traditionnelle sparkling wines, or would you like to learn about our still wine offerings?')
       RETURNING *;
-    `, [tree.id, rootNode.id]);
-    console.log(`✅ Created node: Explore collection (ID: ${exploreNodeResult.rows[0].id})`);
+    `, [trees[0].id, rootNode1.id]);
+    const exploreNode = exploreNodeResult.rows[0];
 
-    // Node 3 - Wedding response
+    // Branch 3: Price Range
+    const priceNodeResult = await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'What''s your price range?', 'Great question! We have options for every budget. Our Brut Cuvée starts around $35, while our premium Le Rêve is around $85. What range are you comfortable with?')
+      RETURNING *;
+    `, [trees[0].id, rootNode1.id]);
+
+    // Wedding sub-branch
     const weddingNodeResult = await pool.query(`
       INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
-      VALUES ($1, $2, 'It''s for a wedding', 'Congratulations! For a wedding, I''d recommend our Le Rêve Blanc de Blancs - it''s our most prestigious sparkling wine, perfect for toasting. It''s elegant, refined, and makes a beautiful statement. Would you like to know more about this wine, or are you looking for something in a different price range?')
+      VALUES ($1, $2, 'It''s for a wedding', 'Congratulations! 🎉 For a wedding, I''d recommend our Le Rêve Blanc de Blancs - it''s our most prestigious sparkling wine, perfect for toasting. It''s elegant, refined, and makes a beautiful statement. Would you like to know more about this wine, or are you looking for something in a different price range?')
       RETURNING *;
-    `, [tree.id, occasionNodeResult.rows[0].id]);
-    console.log(`✅ Created node: Wedding (ID: ${weddingNodeResult.rows[0].id})`);
+    `, [trees[0].id, occasionNode.id]);
 
-    // Node 4 - Sparkling wines
+    // Anniversary sub-branch
+    const anniversaryNodeResult = await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'It''s for an anniversary', 'How romantic! 💕 For an anniversary, I''d suggest our Brut Rosé - it''s elegant, romantic, and pairs beautifully with a special dinner. The beautiful pink hue and delicate berry notes make it perfect for celebrating love. Would you like pairing suggestions?')
+      RETURNING *;
+    `, [trees[0].id, occasionNode.id]);
+
+    // Sparkling wines sub-branch
     const sparklingNodeResult = await pool.query(`
       INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
       VALUES ($1, $2, 'I''m interested in sparkling wines', 'Perfect! Our sparkling wines are made using the méthode traditionnelle, the same technique used in Champagne. We have several options: our Brut Cuvée is our signature sparkling wine, the Brut Rosé offers beautiful berry notes, and Le Rêve is our ultra-premium offering. Which style appeals to you?')
       RETURNING *;
-    `, [tree.id, exploreNodeResult.rows[0].id]);
-    console.log(`✅ Created node: Sparkling wines (ID: ${sparklingNodeResult.rows[0].id})`);
+    `, [trees[0].id, exploreNode.id]);
+
+    // Still wines sub-branch
+    const stillWinesNodeResult = await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'Tell me about your still wines', 'Excellent! While we''re known for sparkling, our still wines are equally impressive. We produce Pinot Noir and Chardonnay that showcase the unique terroir of Carneros. The cool climate gives our wines elegance and complexity. Are you more interested in red or white?')
+      RETURNING *;
+    `, [trees[0].id, exploreNode.id]);
+
+    console.log(`✅ Created 8 nodes for Wine Consultation Flow\n`);
+
+    // Step 9: Create Dialog Nodes for Tree 2 (Customer Support)
+    console.log('💬 Creating dialog nodes for Customer Support Flow...');
+    
+    const rootNode2Result = await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, NULL, NULL, 'Hello! I''m here to help with your Domaine Carneros order or any questions you might have. How can I assist you today?')
+      RETURNING *;
+    `, [trees[1].id]);
+    const rootNode2 = rootNode2Result.rows[0];
+
+    const orderStatusNodeResult = await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'I want to check my order status', 'I''d be happy to help you check your order status! Please provide your order number, and I''ll look it up for you right away.')
+      RETURNING *;
+    `, [trees[1].id, rootNode2.id]);
+
+    const shippingNodeResult = await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'When will my order ship?', 'Shipping times vary by location. Standard shipping typically takes 3-5 business days. For expedited shipping options, please let me know your zip code and I can provide more specific information.')
+      RETURNING *;
+    `, [trees[1].id, rootNode2.id]);
+
+    const returnNodeResult = await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'I need to return or exchange something', 'I''m sorry to hear that! We''re here to help make it right. Please provide your order number and the reason for the return, and I''ll guide you through the process.')
+      RETURNING *;
+    `, [trees[1].id, rootNode2.id]);
+
+    console.log(`✅ Created 4 nodes for Customer Support Flow\n`);
 
     console.log('\n🎉 Database seeding completed successfully!');
     console.log('\n📊 Summary:');
-    console.log(`   • Customer Type: ${customerType.name}`);
-    console.log(`   • Website: ${website.name}`);
-    console.log(`   • Skin: ${skin.name}`);
-    console.log(`   • A/B Variation: ${variation.name}`);
-    console.log(`   • Dialog Tree: ${tree.name}`);
-    console.log(`   • Dialog Nodes: 5 nodes created`);
-    console.log(`   • Preprompt: Created`);
+    console.log(`   • Customer Types: ${customerTypes.length} (Winery, Restaurant, Retail)`);
+    console.log(`   • Websites: ${websites.length} (Domaine Carneros, Sunset Vineyards)`);
+    console.log(`   • Skins: ${skins.length} (Default Theme, Modern Theme)`);
+    console.log(`   • A/B Variations: ${variations.length} (Control, Variant A)`);
+    console.log(`   • Dialog Trees: ${trees.length} (Wine Consultation, Customer Support)`);
+    console.log(`   • Dialog Nodes: 12 total nodes created`);
+    console.log(`   • Preprompts: 2 created`);
+    console.log('\n✨ Your database is now ready for demo!');
     
   } catch (error: any) {
     console.error('❌ Error seeding database:', error.message);
+    console.error(error);
     throw error;
   } finally {
     await pool.end();
