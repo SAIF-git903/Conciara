@@ -42,10 +42,11 @@ export default function MultiTenantNavigator({ onSelectTree, selectedTreeId }: M
     onConfirm: () => {},
   })
 
-  // Create modals state
+  // Create/Edit modals state
   const [showCreateModal, setShowCreateModal] = useState<{
     type: 'customerType' | 'website' | 'skin' | 'variation' | 'tree' | null
     data?: any
+    isEdit?: boolean
   }>({ type: null })
   const [formData, setFormData] = useState({ name: '', description: '', domain: '' })
 
@@ -202,14 +203,30 @@ export default function MultiTenantNavigator({ onSelectTree, selectedTreeId }: M
             showToast('Please select a customer type first', 'error')
             return
           }
-          newItem = await websiteApi.create(
-            selectedCustomerType.id, 
-            formData.name, 
-            formData.description || undefined,
-            formData.domain || undefined
-          )
-          setWebsites([...websites, newItem])
-          showToast('Website created successfully!', 'success')
+          if (showCreateModal.isEdit && showCreateModal.data) {
+            // Edit mode
+            newItem = await websiteApi.update(
+              showCreateModal.data.id,
+              formData.name,
+              formData.description || undefined,
+              formData.domain || undefined
+            )
+            setWebsites(websites.map(w => w.id === newItem.id ? newItem : w))
+            if (selectedWebsite?.id === newItem.id) {
+              setSelectedWebsite(newItem)
+            }
+            showToast('Website updated successfully!', 'success')
+          } else {
+            // Create mode
+            newItem = await websiteApi.create(
+              selectedCustomerType.id, 
+              formData.name, 
+              formData.description || undefined,
+              formData.domain || undefined
+            )
+            setWebsites([...websites, newItem])
+            showToast('Website created successfully!', 'success')
+          }
           break
         case 'skin':
           if (!selectedWebsite) {
@@ -247,6 +264,45 @@ export default function MultiTenantNavigator({ onSelectTree, selectedTreeId }: M
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleEditWebsite = (website: Website, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setFormData({
+      name: website.name,
+      description: website.description || '',
+      domain: website.domain || ''
+    })
+    setShowCreateModal({ type: 'website', data: website, isEdit: true })
+  }
+
+  const handleDeleteWebsite = (website: Website, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Website',
+      message: `Are you sure you want to delete "${website.name}"? This action cannot be undone and will also delete all associated skins, variations, and dialog trees.`,
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          setLoading(true)
+          await websiteApi.delete(website.id)
+          setWebsites(websites.filter(w => w.id !== website.id))
+          if (selectedWebsite?.id === website.id) {
+            setSelectedWebsite(null)
+            setSkins([])
+            setVariations([])
+            setTrees([])
+          }
+          showToast('Website deleted successfully!', 'success')
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {} })
+        } catch (err: any) {
+          showToast(err.message || 'Failed to delete website', 'error')
+        } finally {
+          setLoading(false)
+        }
+      }
+    })
   }
 
 
@@ -316,15 +372,33 @@ export default function MultiTenantNavigator({ onSelectTree, selectedTreeId }: M
                 <div
                   key={website.id}
                   onClick={() => setSelectedWebsite(website)}
-                  className={`p-2 rounded-lg cursor-pointer transition-all ${
+                  className={`p-2 rounded-lg cursor-pointer transition-all group ${
                     selectedWebsite?.id === website.id
                       ? 'bg-primary-50 border border-primary-200'
                       : 'hover:bg-gray-50 border border-transparent'
                   }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <Globe className="w-4 h-4 text-gray-500" />
-                    <span className="text-sm font-medium text-gray-900">{website.name}</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-1">
+                      <Globe className="w-4 h-4 text-gray-500" />
+                      <span className="text-sm font-medium text-gray-900">{website.name}</span>
+                    </div>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => handleEditWebsite(website, e)}
+                        className="p-1 hover:bg-primary-100 rounded text-gray-600 hover:text-primary-600"
+                        title="Edit Website"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => handleDeleteWebsite(website, e)}
+                        className="p-1 hover:bg-red-100 rounded text-gray-600 hover:text-red-600"
+                        title="Delete Website"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -467,7 +541,7 @@ export default function MultiTenantNavigator({ onSelectTree, selectedTreeId }: M
           <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-gray-900">
-                New {showCreateModal.type === 'customerType' ? 'Customer Type' :
+                {showCreateModal.isEdit ? 'Edit' : 'New'} {showCreateModal.type === 'customerType' ? 'Customer Type' :
                       showCreateModal.type === 'website' ? 'Website' :
                       showCreateModal.type === 'skin' ? 'Skin' :
                       showCreateModal.type === 'variation' ? 'A/B Variation' : 'Dialog Tree'}
@@ -546,7 +620,7 @@ export default function MultiTenantNavigator({ onSelectTree, selectedTreeId }: M
                 disabled={!formData.name.trim() || loading}
                 className="flex-1 px-4 py-2 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-lg hover:from-primary-700 hover:to-primary-800 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Create
+                {showCreateModal.isEdit ? 'Update' : 'Create'}
               </button>
             </div>
           </div>
@@ -561,6 +635,16 @@ export default function MultiTenantNavigator({ onSelectTree, selectedTreeId }: M
           onClose={() => setToast(null)}
         />
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant={confirmDialog.variant}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {} })}
+      />
 
       {/* Loading Overlay */}
       {loading && (
