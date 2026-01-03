@@ -68,73 +68,286 @@ async function seedDatabase() {
     }
     console.log('');
 
-    // Step 4: Create Multiple Skins
+    // Step 4: Create Multiple Skins with Full Config
     console.log('🎨 Creating skins...');
     const skins = [];
     
     const skinData = [
-      { website: 0, name: 'Default Theme', description: 'Main theme for TechStore Pro', theme: '{"primaryColor": "#2563eb", "secondaryColor": "#f1f5f9"}' },
-      { website: 0, name: 'Dark Mode', description: 'Dark theme variant', theme: '{"primaryColor": "#1e40af", "secondaryColor": "#1e293b"}' },
-      { website: 1, name: 'Fashion Theme', description: 'Elegant theme for FashionHub', theme: '{"primaryColor": "#ec4899", "secondaryColor": "#fdf2f8"}' },
-      { website: 2, name: 'Professional Theme', description: 'Corporate theme for CloudSync', theme: '{"primaryColor": "#0f172a", "secondaryColor": "#f8fafc"}' }
+      { 
+        website: 0, 
+        name: 'Default Theme', 
+        description: 'Main theme for TechStore Pro', 
+        isActive: true,
+        themeConfig: {
+          theme: {
+            primaryColor: "#2563eb",
+            secondaryColor: "#f1f5f9",
+            backgroundColor: "#ffffff",
+            textColor: "#1f2937",
+            borderColor: "#e5e7eb",
+            accentColor: "#2563eb"
+          },
+          components: {
+            button: {
+              type: "circular",
+              size: "large",
+              icon: "bot",
+              position: "bottom-right",
+              showLabel: false
+            },
+            window: {
+              width: 384,
+              height: 600,
+              borderRadius: 8,
+              shadow: "large"
+            },
+            header: {
+              show: true,
+              height: 48,
+              showTitle: true,
+              title: "Chat Assistant",
+              showMinimize: true,
+              showClose: true
+            },
+            messages: {
+              layout: "bubbles",
+              userAlignment: "right",
+              botAlignment: "left",
+              showAvatars: true,
+              bubbleStyle: "rounded"
+            },
+            input: {
+              placeholder: "Type your message...",
+              showSendButton: true,
+              allowMultiline: false
+            },
+            quickReplies: {
+              show: true,
+              layout: "horizontal",
+              style: "buttons"
+            }
+          },
+          states: {
+            loading: { type: "dots", color: "primary" },
+            empty: { message: "Starting conversation..." },
+            error: { message: "Sorry, I'm having trouble. Please try again.", showRetry: true }
+          }
+        }
+      },
+      { 
+        website: 0, 
+        name: 'Dark Mode', 
+        description: 'Dark theme variant', 
+        isActive: false,
+        themeConfig: {
+          theme: {
+            primaryColor: "#3b82f6",
+            secondaryColor: "#1e293b",
+            backgroundColor: "#0f172a",
+            textColor: "#f1f5f9",
+            borderColor: "#334155",
+            accentColor: "#3b82f6"
+          },
+          components: {
+            button: {
+              type: "circular",
+              size: "large",
+              icon: "bot",
+              position: "bottom-right"
+            },
+            window: {
+              width: 400,
+              height: 650,
+              borderRadius: 12,
+              shadow: "large"
+            },
+            header: {
+              show: true,
+              height: 56,
+              title: "Dark Chat",
+              showMinimize: true,
+              showClose: true
+            },
+            messages: {
+              layout: "bubbles",
+              userAlignment: "right",
+              botAlignment: "left",
+              showAvatars: true,
+              bubbleStyle: "rounded"
+            },
+            input: {
+              placeholder: "Type your message...",
+              showSendButton: true
+            }
+          }
+        }
+      },
+      { 
+        website: 1, 
+        name: 'Fashion Theme', 
+        description: 'Elegant theme for FashionHub', 
+        isActive: true,
+        themeConfig: {
+          theme: {
+            primaryColor: "#ec4899",
+            secondaryColor: "#fdf2f8",
+            backgroundColor: "#ffffff",
+            textColor: "#1f2937"
+          },
+          components: {
+            button: {
+              type: "circular",
+              size: "large",
+              icon: "bot",
+              position: "bottom-right"
+            },
+            window: {
+              width: 384,
+              height: 600,
+              borderRadius: 8,
+              shadow: "large"
+            },
+            header: {
+              show: true,
+              title: "Fashion Assistant",
+              showMinimize: true,
+              showClose: true
+            }
+          }
+        }
+      },
+      { 
+        website: 2, 
+        name: 'Professional Theme', 
+        description: 'Corporate theme for CloudSync', 
+        isActive: true,
+        themeConfig: {
+          theme: {
+            primaryColor: "#0f172a",
+            secondaryColor: "#f8fafc",
+            backgroundColor: "#ffffff",
+            textColor: "#1e293b"
+          },
+          components: {
+            button: {
+              type: "rounded",
+              size: "medium",
+              icon: "chat",
+              position: "bottom-right"
+            },
+            window: {
+              width: 360,
+              height: 550,
+              borderRadius: 4,
+              shadow: "medium"
+            },
+            header: {
+              show: true,
+              title: "Support Chat",
+              showMinimize: false,
+              showClose: true
+            }
+          }
+        }
+      }
     ];
 
     for (const skin of skinData) {
       const result = await pool.query(`
-        INSERT INTO skins (website_id, name, description, theme_config)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO skins (website_id, name, description, theme_config, is_active)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING *;
-      `, [websites[skin.website].id, skin.name, skin.description, skin.theme]);
+      `, [websites[skin.website].id, skin.name, skin.description, JSON.stringify(skin.themeConfig), skin.isActive]);
       skins.push(result.rows[0]);
-      console.log(`✅ Created: ${result.rows[0].name}`);
+      console.log(`✅ Created: ${result.rows[0].name} (is_active: ${skin.isActive})`);
     }
     console.log('');
 
-    // Step 5: Create Multiple A/B Variations
+    // Step 5: Create A/B Variations for ALL Skins
     console.log('🔀 Creating A/B variations...');
     const variations = [];
     
-    const variationData = [
-      { skin: 0, name: 'Control', description: 'Default variation', config: '{"version": "control"}', active: true },
-      { skin: 0, name: 'Variant A', description: 'Enhanced features', config: '{"version": "variant_a", "features": ["quick_replies"]}', active: true },
-      { skin: 0, name: 'Variant B', description: 'Minimal design', config: '{"version": "variant_b", "features": ["minimal_ui"]}', active: false },
-      { skin: 2, name: 'Control', description: 'Default fashion theme', config: '{"version": "control"}', active: true }
-    ];
-
-    for (const variation of variationData) {
+    // Create at least one variation for each skin
+    for (let i = 0; i < skins.length; i++) {
       const result = await pool.query(`
         INSERT INTO ab_variations (skin_id, name, description, variation_config, is_active)
         VALUES ($1, $2, $3, $4, $5)
         RETURNING *;
-      `, [skins[variation.skin].id, variation.name, variation.description, variation.config, variation.active]);
+      `, [
+        skins[i].id, 
+        'Control', 
+        `Default variation for ${skins[i].name}`, 
+        '{}', 
+        true
+      ]);
       variations.push(result.rows[0]);
-      console.log(`✅ Created: ${result.rows[0].name}`);
+      console.log(`✅ Created: ${result.rows[0].name} for ${skins[i].name}`);
     }
+    
+    // Add extra variations for first skin (for testing)
+    const extraVariation = await pool.query(`
+      INSERT INTO ab_variations (skin_id, name, description, variation_config, is_active)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *;
+    `, [skins[0].id, 'Variant A', 'Enhanced features', '{"overrides": {"components.button.size": "small"}}', true]);
+    variations.push(extraVariation.rows[0]);
+    console.log(`✅ Created: ${extraVariation.rows[0].name} for ${skins[0].name}`);
     console.log('');
 
-    // Step 6: Create Multiple Dialog Trees
+    // Step 6: Create Dialog Trees for ALL Variations
     console.log('🌳 Creating dialog trees...');
     const trees = [];
     
-    const treeData = [
-      { variation: 0, name: 'Product Inquiry Flow', description: 'Handles product questions, recommendations, and comparisons' },
-      { variation: 0, name: 'Order Support Flow', description: 'Assists with orders, shipping, and returns' },
-      { variation: 0, name: 'Technical Support Flow', description: 'Helps with technical issues and troubleshooting' },
-      { variation: 3, name: 'Style Consultation Flow', description: 'Fashion advice and style recommendations' }
+    // Create a dialog tree for each variation
+    const treeNames = [
+      'Product Inquiry Flow',
+      'Order Support Flow', 
+      'Technical Support Flow',
+      'Style Consultation Flow',
+      'General Support Flow'
     ];
-
-    for (const tree of treeData) {
+    
+    for (let i = 0; i < variations.length; i++) {
+      const treeName = treeNames[i] || `Chat Flow ${i + 1}`;
       const result = await pool.query(`
         INSERT INTO dialog_trees (name, description, ab_variation_id)
         VALUES ($1, $2, $3)
         RETURNING *;
-      `, [tree.name, tree.description, variations[tree.variation].id]);
+      `, [
+        treeName, 
+        `Main conversation flow for ${variations[i].name}`, 
+        variations[i].id
+      ]);
       trees.push(result.rows[0]);
-      console.log(`✅ Created: ${result.rows[0].name}`);
+      console.log(`✅ Created: ${result.rows[0].name} for variation ${variations[i].name}`);
     }
     console.log('');
 
-    // Step 7: Create Preprompts
+    // Step 7: Create Root Nodes for ALL Dialog Trees
+    console.log('💬 Creating root nodes for all dialog trees...');
+    
+    const rootNodes = [];
+    const rootMessages = [
+      'Hello! Welcome to TechStore Pro. I\'m here to help you find the perfect product. What are you looking for today?',
+      'Hi! I can help you with your orders, shipping, and returns. How can I assist you?',
+      'Hello! I\'m here to help with technical issues and troubleshooting. What problem are you experiencing?',
+      'Hi! Welcome to FashionHub. I\'m your style consultant. What are you looking for today?',
+      'Hello! How can I help you today?'
+    ];
+    
+    for (let i = 0; i < trees.length; i++) {
+      const rootMessage = rootMessages[i] || 'Hello! How can I help you today?';
+      const root = (await pool.query(`
+        INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+        VALUES ($1, NULL, NULL, $2)
+        RETURNING *;
+      `, [trees[i].id, rootMessage])).rows[0];
+      rootNodes.push(root);
+      console.log(`✅ Created root node for ${trees[i].name}`);
+    }
+    console.log('');
+
+    // Step 8: Create Preprompts
     console.log('📝 Creating preprompts...');
     
     const preprompts = [
@@ -201,15 +414,11 @@ Guidelines:
     }
     console.log('');
 
-    // Step 8: Create Comprehensive Dialog Nodes for Tree 1 (Product Inquiry)
-    console.log('💬 Creating dialog nodes for Product Inquiry Flow...');
+    // Step 9: Create Additional Dialog Nodes for Tree 1 (Product Inquiry)
+    console.log('💬 Creating additional dialog nodes for Product Inquiry Flow...');
     
-    const root1 = (await pool.query(`
-      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
-      VALUES ($1, NULL, NULL, 'Hello! Welcome to TechStore Pro. I''m here to help you find the perfect product. What are you looking for today?')
-      RETURNING *;
-    `, [trees[0].id])).rows[0];
-    console.log(`✅ Created root node`);
+    // Use the root node we already created in Step 7
+    const root1 = rootNodes[0];
 
     // Main branches
     const laptopBranch = (await pool.query(`

@@ -87,10 +87,24 @@ export async function migrate() {
         name VARCHAR(255) NOT NULL,
         description TEXT,
         theme_config JSONB,
+        is_active BOOLEAN DEFAULT false,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(website_id, name)
       );
+    `);
+    
+    // Add is_active column if it doesn't exist (for existing databases)
+    await pool.query(`
+      ALTER TABLE skins 
+      ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT false;
+    `);
+    
+    // Create index for active skin lookups
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_skins_website_active 
+      ON skins(website_id, is_active) 
+      WHERE is_active = true;
     `);
 
     // Create ab_variations table

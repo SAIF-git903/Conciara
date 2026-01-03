@@ -1,18 +1,94 @@
 import express from 'express';
 import { pool } from '../db/connection.js';
 import { getWebsiteById } from '../services/multiTenantService.js';
+import { 
+  getMergedSkinConfigForWebsite, 
+  getSkinById,
+  parseSkinConfig,
+  parseVariationConfig,
+  mergeSkinConfig
+} from '../services/skinService.js';
 
 const router = express.Router();
 
-// Get widget configuration by website ID or domain
+// Get widget configuration by website ID, domain, or skinId
 router.get('/config', async (req, res) => {
   try {
     const websiteId = req.query.websiteId ? parseInt(req.query.websiteId as string) : null;
     const domain = req.query.domain as string | null;
+    const skinId = req.query.skinId ? parseInt(req.query.skinId as string) : null;
 
+    // If skinId is provided, use it directly (bypasses website lookup)
+    if (skinId) {
+      const skin = await getSkinById(skinId);
+      
+      if (!skin) {
+        return res.status(404).json({ 
+          error: 'Skin not found',
+          hint: `No skin found with ID ${skinId}`
+        });
+      }
+
+      // Get merged config for this specific skin
+      const variation = await pool.query(
+        'SELECT * FROM ab_variations WHERE skin_id = $1 AND is_active = true ORDER BY created_at ASC LIMIT 1',
+        [skin.id]
+      );
+      
+      const baseConfig = parseSkinConfig(skin);
+      const overrides = parseVariationConfig(variation.rows[0] || null);
+      const mergedSkinConfig = mergeSkinConfig(baseConfig, overrides);
+      
+      mergedSkinConfig._meta = {
+        skinId: skin.id,
+        skinName: skin.name,
+        variationId: variation.rows[0]?.id,
+        variationName: variation.rows[0]?.name,
+        mergedAt: new Date(),
+      };
+
+      // Get dialog tree
+      let tree: any = null;
+      if (variation.rows[0]) {
+        const treesResult = await pool.query(
+          'SELECT * FROM dialog_trees WHERE ab_variation_id = $1 ORDER BY created_at ASC LIMIT 1',
+          [variation.rows[0].id]
+        );
+        tree = treesResult.rows[0] || null;
+      }
+
+      const legacyTheme = {
+        primaryColor: mergedSkinConfig?.theme?.primaryColor || '#6366f1',
+        backgroundColor: mergedSkinConfig?.theme?.backgroundColor || '#ffffff',
+        textColor: mergedSkinConfig?.theme?.textColor || '#1f2937'
+      };
+
+      return res.json({
+        websiteId: skin.website_id,
+        websiteName: null,
+        treeId: tree?.id || null,
+        theme: legacyTheme,
+        position: mergedSkinConfig?.components?.button?.position || 'bottom-right',
+        title: mergedSkinConfig?.components?.header?.title || 'Chat Assistant',
+        skin: {
+          id: mergedSkinConfig._meta?.skinId,
+          name: mergedSkinConfig._meta?.skinName,
+          config: mergedSkinConfig
+        },
+        variation: variation.rows[0] ? {
+          id: variation.rows[0].id,
+          name: variation.rows[0].name
+        } : null,
+        hasTree: !!tree,
+        hasSkin: !!mergedSkinConfig,
+        hasVariation: !!variation.rows[0]
+      });
+    }
+
+    // Otherwise, use websiteId or domain
     if (!websiteId && !domain) {
       return res.status(400).json({ 
-        error: 'Either websiteId or domain query parameter is required' 
+        error: 'Either websiteId, domain, or skinId query parameter is required' 
       });
     }
 
@@ -36,19 +112,17 @@ router.get('/config', async (req, res) => {
       });
     }
 
-    // Get first skin for this website
-    const skinsResult = await pool.query(
-      'SELECT * FROM skins WHERE website_id = $1 ORDER BY created_at ASC LIMIT 1',
-      [website.id]
-    );
-    const skin = skinsResult.rows[0] || null;
+    // Get merged skin configuration (includes A/B variation overrides)
+    const mergedSkinConfig = await getMergedSkinConfigForWebsite(website.id);
 
-    // Get active A/B variation for this skin
+    // Get active A/B variation for dialog tree lookup
     let variation: any = null;
-    if (skin) {
+    let tree: any = null;
+
+    if (mergedSkinConfig?._meta?.skinId) {
       const variationsResult = await pool.query(
         'SELECT * FROM ab_variations WHERE skin_id = $1 AND is_active = true ORDER BY created_at ASC LIMIT 1',
-        [skin.id]
+        [mergedSkinConfig._meta.skinId]
       );
       variation = variationsResult.rows[0] || null;
       
@@ -56,55 +130,49 @@ router.get('/config', async (req, res) => {
       if (!variation) {
         const anyVariationResult = await pool.query(
           'SELECT * FROM ab_variations WHERE skin_id = $1 ORDER BY created_at ASC LIMIT 1',
-          [skin.id]
+          [mergedSkinConfig._meta.skinId]
         );
         variation = anyVariationResult.rows[0] || null;
       }
-    }
 
-    // Get first dialog tree for this variation
-    let tree: any = null;
-    if (variation) {
-      const treesResult = await pool.query(
-        'SELECT * FROM dialog_trees WHERE ab_variation_id = $1 ORDER BY created_at ASC LIMIT 1',
-        [variation.id]
-      );
-      tree = treesResult.rows[0] || null;
-    }
-
-    // Parse theme config from skin
-    let theme = {
-      primaryColor: '#6366f1',
-      backgroundColor: '#ffffff',
-      textColor: '#1f2937'
-    };
-
-    if (skin && skin.theme_config) {
-      try {
-        const themeConfig = typeof skin.theme_config === 'string' 
-          ? JSON.parse(skin.theme_config) 
-          : skin.theme_config;
-        
-        theme = {
-          primaryColor: themeConfig.primaryColor || theme.primaryColor,
-          backgroundColor: themeConfig.backgroundColor || themeConfig.secondaryColor || theme.backgroundColor,
-          textColor: themeConfig.textColor || theme.textColor
-        };
-      } catch (error) {
-        console.warn('Error parsing theme_config:', error);
+      // Get first dialog tree for this variation
+      if (variation) {
+        const treesResult = await pool.query(
+          'SELECT * FROM dialog_trees WHERE ab_variation_id = $1 ORDER BY created_at ASC LIMIT 1',
+          [variation.id]
+        );
+        tree = treesResult.rows[0] || null;
       }
     }
 
-    // Return widget configuration
+    // Legacy theme format for backward compatibility
+    const legacyTheme = {
+      primaryColor: mergedSkinConfig?.theme?.primaryColor || '#6366f1',
+      backgroundColor: mergedSkinConfig?.theme?.backgroundColor || '#ffffff',
+      textColor: mergedSkinConfig?.theme?.textColor || '#1f2937'
+    };
+
+    // Return widget configuration with full skin config
     res.json({
       websiteId: website.id,
       websiteName: website.name,
       treeId: tree?.id || null,
-      theme: theme,
-      position: 'bottom-right',
-      title: 'Chat Assistant',
+      // Legacy format for backward compatibility
+      theme: legacyTheme,
+      position: mergedSkinConfig?.components?.button?.position || 'bottom-right',
+      title: mergedSkinConfig?.components?.header?.title || 'Chat Assistant',
+      // New: Full skin configuration
+      skin: mergedSkinConfig ? {
+        id: mergedSkinConfig._meta?.skinId,
+        name: mergedSkinConfig._meta?.skinName,
+        config: mergedSkinConfig
+      } : null,
+      variation: variation ? {
+        id: variation.id,
+        name: variation.name
+      } : null,
       hasTree: !!tree,
-      hasSkin: !!skin,
+      hasSkin: !!mergedSkinConfig,
       hasVariation: !!variation
     });
   } catch (error: any) {

@@ -21,6 +21,7 @@
     treeId: null,
     websiteId: null,
     domain: null,
+    skinId: null,  // New: Direct skin selection
     position: 'bottom-right',
     primaryColor: '#6366f1',
     backgroundColor: '#ffffff',
@@ -32,7 +33,10 @@
   // Widget class
   class ConversaTreeWidget {
     constructor(config) {
-      this.rawConfig = { ...defaults, ...config };
+      // Store raw config (user-provided values only, not merged with defaults)
+      this.rawConfig = { ...config };
+      // Store defaults separately to detect if user explicitly provided values
+      this.defaults = { ...defaults };
       this.config = { ...defaults };
       this.sessionId = null;
       this.isOpen = false;
@@ -46,26 +50,144 @@
       // Load config asynchronously if websiteId or domain is provided
       this.loadConfig().then(() => {
         this.init();
+      }).catch((error) => {
+        console.error('Error loading widget config:', error);
+        // Still initialize with defaults
+        this.configLoaded = true;
+        this.init();
       });
     }
 
     async loadConfig() {
-      // If treeId is provided directly, use it (manual mode)
+      // If treeId is provided directly, use it (manual mode - bypasses all lookups)
       if (this.rawConfig.treeId) {
         this.config = { ...this.rawConfig };
         this.configLoaded = true;
         return;
       }
 
-      // If websiteId or domain is provided, fetch config from API
-      if (this.rawConfig.websiteId || this.rawConfig.domain) {
+      // PRIORITY: skinId > websiteId > domain
+      // If skinId is provided, use it directly (bypasses website/domain lookup)
+      if (this.rawConfig.skinId) {
         try {
           const params = new URLSearchParams();
-          if (this.rawConfig.websiteId) {
-            params.append('websiteId', this.rawConfig.websiteId);
-          } else if (this.rawConfig.domain) {
-            params.append('domain', this.rawConfig.domain);
+          params.append('skinId', this.rawConfig.skinId.toString());
+          
+          const response = await fetch(`${this.rawConfig.apiUrl}/widget/config?${params.toString()}`);
+          
+          if (!response.ok) {
+            throw new Error(`Failed to load widget config: ${response.statusText}`);
           }
+
+          const widgetConfig = await response.json();
+
+          // Extract colors from full skin config or legacy theme
+          let primaryColor = defaults.primaryColor;
+          let backgroundColor = defaults.backgroundColor;
+          let textColor = defaults.textColor;
+          let position = defaults.position;
+          let title = defaults.title;
+
+          if (widgetConfig.skin?.config) {
+            // Use full skin config (data-driven from database)
+            const skinConfig = widgetConfig.skin.config;
+            primaryColor = skinConfig.theme?.primaryColor || defaults.primaryColor;
+            backgroundColor = skinConfig.theme?.backgroundColor || defaults.backgroundColor;
+            textColor = skinConfig.theme?.textColor || defaults.textColor;
+            position = skinConfig.components?.button?.position || defaults.position;
+            title = skinConfig.components?.header?.title || defaults.title;
+          } else if (widgetConfig.theme) {
+            // Use legacy theme (backward compatibility)
+            primaryColor = widgetConfig.theme.primaryColor || defaults.primaryColor;
+            backgroundColor = widgetConfig.theme.backgroundColor || defaults.backgroundColor;
+            textColor = widgetConfig.theme.textColor || defaults.textColor;
+          }
+
+          // Merge API config with manual overrides
+          // Only use rawConfig values if they were explicitly provided by user
+          const wasPrimaryColorProvided = this.rawConfig.hasOwnProperty('primaryColor');
+          const wasPositionProvided = this.rawConfig.hasOwnProperty('position');
+          const wasTitleProvided = this.rawConfig.hasOwnProperty('title');
+          const wasBackgroundColorProvided = this.rawConfig.hasOwnProperty('backgroundColor');
+          const wasTextColorProvided = this.rawConfig.hasOwnProperty('textColor');
+          
+          this.config = {
+            ...defaults,
+            apiUrl: this.rawConfig.apiUrl || defaults.apiUrl,
+            treeId: widgetConfig.treeId || this.rawConfig.treeId || null,
+            // Use API colors unless user explicitly provided them
+            primaryColor: wasPrimaryColorProvided ? this.rawConfig.primaryColor : primaryColor,
+            backgroundColor: wasBackgroundColorProvided ? this.rawConfig.backgroundColor : backgroundColor,
+            textColor: wasTextColorProvided ? this.rawConfig.textColor : textColor,
+            position: wasPositionProvided ? this.rawConfig.position : position,
+            title: wasTitleProvided ? this.rawConfig.title : title
+          };
+
+          this.configLoaded = true;
+          
+          // Force style update after config loads (if widget already initialized)
+          if (this.container) {
+            this.injectStyles();
+            
+            const color = this.config.primaryColor;
+            
+            // Update button
+            const button = this.container.querySelector('.ct-button');
+            if (button) {
+              button.style.setProperty('background-color', color, 'important');
+            }
+            
+            // Update header
+            const header = this.container.querySelector('.ct-header');
+            if (header) {
+              header.style.setProperty('background-color', color, 'important');
+            }
+            
+            // Update send button
+            const sendButton = this.container.querySelector('.ct-send-button');
+            if (sendButton) {
+              sendButton.style.setProperty('background-color', color, 'important');
+            }
+            
+            // Update quick reply buttons
+            const quickReplies = this.container.querySelectorAll('.ct-quick-reply');
+            quickReplies.forEach(btn => {
+              btn.style.setProperty('border-color', color, 'important');
+              btn.style.setProperty('color', color, 'important');
+            });
+            
+            // Re-render if window is closed to apply all inline styles
+            if (!this.isOpen) {
+              this.container.innerHTML = this.renderButton();
+              this.attachEventListeners();
+            } else {
+              // Re-render window to apply header and send button colors
+              this.updateView();
+            }
+          }
+          
+          return; // Exit early, don't process domain
+        } catch (error) {
+          console.error('Error loading widget config:', error);
+          // Fallback to defaults but still render widget
+          this.config = { ...defaults, ...this.rawConfig };
+          this.configLoaded = true;
+          return;
+        }
+      }
+
+      // DOMAIN-BASED LOOKUP (Fallback if no skinId)
+      // Selection logic:
+      // 1. Find website by domain
+      // 2. Get active skin for website (is_active = true, or first created)
+      // 3. Get active A/B variation for skin (is_active = true, or first created)
+      // 4. Get dialog tree for variation (first created)
+      // 5. Merge skin config with variation overrides
+      
+      if (this.rawConfig.domain) {
+        try {
+          const params = new URLSearchParams();
+          params.append('domain', this.rawConfig.domain);
 
           const response = await fetch(`${this.rawConfig.apiUrl}/widget/config?${params.toString()}`);
           
@@ -75,26 +197,67 @@
 
           const widgetConfig = await response.json();
 
-          // Merge API config with manual overrides
-          this.config = {
-            ...defaults,
-            ...this.rawConfig, // Manual overrides take precedence
-            treeId: widgetConfig.treeId || this.rawConfig.treeId,
-            primaryColor: this.rawConfig.primaryColor || widgetConfig.theme?.primaryColor || defaults.primaryColor,
-            backgroundColor: this.rawConfig.backgroundColor || widgetConfig.theme?.backgroundColor || defaults.backgroundColor,
-            textColor: this.rawConfig.textColor || widgetConfig.theme?.textColor || defaults.textColor,
-            position: this.rawConfig.position || widgetConfig.position || defaults.position,
-            title: this.rawConfig.title || widgetConfig.title || defaults.title
-          };
+          // Extract colors from full skin config or legacy theme
+          let primaryColor = defaults.primaryColor;
+          let backgroundColor = defaults.backgroundColor;
+          let textColor = defaults.textColor;
+          let position = defaults.position;
+          let title = defaults.title;
 
-          if (!this.config.treeId) {
-            console.warn('No dialog tree found for this website. Please create a dialog tree in the admin panel.');
+          if (widgetConfig.skin?.config) {
+            // Use full skin config (data-driven from database)
+            const skinConfig = widgetConfig.skin.config;
+            primaryColor = skinConfig.theme?.primaryColor || defaults.primaryColor;
+            backgroundColor = skinConfig.theme?.backgroundColor || defaults.backgroundColor;
+            textColor = skinConfig.theme?.textColor || defaults.textColor;
+            position = skinConfig.components?.button?.position || defaults.position;
+            title = skinConfig.components?.header?.title || defaults.title;
+          } else if (widgetConfig.theme) {
+            // Use legacy theme (backward compatibility)
+            primaryColor = widgetConfig.theme.primaryColor || defaults.primaryColor;
+            backgroundColor = widgetConfig.theme.backgroundColor || defaults.backgroundColor;
+            textColor = widgetConfig.theme.textColor || defaults.textColor;
           }
 
+          // Merge API config with manual overrides
+          // Only use rawConfig values if they were explicitly provided by user
+          const wasPrimaryColorProvided = this.rawConfig.hasOwnProperty('primaryColor');
+          const wasPositionProvided = this.rawConfig.hasOwnProperty('position');
+          const wasTitleProvided = this.rawConfig.hasOwnProperty('title');
+          const wasBackgroundColorProvided = this.rawConfig.hasOwnProperty('backgroundColor');
+          const wasTextColorProvided = this.rawConfig.hasOwnProperty('textColor');
+          
+          this.config = {
+            ...defaults,
+            apiUrl: this.rawConfig.apiUrl || defaults.apiUrl,
+            treeId: widgetConfig.treeId || this.rawConfig.treeId || null,
+            // Use API colors unless user explicitly provided them
+            primaryColor: wasPrimaryColorProvided ? this.rawConfig.primaryColor : primaryColor,
+            backgroundColor: wasBackgroundColorProvided ? this.rawConfig.backgroundColor : backgroundColor,
+            textColor: wasTextColorProvided ? this.rawConfig.textColor : textColor,
+            position: wasPositionProvided ? this.rawConfig.position : position,
+            title: wasTitleProvided ? this.rawConfig.title : title
+          };
+
           this.configLoaded = true;
+          
+          // Force style update after config loads (if widget already initialized)
+          if (this.container) {
+            this.injectStyles();
+            // Update button directly
+            const button = this.container.querySelector('.ct-button');
+            if (button) {
+              button.style.setProperty('background-color', this.config.primaryColor, 'important');
+            }
+            // Re-render button to apply inline style
+            if (!this.isOpen) {
+              this.container.innerHTML = this.renderButton();
+              this.attachEventListeners();
+            }
+          }
         } catch (error) {
           console.error('Error loading widget config:', error);
-          // Fallback to defaults
+          // Fallback to defaults but still render widget
           this.config = { ...defaults, ...this.rawConfig };
           this.configLoaded = true;
         }
@@ -122,7 +285,7 @@
               this.config = { ...defaults, ...this.rawConfig };
             }
           } catch (error) {
-            console.warn('Auto-detection failed, using defaults:', error);
+            console.error('Auto-detection failed:', error);
             this.config = { ...defaults, ...this.rawConfig };
           }
         } else {
@@ -140,11 +303,6 @@
         return;
       }
 
-      if (!this.config.treeId) {
-        console.warn('ConversaTree: No treeId available. Widget will not be displayed.');
-        return;
-      }
-
       // Create widget container
       this.container = document.createElement('div');
       this.container.id = 'conversatree-widget';
@@ -159,7 +317,19 @@
     }
 
     injectStyles() {
-      if (document.getElementById('conversatree-styles')) return;
+      // Remove old styles if they exist (for config updates)
+      const oldStyle = document.getElementById('conversatree-styles');
+      if (oldStyle) {
+        oldStyle.remove();
+      }
+
+      // Ensure we have a color (use config or default)
+      const primaryColor = this.config.primaryColor || defaults.primaryColor;
+      
+      // Update config if it was using default
+      if (!this.config.primaryColor || this.config.primaryColor === defaults.primaryColor) {
+        this.config.primaryColor = primaryColor;
+      }
 
       const style = document.createElement('style');
       style.id = 'conversatree-styles';
@@ -175,15 +345,15 @@
           width: 56px;
           height: 56px;
           border-radius: 50%;
-          background-color: ${this.config.primaryColor};
-          color: white;
+          background-color: ${primaryColor} !important;
+          color: white !important;
           border: none;
           cursor: pointer;
           box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
           display: flex;
           align-items: center;
           justify-content: center;
-          transition: transform 0.2s, box-shadow 0.2s;
+          transition: transform 0.2s, box-shadow 0.2s, background-color 0.3s;
         }
 
         .ct-button:hover {
@@ -207,7 +377,7 @@
         }
 
         .ct-header {
-          background-color: ${this.config.primaryColor};
+          background-color: ${primaryColor} !important;
           color: white;
           padding: 12px 16px;
           display: flex;
@@ -351,10 +521,10 @@
 
         .ct-quick-reply {
           padding: 6px 12px;
-          border: 1px solid ${this.config.primaryColor};
+          border: 1px solid ${primaryColor} !important;
           border-radius: 16px;
           background: transparent;
-          color: ${this.config.primaryColor};
+          color: ${primaryColor} !important;
           font-size: 12px;
           cursor: pointer;
           transition: all 0.2s;
@@ -387,12 +557,12 @@
         }
 
         .ct-input:focus {
-          border-color: ${this.config.primaryColor};
+          border-color: ${primaryColor};
         }
 
         .ct-send-button {
           padding: 10px 16px;
-          background-color: ${this.config.primaryColor};
+          background-color: ${primaryColor} !important;
           color: white;
           border: none;
           border-radius: 8px;
@@ -430,8 +600,10 @@
     }
 
     renderButton() {
+      // Use inline style to ensure color is always applied
+      const color = this.config.primaryColor || '#6366f1';
       return `
-        <button class="ct-button" aria-label="Open chat">
+        <button class="ct-button" aria-label="Open chat" style="background-color: ${color} !important;">
           <svg class="ct-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
@@ -440,9 +612,12 @@
     }
 
     renderWindow() {
+      // Use inline styles to ensure colors are always applied
+      const primaryColor = this.config.primaryColor || '#6366f1';
+      
       return `
         <div class="ct-window ${this.isMinimized ? 'minimized' : ''}">
-          <div class="ct-header">
+          <div class="ct-header" style="background-color: ${primaryColor} !important;">
             <div class="ct-header-title">
               <svg class="ct-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -482,7 +657,7 @@
                   placeholder="Type your message..."
                   autocomplete="off"
                 />
-                <button type="submit" class="ct-send-button" id="ct-send" ${this.isLoading ? 'disabled' : ''}>
+                <button type="submit" class="ct-send-button" id="ct-send" style="background-color: ${primaryColor} !important;" ${this.isLoading ? 'disabled' : ''}>
                   <svg class="ct-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                   </svg>
@@ -522,10 +697,14 @@
     }
 
     renderQuickReplies() {
+      if (this.quickReplies.length === 0) return '';
+      
+      const primaryColor = this.config.primaryColor || '#6366f1';
+      
       return `
         <div class="ct-quick-replies">
           ${this.quickReplies.map(reply => `
-            <button class="ct-quick-reply" data-reply="${this.escapeHtml(reply)}">
+            <button class="ct-quick-reply" data-reply="${this.escapeHtml(reply)}" style="border-color: ${primaryColor} !important; color: ${primaryColor} !important;">
               ${this.escapeHtml(reply)}
             </button>
           `).join('')}
@@ -588,6 +767,9 @@
     }
 
     updateView() {
+      // Re-inject styles in case config changed
+      this.injectStyles();
+      
       if (this.isOpen) {
         this.container.innerHTML = this.renderWindow();
         this.scrollToBottom();
@@ -608,6 +790,11 @@
     }
 
     async initializeConversation() {
+      if (!this.config.treeId) {
+        this.addMessage('bot', "Sorry, no chatbot is configured. Please contact support.");
+        return;
+      }
+
       this.isLoading = true;
       this.updateView();
 
@@ -622,6 +809,11 @@
           })
         });
 
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(`HTTP error! status: ${response.status}, message: ${JSON.stringify(errorData)}`);
+        }
+
         const data = await response.json();
         this.sessionId = data.session_id;
 
@@ -629,7 +821,10 @@
           this.addMessage('bot', data.bot_response);
           if (data.options && data.options.length > 0) {
             this.quickReplies = data.options;
+            this.updateView();
           }
+        } else {
+          this.addMessage('bot', "Sorry, I received an empty response. Please try again.");
         }
       } catch (error) {
         console.error('Error initializing conversation:', error);
@@ -692,7 +887,6 @@
   window.ConversaTree = {
     init: function(config) {
       if (window.ConversaTree.instance) {
-        console.warn('ConversaTree widget already initialized');
         return window.ConversaTree.instance;
       }
       window.ConversaTree.instance = new ConversaTreeWidget(config);
