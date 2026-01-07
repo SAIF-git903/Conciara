@@ -63,7 +63,6 @@ export async function getAllDialogTrees(abVariationId?: number): Promise<DialogT
   query += ' ORDER BY updated_at DESC';
   
   const result = await pool.query(query, params);
-  console.log(`[getAllDialogTrees] abVariationId: ${abVariationId}, found ${result.rows.length} trees`);
   return result.rows;
 }
 

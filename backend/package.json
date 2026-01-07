@@ -11,7 +11,8 @@
     "migrate": "tsx src/db/migrate.ts",
     "setup-db": "tsx src/db/setup.ts",
     "update-vector": "tsx src/db/updateVectorColumn.ts",
-    "seed": "tsx src/db/seed.ts"
+    "seed": "tsx src/db/seed.ts",
+    "regenerate-embeddings": "tsx src/regenerateEmbeddings.ts"
   },
   "keywords": ["dialog", "tree", "api"],
   "author": "",
