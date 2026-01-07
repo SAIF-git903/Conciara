@@ -2,6 +2,25 @@ import { pool } from '../db/connection.js';
 import { getNodesByTreeId, getNodeById, DialogNode } from './dialogService.js';
 import { generateEmbedding } from './embeddingService.js';
 
+// Check if vector extension is available (cached)
+let hasVectorExtension: boolean | null = null;
+
+async function checkVectorExtension(): Promise<boolean> {
+  if (hasVectorExtension !== null) {
+    return hasVectorExtension;
+  }
+  try {
+    const result = await pool.query(`
+      SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'vector') as has_vector;
+    `);
+    hasVectorExtension = result.rows[0]?.has_vector || false;
+    return hasVectorExtension as boolean;
+  } catch (error) {
+    hasVectorExtension = false;
+    return false;
+  }
+}
+
 export interface ChatSession {
   session_id: string;
   tree_id: number;
@@ -78,6 +97,102 @@ function getRootNode(nodes: DialogNode[]): DialogNode | null {
   return nodes.find(node => node.parent_id === null) || null;
 }
 
+// Find most similar node using vector embeddings (semantic matching)
+async function findSimilarNodeByEmbedding(
+  userEmbedding: number[],
+  parentId: number | null,
+  treeId: number,
+  similarityThreshold: number = 0.7
+): Promise<{ node: DialogNode; similarity: number } | null> {
+  const hasVector = await checkVectorExtension();
+  
+  if (!hasVector) {
+    return null; // pgvector not available
+  }
+
+  try {
+    // Format embedding as PostgreSQL vector
+    const embeddingString = `[${userEmbedding.join(',')}]`;
+    
+    // Query for nodes with similar embeddings using cosine distance (<=>)
+    // Cosine distance: 0 = identical, 1 = orthogonal, 2 = opposite
+    // We convert to similarity: similarity = 1 - (distance / 2)
+    // Threshold of 0.7 similarity means distance < 0.6
+    let query: string;
+    let params: any[];
+
+    if (parentId === null) {
+      // Root nodes (parent_id IS NULL)
+      query = `
+        SELECT 
+          id,
+          tree_id,
+          parent_id,
+          user_input,
+          bot_response,
+          vector_embedding,
+          created_at,
+          updated_at,
+          1 - (vector_embedding <=> $1::vector) / 2 as similarity
+        FROM dialog_nodes
+        WHERE tree_id = $2
+          AND parent_id IS NULL
+          AND vector_embedding IS NOT NULL
+          AND (1 - (vector_embedding <=> $1::vector) / 2) >= $3
+        ORDER BY vector_embedding <=> $1::vector
+        LIMIT 1
+      `;
+      params = [embeddingString, treeId, similarityThreshold];
+    } else {
+      // Child nodes (parent_id = specific value)
+      query = `
+        SELECT 
+          id,
+          tree_id,
+          parent_id,
+          user_input,
+          bot_response,
+          vector_embedding,
+          created_at,
+          updated_at,
+          1 - (vector_embedding <=> $1::vector) / 2 as similarity
+        FROM dialog_nodes
+        WHERE tree_id = $2
+          AND parent_id = $3
+          AND vector_embedding IS NOT NULL
+          AND (1 - (vector_embedding <=> $1::vector) / 2) >= $4
+        ORDER BY vector_embedding <=> $1::vector
+        LIMIT 1
+      `;
+      params = [embeddingString, treeId, parentId, similarityThreshold];
+    }
+
+    const result = await pool.query(query, params);
+
+    if (result.rows.length === 0) {
+      return null; // No similar node found above threshold
+    }
+
+    const row = result.rows[0];
+    return {
+      node: {
+        id: row.id,
+        tree_id: row.tree_id,
+        parent_id: row.parent_id,
+        user_input: row.user_input,
+        bot_response: row.bot_response,
+        vector_embedding: row.vector_embedding,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      },
+      similarity: parseFloat(row.similarity),
+    };
+  } catch (error: any) {
+    console.error('Error in semantic similarity search:', error.message);
+    return null; // Fallback to other strategies
+  }
+}
+
 // Find matching node based on user input
 async function findMatchingNode(
   userMessage: string,
@@ -89,70 +204,315 @@ async function findMatchingNode(
     return getRootNode(allNodes);
   }
 
-  // Get child nodes of current node
-  const childNodes = allNodes.filter(node => node.parent_id === currentNode.id);
-
-  if (childNodes.length === 0) {
-    return null; // No more nodes in this path
+  const userMessageLower = userMessage.toLowerCase().trim();
+  
+  // Product keywords that indicate user wants to change selection
+  const productKeywords = new Set(['laptop', 'computer', 'smartphone', 'phone', 'tablet', 'watch', 
+    'headphone', 'speaker', 'camera', 'tv', 'monitor', 'keyboard', 'mouse', 'printer', 'scanner']);
+  
+  // Check if user mentions a product keyword (might want to change selection)
+  const userMessageWords = userMessageLower.split(/\s+/);
+  const mentionedProducts = userMessageWords.filter(word => productKeywords.has(word));
+  
+  // Get child nodes of current node (primary search)
+  let childNodes = allNodes.filter(node => node.parent_id === currentNode.id);
+  
+  // If user mentions a product and no match in children, also check siblings (same parent)
+  // This allows "actually i'm looking for a laptop" to work when at smartphone node
+  let nodesToSearch = childNodes;
+  if (mentionedProducts.length > 0 && currentNode.parent_id !== null) {
+    const siblingNodes = allNodes.filter(node => 
+      node.parent_id === currentNode.parent_id && node.id !== currentNode.id
+    );
+    // Combine children and siblings for search
+    nodesToSearch = [...childNodes, ...siblingNodes];
+  }
+  
+  // If still no match and user mentions product, check parent's siblings (go up one level)
+  // This allows deeper backtracking
+  if (mentionedProducts.length > 0 && currentNode.parent_id !== null) {
+    const parentNode = allNodes.find(node => node.id === currentNode.parent_id);
+    if (parentNode && parentNode.parent_id !== null) {
+      const parentSiblingNodes = allNodes.filter(node => 
+        node.parent_id === parentNode.parent_id && node.id !== parentNode.id
+      );
+      nodesToSearch = [...nodesToSearch, ...parentSiblingNodes];
+    }
   }
 
-  const userMessageLower = userMessage.toLowerCase().trim();
+  if (nodesToSearch.length === 0) {
+    return null; // No nodes to search
+  }
 
-  // Strategy 1: Exact match on user_input
-  const exactMatch = childNodes.find(node => {
+  // Common greetings that shouldn't match to product nodes
+  const genericGreetings = new Set(['hi', 'hello', 'hey', 'hi there', 'hello there', 
+    'hey there', 'good morning', 'good afternoon', 'good evening', 'greetings', 
+    'howdy', 'whats up', 'what\'s up', 'sup', 'yo']);
+  const isGenericGreeting = genericGreetings.has(userMessageLower) || 
+    (userMessageLower.split(/\s+/).length <= 2 && userMessageLower.split(/\s+/).every(word => 
+      genericGreetings.has(word) || ['there', 'the', 'a', 'an'].includes(word)));
+
+  // CRITICAL: Check for generic greetings FIRST - before any matching
+  // This prevents "hi there" from matching to product nodes via semantic matching
+  if (isGenericGreeting) {
+    return null; // Return null immediately to trigger "I'm not sure" response
+  }
+
+  // Strategy 1: Exact match on user_input (search in nodesToSearch to include siblings)
+  const exactMatch = nodesToSearch.find(node => {
     if (!node.user_input) return false;
     return node.user_input.toLowerCase().trim() === userMessageLower;
   });
-  if (exactMatch) return exactMatch;
+  if (exactMatch) {
+    return exactMatch;
+  }
 
-  // Strategy 2: Partial match (contains)
-  const partialMatch = childNodes.find(node => {
-    if (!node.user_input) return false;
+  // Strategy 2: Partial match (contains) - but skip generic greetings (already checked above)
+  if (userMessageLower.length >= 5) {
+    // Only do partial match if message is meaningful
+    const partialMatch = nodesToSearch.find(node => {
+      if (!node.user_input) return false;
+      const nodeInputLower = node.user_input.toLowerCase();
+      // Require at least 3 characters overlap for partial match
+      if (userMessageLower.length < 3 || nodeInputLower.length < 3) return false;
+      return nodeInputLower.includes(userMessageLower) || userMessageLower.includes(nodeInputLower);
+    });
+    if (partialMatch) {
+      return partialMatch;
+    }
+  }
+
+  // Strategy 3: Semantic matching using embeddings (if available) - MOVED BEFORE keyword matching
+  // This ensures semantic understanding takes priority over simple word matching
+  // BUT we validate product keywords to avoid mismatches (e.g., smartphone vs laptop)
+  
+  // Extract product keywords from user input (productKeywords already defined above)
+  const userProductKeywords = mentionedProducts; // Already extracted above
+  
+  try {
+    const userEmbedding = await generateEmbedding(userMessage);
+    if (userEmbedding) {
+      // Find node with most similar embedding using pgvector similarity search
+      const currentNodeId = currentNode?.id || null;
+      const treeId = currentNode?.tree_id || allNodes[0]?.tree_id;
+      
+      if (treeId) {
+        // If user mentions a product, search in siblings too (not just children)
+        // This allows "actually i'm looking for a laptop" to work when at smartphone node
+        let searchParentId = currentNodeId;
+        if (userProductKeywords.length > 0 && currentNode && currentNode.parent_id !== null) {
+          // Search in siblings (same parent) instead of just children
+          searchParentId = currentNode.parent_id;
+        }
+        
+        // Try with lower threshold first (55%), then fallback to even lower (45%)
+        let similarNodeResult = await findSimilarNodeByEmbedding(
+          userEmbedding,
+          searchParentId, // Use parent_id to search siblings when product mentioned
+          treeId,
+          0.55 // Lower threshold to catch more semantic matches
+        );
+        
+        if (!similarNodeResult) {
+          // Try with even lower threshold as fallback
+          similarNodeResult = await findSimilarNodeByEmbedding(
+            userEmbedding,
+            searchParentId,
+            treeId,
+            0.45
+          );
+        }
+        
+        if (similarNodeResult) {
+          const similarity = similarNodeResult.similarity || 0;
+          
+          if (similarity >= 0.45) {
+            // CRITICAL: Reject semantic matches for generic greetings (even if similarity is high)
+            // Generic greetings shouldn't match to product nodes via semantic matching
+            const matchedNodeInput = similarNodeResult.node.user_input?.toLowerCase() || '';
+            const matchedNodeLower = matchedNodeInput.toLowerCase();
+            
+            // Check if matched node contains product keywords - if not, it might be a generic match
+            const matchedNodeProducts = matchedNodeInput.split(/\s+/).filter(word => productKeywords.has(word));
+            const hasProductInMatch = matchedNodeProducts.length > 0;
+            
+            // If user has product keywords, validate match also has them
+            if (userProductKeywords.length > 0) {
+              const hasMatchingProduct = userProductKeywords.some(userProduct => 
+                matchedNodeProducts.includes(userProduct)
+              );
+              
+              if (!hasMatchingProduct) {
+                // Reject semantic match and fall through to keyword matching
+              } else {
+                return similarNodeResult.node;
+              }
+            } else if (hasProductInMatch) {
+              // User has no product keywords but match has products - reject (user probably said something generic)
+              // Reject and fall through to keyword matching
+            } else {
+              // No product keywords in either - accept semantic match (both are generic)
+              return similarNodeResult.node;
+            }
+          }
+        }
+      }
+    }
+  } catch (error: any) {
+    // Embeddings not available or error occurred, continue to keyword matching
+    console.warn('Semantic matching unavailable:', error.message);
+  }
+
+  // Strategy 4: Improved keyword matching (with stop word filtering and distinctive word weighting)
+  // Common stop words that don't carry semantic meaning
+  // Note: Action words like 'need', 'looking', 'want' are kept as they carry semantic meaning
+  const stopWords = new Set(['i', 'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 
+    'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 
+    'must', 'can', 'this', 'that', 'these', 'those', 'am', 'for', 'to', 'of', 'in', 'on', 'at', 
+    'by', 'with', 'from', 'as', 'or', 'and', 'but', 'if', 'then', 'so', 'up', 'down', 'out', 'off', 
+    'over', 'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why', 
+    'how', 'all', 'each', 'both', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 
+    'not', 'only', 'own', 'same', 'than', 'too', 'very', 's', 't', 'can', 'will', 'just', 'don', 
+    'should', 'now', 
+    // Filler words that don't change meaning
+    'actually', 'really', 'well', 'um', 'uh', 'like', 'you know', 'i mean', 'sort of', 'kind of',
+    'basically', 'literally', 'honestly', 'seriously', 'obviously', 'probably', 'maybe', 'perhaps']);
+  
+  // Normalize contractions and handle apostrophes for better matching
+  const normalizedMessage = userMessageLower
+    .replace(/'m\b/g, ' am')
+    .replace(/'re\b/g, ' are')
+    .replace(/'ve\b/g, ' have')
+    .replace(/'ll\b/g, ' will')
+    .replace(/'d\b/g, ' would')
+    .replace(/n't\b/g, ' not')
+    .replace(/'t\b/g, ' not');
+  
+  // Split and clean words (remove punctuation, handle contractions)
+  const userWords = normalizedMessage
+    .split(/\s+/)
+    .map(word => word.replace(/[^\w]/g, '')) // Remove punctuation
+    .filter(word => word.length > 0 && !stopWords.has(word));
+  
+  // If all words are stop words, use original words (fallback)
+  const wordsToMatch = userWords.length > 0 ? userWords : normalizedMessage.split(/\s+/).filter(w => w.replace(/[^\w]/g, '').length > 0);
+  
+  // Find distinctive words (words that appear in only one option)
+  // These are more valuable for matching than common words
+  const allNodeWords = new Map<string, number>(); // word -> count across all nodes
+  for (const node of nodesToSearch) {
+    if (!node.user_input) continue;
     const nodeInputLower = node.user_input.toLowerCase();
-    return nodeInputLower.includes(userMessageLower) || userMessageLower.includes(nodeInputLower);
-  });
-  if (partialMatch) return partialMatch;
-
-  // Strategy 3: Keyword matching
-  const userWords = userMessageLower.split(/\s+/);
+    const normalizedNodeInput = nodeInputLower
+      .replace(/'m\b/g, ' am')
+      .replace(/'re\b/g, ' are')
+      .replace(/'ve\b/g, ' have')
+      .replace(/'ll\b/g, ' will')
+      .replace(/'d\b/g, ' would')
+      .replace(/n't\b/g, ' not')
+      .replace(/'t\b/g, ' not');
+    const nodeWords = normalizedNodeInput
+      .split(/\s+/)
+      .map(word => word.replace(/[^\w]/g, ''))
+      .filter(word => word.length > 0 && !stopWords.has(word));
+    for (const word of nodeWords) {
+      allNodeWords.set(word, (allNodeWords.get(word) || 0) + 1);
+    }
+  }
+  
+  // Words that appear in only one option are distinctive
+  const distinctiveWords = new Set(
+    Array.from(allNodeWords.entries())
+      .filter(([_, count]) => count === 1)
+      .map(([word, _]) => word)
+  );
+  
+  // Identify product/object words (nouns that are likely the main topic)
+  // These should be prioritized even more than other distinctive words
+  // Note: productKeywords already defined above for semantic matching validation
+  
   let bestMatch: DialogNode | null = null;
   let bestScore = 0;
+  let bestMatchHasProductOrDistinctive = false; // Track if best match has product/distinctive words
 
   for (const node of childNodes) {
     if (!node.user_input) continue;
     
+    // Normalize node input the same way as user input
     const nodeInputLower = node.user_input.toLowerCase();
-    const nodeWords = nodeInputLower.split(/\s+/);
+    const normalizedNodeInput = nodeInputLower
+      .replace(/'m\b/g, ' am')
+      .replace(/'re\b/g, ' are')
+      .replace(/'ve\b/g, ' have')
+      .replace(/'ll\b/g, ' will')
+      .replace(/'d\b/g, ' would')
+      .replace(/n't\b/g, ' not')
+      .replace(/'t\b/g, ' not');
     
-    // Count matching words
-    const matchingWords = userWords.filter(word => 
-      nodeWords.some(nodeWord => nodeWord.includes(word) || word.includes(nodeWord))
-    );
-    const score = matchingWords.length / Math.max(userWords.length, nodeWords.length);
+    const nodeWords = normalizedNodeInput
+      .split(/\s+/)
+      .map(word => word.replace(/[^\w]/g, '')) // Remove punctuation
+      .filter(word => word.length > 0 && !stopWords.has(word));
+    const nodeWordsToMatch = nodeWords.length > 0 ? nodeWords : normalizedNodeInput.split(/\s+/).filter(w => w.replace(/[^\w]/g, '').length > 0);
     
-    if (score > bestScore && score > 0.3) { // At least 30% match
-      bestScore = score;
+    // Count matching important words with priority for exact matches and distinctive words
+    let exactProductMatches = 0;      // Exact match on product keyword (highest priority)
+    let exactDistinctiveMatches = 0;  // Exact match on distinctive word
+    let exactCommonMatches = 0;       // Exact match on common word
+    let partialMatches = 0;           // Partial match
+    
+    for (const word of wordsToMatch) {
+      const exactMatch = nodeWordsToMatch.some(nodeWord => nodeWord === word);
+      const partialMatch = !exactMatch && nodeWordsToMatch.some(nodeWord => 
+        nodeWord.includes(word) || word.includes(nodeWord)
+      );
+      const isDistinctive = distinctiveWords.has(word);
+      const isProduct = productKeywords.has(word);
+      
+      if (exactMatch) {
+        if (isProduct) {
+          exactProductMatches++; // Product words get highest priority
+        } else if (isDistinctive) {
+          exactDistinctiveMatches++;
+        } else {
+          exactCommonMatches++;
+        }
+      } else if (partialMatch) {
+        partialMatches++;
+      }
+    }
+    
+    // Weight product matches extremely heavily (50x), distinctive (10x), common (1x), partial (0.1x)
+    // This ensures "laptop" (product) beats "need" (common action word) decisively
+    // Example: "laptop" match = 50 points, "need" match = 1 point
+    // Use nodeWordsToMatch.length as denominator to avoid penalizing extra user words
+    // This way "actually i'm looking for a laptop" scores the same as "i'm looking for a laptop"
+    const weightedScore = (exactProductMatches * 50 + exactDistinctiveMatches * 10 + 
+      exactCommonMatches * 1 + partialMatches * 0.1) / 
+      Math.max(nodeWordsToMatch.length, 1); // Use node length, not user length
+    
+    // Lower threshold to 15% for keyword matching to catch more legitimate matches
+    // But require at least one product or distinctive word match (not just common words)
+    const hasProductOrDistinctiveMatch = exactProductMatches > 0 || exactDistinctiveMatches > 0;
+    const minThreshold = hasProductOrDistinctiveMatch ? 0.15 : 0.3; // Lower threshold if product/distinctive match
+    
+    if (weightedScore > bestScore && weightedScore >= minThreshold) {
+      bestScore = weightedScore;
       bestMatch = node;
+      bestMatchHasProductOrDistinctive = hasProductOrDistinctiveMatch;
     }
   }
 
-  if (bestMatch) return bestMatch;
-
-  // Strategy 4: Semantic matching using embeddings (if available)
-  try {
-    const userEmbedding = await generateEmbedding(userMessage);
-    if (userEmbedding) {
-      // Find node with most similar embedding
-      // This would require vector similarity search (pgvector)
-      // For now, we'll skip this and use fallback
-    }
-  } catch (error) {
-    // Embeddings not available, continue to fallback
+  // Only return best match if score is high enough (confidence threshold)
+  // Lower threshold if we have product or distinctive matches
+  const finalThreshold = bestMatchHasProductOrDistinctive ? 0.15 : 0.2;
+  if (bestMatch && bestScore >= finalThreshold) {
+    return bestMatch;
   }
 
-  // Strategy 5: Fallback - return first child node with bot_response (default path)
-  const defaultNode = childNodes.find(node => node.bot_response) || childNodes[0];
-  return defaultNode || null;
+  // Strategy 5: If no good match found, return null
+  // This triggers the fallback "I'm not sure" response instead of matching to random node
+  return null;
 }
 
 // Process chat message
