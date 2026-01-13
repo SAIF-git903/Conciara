@@ -45,6 +45,9 @@ async function regenerateEmbeddings() {
           console.log(`⚠️  Skipping node ${row.id}: no text to embed`);
           continue;
         }
+
+        console.log('textToEmbed', textToEmbed)
+
         
         console.log(`🔄 Processing node ${row.id}: "${textToEmbed.substring(0, 50)}..."`);
         
@@ -60,6 +63,7 @@ async function regenerateEmbeddings() {
         let embeddingValue: string;
         if (hasVector) {
           embeddingValue = `[${embedding.join(',')}]`;
+          await pool.query(`UPDATE dialog_nodes SET vector_embedding = $1::vector, updated_at = NOW() WHERE id = $2`, [embeddingValue, row.id]);
         } else {
           embeddingValue = JSON.stringify(embedding);
         }
