@@ -78,11 +78,11 @@ export default function WidgetDemoPage() {
           }}>
             <strong>💡 How to Test:</strong>
             <ol style={{ margin: '10px 0', paddingLeft: '20px' }}>
-              <li>Set User ID to "john"</li>
+              <li>Set User ID to &quot;john&quot;</li>
               <li>Open chatbot (bottom-right)</li>
-              <li>Say: "I am a React programmer"</li>
-              <li>Then say: "I need a laptop"</li>
-              <li>Bot should remember you're a React programmer and recommend Mac</li>
+              <li>Say: &quot;I am a React programmer&quot;</li>
+              <li>Then say: &quot;I need a laptop&quot;</li>
+              <li>Bot should remember you&apos;re a React programmer and recommend Mac</li>
             </ol>
           </div>
         </div>

@@ -22,6 +22,7 @@ export default function MemoryTestPage() {
   // Initialize conversation on mount
   useEffect(() => {
     initializeConversation()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [treeId, userId])
 
   const initializeConversation = async () => {
