@@ -4,6 +4,13 @@ import { useState, useEffect } from 'react'
 import { MergedSkinConfig } from '../types/skinConfig'
 import SkinRenderer from './SkinRenderer'
 
+// Get API URL - use proxy in production to avoid mixed content issues
+const getDefaultApiUrl = () => {
+  if (typeof window === 'undefined') return 'http://localhost:3001/api';
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  return isLocalhost ? 'http://localhost:3001/api' : '/api/proxy';
+};
+
 interface ChatbotWidgetProps {
   apiUrl?: string
   treeId?: number
@@ -24,7 +31,7 @@ interface ChatbotWidgetProps {
 
 
 export default function ChatbotWidget({
-  apiUrl = 'http://localhost:3001/api',
+  apiUrl: propApiUrl,
   treeId,
   websiteId,
   domain,
@@ -35,6 +42,9 @@ export default function ChatbotWidget({
   theme = {},
   skinConfig: propSkinConfig
 }: ChatbotWidgetProps) {
+  // Use provided apiUrl or smart default (proxy in production)
+  const apiUrl = propApiUrl || getDefaultApiUrl();
+  
   const [resolvedTreeId, setResolvedTreeId] = useState<number | null>(treeId || null)
   const [skinConfig, setSkinConfig] = useState<MergedSkinConfig | null>(propSkinConfig || null)
   const [configLoaded, setConfigLoaded] = useState(!!treeId || !!propSkinConfig)
