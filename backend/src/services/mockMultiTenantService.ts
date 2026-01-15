@@ -181,6 +181,7 @@ export const mockMultiTenantService = {
       name,
       description: description || null,
       theme_config: themeConfig || null,
+      is_active: true,
       created_at: new Date(),
       updated_at: new Date(),
     };

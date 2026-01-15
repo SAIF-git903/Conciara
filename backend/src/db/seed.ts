@@ -7,8 +7,10 @@ async function seedDatabase() {
   try {
     console.log('🌱 Starting database seed...\n');
 
-    // Step 1: Clear all existing data
+    // Step 1: Clear all existing data (including conversation history)
     console.log('🧹 Clearing existing data...');
+    await pool.query('DELETE FROM conversation_history');
+    await pool.query('DELETE FROM conversation_sessions');
     await pool.query('DELETE FROM dialog_nodes');
     await pool.query('DELETE FROM preprompts');
     await pool.query('DELETE FROM dialog_trees');
@@ -18,138 +20,559 @@ async function seedDatabase() {
     await pool.query('DELETE FROM customer_types');
     console.log('✅ All existing data cleared\n');
 
-    // Step 2: Create Customer Type
-    console.log('📦 Creating customer type...');
-    const customerTypeResult = await pool.query(`
-      INSERT INTO customer_types (name, description)
-      VALUES ('Winery', 'Wine producers and vineyards')
-      RETURNING *;
-    `);
-    const customerType = customerTypeResult.rows[0];
-    console.log(`✅ Created customer type: ${customerType.name} (ID: ${customerType.id})\n`);
+    // Step 2: Create Multiple Customer Types
+    console.log('📦 Creating customer types...');
+    const customerTypes = [];
+    
+    const types = [
+      { name: 'E-Commerce', description: 'Online retail stores and marketplaces' },
+      { name: 'SaaS', description: 'Software as a Service companies' },
+      { name: 'Healthcare', description: 'Medical and healthcare providers' },
+      { name: 'Education', description: 'Educational institutions and platforms' },
+      { name: 'Real Estate', description: 'Real estate agencies and platforms' }
+    ];
 
-    // Step 3: Create Website
-    console.log('🌐 Creating website...');
-    const websiteResult = await pool.query(`
-      INSERT INTO websites (customer_type_id, name, description)
-      VALUES ($1, 'Domaine Carneros', 'Premium sparkling wine producer in Napa Valley')
-      RETURNING *;
-    `, [customerType.id]);
-    const website = websiteResult.rows[0];
-    console.log(`✅ Created website: ${website.name} (ID: ${website.id})\n`);
+    for (const type of types) {
+      const result = await pool.query(`
+        INSERT INTO customer_types (name, description)
+        VALUES ($1, $2)
+        RETURNING *;
+      `, [type.name, type.description]);
+      customerTypes.push(result.rows[0]);
+      console.log(`✅ Created: ${result.rows[0].name}`);
+    }
+    console.log('');
 
-    // Step 4: Create Skin
-    console.log('🎨 Creating skin...');
-    const skinResult = await pool.query(`
-      INSERT INTO skins (website_id, name, description, theme_config)
-      VALUES ($1, 'Default Theme', 'Main theme for Domaine Carneros website', '{"primaryColor": "#8B2635", "secondaryColor": "#F4E4BC", "fontFamily": "serif"}')
-      RETURNING *;
-    `, [website.id]);
-    const skin = skinResult.rows[0];
-    console.log(`✅ Created skin: ${skin.name} (ID: ${skin.id})\n`);
+    // Step 3: Create Multiple Websites
+    console.log('🌐 Creating websites...');
+    const websites = [];
+    
+    const websiteData = [
+      { customerType: 0, name: 'TechStore Pro', description: 'Premium electronics and gadgets online store', domain: 'techstore.com' },
+      { customerType: 0, name: 'FashionHub', description: 'Trendy fashion and accessories marketplace', domain: 'fashionhub.com' },
+      { customerType: 1, name: 'CloudSync', description: 'Enterprise cloud storage and collaboration platform', domain: 'cloudsync.io' },
+      { customerType: 1, name: 'TaskMaster', description: 'Project management and productivity SaaS', domain: 'taskmaster.app' },
+      { customerType: 2, name: 'HealthCare Plus', description: 'Telemedicine and health consultation platform', domain: 'healthcareplus.com' },
+      { customerType: 3, name: 'LearnOnline Academy', description: 'Online courses and educational content', domain: 'learnonline.edu' },
+      { customerType: 4, name: 'PropertyFinder', description: 'Real estate listings and property search', domain: 'propertyfinder.com' }
+    ];
 
-    // Step 5: Create A/B Variation
-    console.log('🔀 Creating A/B variation...');
-    const variationResult = await pool.query(`
+    for (const website of websiteData) {
+      const result = await pool.query(`
+        INSERT INTO websites (customer_type_id, name, description, domain)
+        VALUES ($1, $2, $3, $4)
+        RETURNING *;
+      `, [customerTypes[website.customerType].id, website.name, website.description, website.domain]);
+      websites.push(result.rows[0]);
+      console.log(`✅ Created: ${result.rows[0].name} (${website.domain})`);
+    }
+    console.log('');
+
+    // Step 4: Create Multiple Skins with Full Config
+    console.log('🎨 Creating skins...');
+    const skins = [];
+    
+    const skinData = [
+      { 
+        website: 0, 
+        name: 'Default Theme', 
+        description: 'Main theme for TechStore Pro', 
+        isActive: true,
+        themeConfig: {
+          theme: {
+            primaryColor: "#2563eb",
+            secondaryColor: "#f1f5f9",
+            backgroundColor: "#ffffff",
+            textColor: "#1f2937",
+            borderColor: "#e5e7eb",
+            accentColor: "#2563eb"
+          },
+          components: {
+            button: {
+              type: "circular",
+              size: "large",
+              icon: "bot",
+              position: "bottom-right",
+              showLabel: false
+            },
+            window: {
+              width: 384,
+              height: 600,
+              borderRadius: 8,
+              shadow: "large"
+            },
+            header: {
+              show: true,
+              height: 48,
+              showTitle: true,
+              title: "Chat Assistant",
+              showMinimize: true,
+              showClose: true
+            },
+            messages: {
+              layout: "bubbles",
+              userAlignment: "right",
+              botAlignment: "left",
+              showAvatars: true,
+              bubbleStyle: "rounded"
+            },
+            input: {
+              placeholder: "Type your message...",
+              showSendButton: true,
+              allowMultiline: false
+            },
+            quickReplies: {
+              show: true,
+              layout: "horizontal",
+              style: "buttons"
+            }
+          },
+          states: {
+            loading: { type: "dots", color: "primary" },
+            empty: { message: "Starting conversation..." },
+            error: { message: "Sorry, I'm having trouble. Please try again.", showRetry: true }
+          }
+        }
+      },
+      { 
+        website: 0, 
+        name: 'Dark Mode', 
+        description: 'Dark theme variant', 
+        isActive: false,
+        themeConfig: {
+          theme: {
+            primaryColor: "#3b82f6",
+            secondaryColor: "#1e293b",
+            backgroundColor: "#0f172a",
+            textColor: "#f1f5f9",
+            borderColor: "#334155",
+            accentColor: "#3b82f6"
+          },
+          components: {
+            button: {
+              type: "circular",
+              size: "large",
+              icon: "bot",
+              position: "bottom-right"
+            },
+            window: {
+              width: 400,
+              height: 650,
+              borderRadius: 12,
+              shadow: "large"
+            },
+            header: {
+              show: true,
+              height: 56,
+              title: "Dark Chat",
+              showMinimize: true,
+              showClose: true
+            },
+            messages: {
+              layout: "bubbles",
+              userAlignment: "right",
+              botAlignment: "left",
+              showAvatars: true,
+              bubbleStyle: "rounded"
+            },
+            input: {
+              placeholder: "Type your message...",
+              showSendButton: true
+            }
+          }
+        }
+      },
+      { 
+        website: 1, 
+        name: 'Fashion Theme', 
+        description: 'Elegant theme for FashionHub', 
+        isActive: true,
+        themeConfig: {
+          theme: {
+            primaryColor: "#ec4899",
+            secondaryColor: "#fdf2f8",
+            backgroundColor: "#ffffff",
+            textColor: "#1f2937"
+          },
+          components: {
+            button: {
+              type: "circular",
+              size: "large",
+              icon: "bot",
+              position: "bottom-right"
+            },
+            window: {
+              width: 384,
+              height: 600,
+              borderRadius: 8,
+              shadow: "large"
+            },
+            header: {
+              show: true,
+              title: "Fashion Assistant",
+              showMinimize: true,
+              showClose: true
+            }
+          }
+        }
+      },
+      { 
+        website: 2, 
+        name: 'Professional Theme', 
+        description: 'Corporate theme for CloudSync', 
+        isActive: true,
+        themeConfig: {
+          theme: {
+            primaryColor: "#0f172a",
+            secondaryColor: "#f8fafc",
+            backgroundColor: "#ffffff",
+            textColor: "#1e293b"
+          },
+          components: {
+            button: {
+              type: "rounded",
+              size: "medium",
+              icon: "chat",
+              position: "bottom-right"
+            },
+            window: {
+              width: 360,
+              height: 550,
+              borderRadius: 4,
+              shadow: "medium"
+            },
+            header: {
+              show: true,
+              title: "Support Chat",
+              showMinimize: false,
+              showClose: true
+            }
+          }
+        }
+      }
+    ];
+
+    for (const skin of skinData) {
+      const result = await pool.query(`
+        INSERT INTO skins (website_id, name, description, theme_config, is_active)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING *;
+      `, [websites[skin.website].id, skin.name, skin.description, JSON.stringify(skin.themeConfig), skin.isActive]);
+      skins.push(result.rows[0]);
+      console.log(`✅ Created: ${result.rows[0].name} (is_active: ${skin.isActive})`);
+    }
+    console.log('');
+
+    // Step 5: Create A/B Variations for ALL Skins
+    console.log('🔀 Creating A/B variations...');
+    const variations = [];
+    
+    // Create at least one variation for each skin
+    for (let i = 0; i < skins.length; i++) {
+      const result = await pool.query(`
+        INSERT INTO ab_variations (skin_id, name, description, variation_config, is_active)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING *;
+      `, [
+        skins[i].id, 
+        'Control', 
+        `Default variation for ${skins[i].name}`, 
+        '{}', 
+        true
+      ]);
+      variations.push(result.rows[0]);
+      console.log(`✅ Created: ${result.rows[0].name} for ${skins[i].name}`);
+    }
+    
+    // Add extra variations for first skin (for testing)
+    const extraVariation = await pool.query(`
       INSERT INTO ab_variations (skin_id, name, description, variation_config, is_active)
-      VALUES ($1, 'Control', 'Default variation for testing', '{"version": "control", "features": ["standard_layout"]}', true)
+      VALUES ($1, $2, $3, $4, $5)
       RETURNING *;
-    `, [skin.id]);
-    const variation = variationResult.rows[0];
-    console.log(`✅ Created A/B variation: ${variation.name} (ID: ${variation.id})\n`);
+    `, [skins[0].id, 'Variant A', 'Enhanced features', '{"overrides": {"components.button.size": "small"}}', true]);
+    variations.push(extraVariation.rows[0]);
+    console.log(`✅ Created: ${extraVariation.rows[0].name} for ${skins[0].name}`);
+    console.log('');
 
-    // Step 6: Create Dialog Tree
-    console.log('🌳 Creating dialog tree...');
-    const treeResult = await pool.query(`
-      INSERT INTO dialog_trees (name, description, ab_variation_id)
-      VALUES ('Wine Consultation Flow', 'Main conversation flow for wine recommendations and consultations', $1)
-      RETURNING *;
-    `, [variation.id]);
-    const tree = treeResult.rows[0];
-    console.log(`✅ Created dialog tree: ${tree.name} (ID: ${tree.id})\n`);
+    // Step 6: Create Dialog Trees for ALL Variations
+    console.log('🌳 Creating dialog trees...');
+    const trees = [];
+    
+    // Create a dialog tree for each variation
+    const treeNames = [
+      'Product Inquiry Flow',
+      'Order Support Flow', 
+      'Technical Support Flow',
+      'Style Consultation Flow',
+      'General Support Flow'
+    ];
+    
+    for (let i = 0; i < variations.length; i++) {
+      const treeName = treeNames[i] || `Chat Flow ${i + 1}`;
+      const result = await pool.query(`
+        INSERT INTO dialog_trees (name, description, ab_variation_id)
+        VALUES ($1, $2, $3)
+        RETURNING *;
+      `, [
+        treeName, 
+        `Main conversation flow for ${variations[i].name}`, 
+        variations[i].id
+      ]);
+      trees.push(result.rows[0]);
+      console.log(`✅ Created: ${result.rows[0].name} for variation ${variations[i].name}`);
+    }
+    console.log('');
 
-    // Step 7: Create Preprompt
-    console.log('📝 Creating preprompt...');
-    const prepromptResult = await pool.query(`
-      INSERT INTO preprompts (tree_id, content)
-      VALUES ($1, $2)
-      RETURNING *;
-    `, [
-      tree.id,
-      `You are a knowledgeable wine consultant for Domaine Carneros, a premium sparkling wine producer in Napa Valley. 
-Your role is to help customers discover the perfect wine for their occasion, taste preferences, and budget.
+    // Step 7: Create Root Nodes for ALL Dialog Trees
+    console.log('💬 Creating root nodes for all dialog trees...');
+    
+    const rootNodes = [];
+    const rootMessages = [
+      'Hello! Welcome to TechStore Pro. I\'m here to help you find the perfect product. What are you looking for today?',
+      'Hi! I can help you with your orders, shipping, and returns. How can I assist you?',
+      'Hello! I\'m here to help with technical issues and troubleshooting. What problem are you experiencing?',
+      'Hi! Welcome to FashionHub. I\'m your style consultant. What are you looking for today?',
+      'Hello! How can I help you today?'
+    ];
+    
+    for (let i = 0; i < trees.length; i++) {
+      const rootMessage = rootMessages[i] || 'Hello! How can I help you today?';
+      const root = (await pool.query(`
+        INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+        VALUES ($1, NULL, NULL, $2)
+        RETURNING *;
+      `, [trees[i].id, rootMessage])).rows[0];
+      rootNodes.push(root);
+      console.log(`✅ Created root node for ${trees[i].name}`);
+    }
+    console.log('');
 
-Key information about Domaine Carneros:
-- Specializes in méthode traditionnelle sparkling wines
-- Produces both sparkling and still wines
-- Located in the Carneros AVA of Napa Valley
-- Known for elegant, refined wines with French influence
+    // Step 8: Create Preprompts
+    console.log('📝 Creating preprompts...');
+    
+    const preprompts = [
+      {
+        tree: 0,
+        content: `You are a helpful product consultant for TechStore Pro, an online electronics store.
+Your role is to help customers find the perfect products based on their needs, budget, and preferences.
 
 Guidelines:
-- Be warm, professional, and approachable
-- Ask thoughtful questions to understand customer needs
-- Recommend wines based on occasion, food pairings, and preferences
-- Share interesting facts about the winery and winemaking process
-- Always maintain a premium brand image while being accessible`
-    ]);
-    console.log(`✅ Created preprompt (ID: ${prepromptResult.rows[0].id})\n`);
+- Be friendly, knowledgeable, and patient
+- Ask clarifying questions to understand customer needs
+- Provide accurate product information
+- Compare products when asked
+- Suggest alternatives if budget is a concern
+- Always maintain a professional and helpful tone`
+      },
+      {
+        tree: 1,
+        content: `You are a customer service representative for TechStore Pro.
+Your role is to assist customers with orders, shipping, returns, and account issues.
 
-    // Step 8: Create Sample Dialog Nodes
-    console.log('💬 Creating sample dialog nodes...');
+Guidelines:
+- Be empathetic and solution-oriented
+- Provide accurate order and shipping information
+- Help resolve issues quickly
+- Escalate complex problems when needed
+- Always be polite and professional`
+      },
+      {
+        tree: 2,
+        content: `You are a technical support specialist for TechStore Pro.
+Your role is to help customers with technical issues, product setup, and troubleshooting.
+
+Guidelines:
+- Be patient and methodical
+- Ask detailed questions to diagnose issues
+- Provide step-by-step solutions
+- Use simple, non-technical language when possible
+- Escalate hardware issues to warranty department
+- Document all interactions`
+      },
+      {
+        tree: 3,
+        content: `You are a fashion stylist consultant for FashionHub.
+Your role is to help customers find the perfect outfits and accessories for their style and occasions.
+
+Guidelines:
+- Be creative and fashion-forward
+- Understand current trends
+- Consider customer's body type, skin tone, and preferences
+- Suggest complete outfits, not just individual items
+- Be encouraging and positive
+- Help customers express their personal style`
+      }
+    ];
+
+    for (const preprompt of preprompts) {
+      await pool.query(`
+        INSERT INTO preprompts (tree_id, content)
+        VALUES ($1, $2)
+        RETURNING *;
+      `, [trees[preprompt.tree].id, preprompt.content]);
+      console.log(`✅ Created preprompt for ${trees[preprompt.tree].name}`);
+    }
+    console.log('');
+
+    // Step 9: Create Additional Dialog Nodes for Tree 1 (Product Inquiry)
+    console.log('💬 Creating additional dialog nodes for Product Inquiry Flow...');
     
-    // Root node - Welcome
-    const rootNodeResult = await pool.query(`
-      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
-      VALUES ($1, NULL, NULL, 'Welcome to Domaine Carneros! I''m here to help you find the perfect wine. Are you looking for something for a special occasion, or would you like to explore our collection?')
-      RETURNING *;
-    `, [tree.id]);
-    const rootNode = rootNodeResult.rows[0];
-    console.log(`✅ Created root node: Welcome message (ID: ${rootNode.id})`);
+    // Use the root node we already created in Step 7
+    const root1 = rootNodes[0];
 
-    // Node 1 - Special Occasion
-    const occasionNodeResult = await pool.query(`
+    // Main branches
+    const laptopBranch = (await pool.query(`
       INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
-      VALUES ($1, $2, 'I''m looking for something for a special occasion', 'Wonderful! Special occasions call for something memorable. What type of celebration are you planning? Is it a wedding, anniversary, birthday, or another milestone?')
+      VALUES ($1, $2, 'I''m looking for a laptop', 'Great choice! Laptops are one of our most popular categories. What will you primarily use it for? Work, gaming, creative projects, or general use?')
       RETURNING *;
-    `, [tree.id, rootNode.id]);
-    console.log(`✅ Created node: Special occasion (ID: ${occasionNodeResult.rows[0].id})`);
+    `, [trees[0].id, root1.id])).rows[0];
 
-    // Node 2 - Explore Collection
-    const exploreNodeResult = await pool.query(`
+    const phoneBranch = (await pool.query(`
       INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
-      VALUES ($1, $2, 'I''d like to explore your collection', 'Excellent choice! Our collection includes both sparkling and still wines. Are you more interested in our méthode traditionnelle sparkling wines, or would you like to learn about our still wine offerings?')
+      VALUES ($1, $2, 'I need a smartphone', 'Excellent! We have a wide selection of smartphones. What''s most important to you: camera quality, battery life, performance, or price?')
       RETURNING *;
-    `, [tree.id, rootNode.id]);
-    console.log(`✅ Created node: Explore collection (ID: ${exploreNodeResult.rows[0].id})`);
+    `, [trees[0].id, root1.id])).rows[0];
 
-    // Node 3 - Wedding response
-    const weddingNodeResult = await pool.query(`
+    const budgetBranch = (await pool.query(`
       INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
-      VALUES ($1, $2, 'It''s for a wedding', 'Congratulations! For a wedding, I''d recommend our Le Rêve Blanc de Blancs - it''s our most prestigious sparkling wine, perfect for toasting. It''s elegant, refined, and makes a beautiful statement. Would you like to know more about this wine, or are you looking for something in a different price range?')
+      VALUES ($1, $2, 'What''s your budget?', 'I''d be happy to help you find something within your budget! Our products range from budget-friendly options starting around $200 to premium devices over $2000. What price range are you comfortable with?')
       RETURNING *;
-    `, [tree.id, occasionNodeResult.rows[0].id]);
-    console.log(`✅ Created node: Wedding (ID: ${weddingNodeResult.rows[0].id})`);
+    `, [trees[0].id, root1.id])).rows[0];
 
-    // Node 4 - Sparkling wines
-    const sparklingNodeResult = await pool.query(`
+    // Laptop sub-branches
+    await pool.query(`
       INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
-      VALUES ($1, $2, 'I''m interested in sparkling wines', 'Perfect! Our sparkling wines are made using the méthode traditionnelle, the same technique used in Champagne. We have several options: our Brut Cuvée is our signature sparkling wine, the Brut Rosé offers beautiful berry notes, and Le Rêve is our ultra-premium offering. Which style appeals to you?')
-      RETURNING *;
-    `, [tree.id, exploreNodeResult.rows[0].id]);
-    console.log(`✅ Created node: Sparkling wines (ID: ${sparklingNodeResult.rows[0].id})`);
+      VALUES ($1, $2, 'For work and productivity', 'Perfect! For work, I''d recommend our business laptops with long battery life and excellent keyboards. We have options from $600-$1500. Do you need something lightweight for travel, or is a larger screen more important?')
+    `, [trees[0].id, laptopBranch.id]);
 
+    await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'For gaming', 'Awesome! Gaming laptops need powerful graphics and processors. We have gaming laptops starting at $1000 with RTX graphics cards. What games do you play, and what''s your budget?')
+    `, [trees[0].id, laptopBranch.id]);
+
+    // Phone sub-branches
+    await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'Camera quality is most important', 'Excellent! For photography, I''d recommend our flagship phones with advanced camera systems. They feature multiple lenses, night mode, and 4K video. Would you like to see our top camera phones?')
+    `, [trees[0].id, phoneBranch.id]);
+
+    await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'I want the best battery life', 'Smart choice! Battery life is crucial. We have phones with 5000mAh+ batteries that can last 2 days. Our mid-range options offer great battery life at affordable prices. What''s your budget?')
+    `, [trees[0].id, phoneBranch.id]);
+
+    console.log(`✅ Created 9 nodes for Product Inquiry Flow\n`);
+
+    // Step 9: Create Dialog Nodes for Tree 2 (Order Support)
+    console.log('💬 Creating dialog nodes for Order Support Flow...');
+    
+    const root2 = (await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, NULL, NULL, 'Hi! I''m here to help with your order. How can I assist you today?')
+      RETURNING *;
+    `, [trees[1].id])).rows[0];
+
+    await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'I want to check my order status', 'I''d be happy to check your order status! Please provide your order number, and I''ll look it up for you right away.')
+    `, [trees[1].id, root2.id]);
+
+    await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'When will my order ship?', 'Shipping times vary by location and product availability. Standard shipping typically takes 3-5 business days. For expedited options, please provide your zip code and I can give you specific delivery dates.')
+    `, [trees[1].id, root2.id]);
+
+    await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'I need to cancel my order', 'I can help you cancel your order. Please provide your order number. Note: orders that have already shipped cannot be cancelled, but we can help you with a return once it arrives.')
+    `, [trees[1].id, root2.id]);
+
+    await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'I want to return something', 'I''m here to help with your return! We have a 30-day return policy. Please provide your order number and the reason for return, and I''ll guide you through the process.')
+    `, [trees[1].id, root2.id]);
+
+    console.log(`✅ Created 5 nodes for Order Support Flow\n`);
+
+    // Step 10: Create Dialog Nodes for Tree 3 (Technical Support)
+    console.log('💬 Creating dialog nodes for Technical Support Flow...');
+    
+    const root3 = (await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, NULL, NULL, 'Hello! I''m here to help with any technical issues. What problem are you experiencing?')
+      RETURNING *;
+    `, [trees[2].id])).rows[0];
+
+    await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'My device won''t turn on', 'Let''s troubleshoot this step by step. First, try holding the power button for 10 seconds. If that doesn''t work, check if the device is charging. Is the charging indicator showing?')
+    `, [trees[2].id, root3.id]);
+
+    await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'I can''t connect to WiFi', 'WiFi connection issues are common. Let''s start by restarting your router and device. Have you tried forgetting the network and reconnecting? Also, check if other devices can connect to the same network.')
+    `, [trees[2].id, root3.id]);
+
+    await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'The screen is frozen', 'A frozen screen can often be fixed with a simple restart. Try holding the power button for 10-15 seconds to force restart. If the problem persists, it might be a software issue. What device are you using?')
+    `, [trees[2].id, root3.id]);
+
+    console.log(`✅ Created 4 nodes for Technical Support Flow\n`);
+
+    // Step 11: Create Dialog Nodes for Tree 4 (Fashion Consultation)
+    console.log('💬 Creating dialog nodes for Style Consultation Flow...');
+    
+    const root4 = (await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, NULL, NULL, 'Hi there! Welcome to FashionHub. I''m your personal style consultant. What are you shopping for today?')
+      RETURNING *;
+    `, [trees[3].id])).rows[0];
+
+    const occasionBranch = (await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'I need an outfit for a special occasion', 'How exciting! Special occasions deserve special outfits. What''s the occasion? Is it a wedding, party, date night, or business event?')
+      RETURNING *;
+    `, [trees[3].id, root4.id])).rows[0];
+
+    const casualBranch = (await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'I''m looking for casual everyday wear', 'Perfect! Casual wear should be comfortable and stylish. What''s your style preference: minimalist, bohemian, streetwear, or classic?')
+      RETURNING *;
+    `, [trees[3].id, root4.id])).rows[0];
+
+    await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'It''s for a wedding', 'Weddings are perfect for elegant outfits! For a wedding, I''d suggest a beautiful midi dress or a sophisticated jumpsuit. What''s your color preference? Pastels, bold colors, or classic black?')
+    `, [trees[3].id, occasionBranch.id]);
+
+    await pool.query(`
+      INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+      VALUES ($1, $2, 'It''s for a date night', 'Date nights are all about confidence! I''d recommend something that makes you feel amazing. Are you thinking of a dress, a chic top with jeans, or something more formal?')
+    `, [trees[3].id, occasionBranch.id]);
+
+    console.log(`✅ Created 6 nodes for Style Consultation Flow\n`);
+
+    // Summary
     console.log('\n🎉 Database seeding completed successfully!');
     console.log('\n📊 Summary:');
-    console.log(`   • Customer Type: ${customerType.name}`);
-    console.log(`   • Website: ${website.name}`);
-    console.log(`   • Skin: ${skin.name}`);
-    console.log(`   • A/B Variation: ${variation.name}`);
-    console.log(`   • Dialog Tree: ${tree.name}`);
-    console.log(`   • Dialog Nodes: 5 nodes created`);
-    console.log(`   • Preprompt: Created`);
+    console.log(`   • Customer Types: ${customerTypes.length} (E-Commerce, SaaS, Healthcare, Education, Real Estate)`);
+    console.log(`   • Websites: ${websites.length} (TechStore Pro, FashionHub, CloudSync, TaskMaster, HealthCare Plus, LearnOnline Academy, PropertyFinder)`);
+    console.log(`   • Skins: ${skins.length} (Default Theme, Dark Mode, Fashion Theme, Professional Theme)`);
+    console.log(`   • A/B Variations: ${variations.length} (Control, Variant A, Variant B)`);
+    console.log(`   • Dialog Trees: ${trees.length} (Product Inquiry, Order Support, Technical Support, Style Consultation)`);
+    console.log(`   • Dialog Nodes: 24 total nodes created`);
+    console.log(`   • Preprompts: ${preprompts.length} created`);
+    console.log('\n✨ Your database is now ready for demo!');
+    console.log('\n💡 Quick Start:');
+    console.log('   • Test Product Inquiry: Tree ID 1');
+    console.log('   • Test Order Support: Tree ID 2');
+    console.log('   • Test Technical Support: Tree ID 3');
+    console.log('   • Test Style Consultation: Tree ID 4');
     
   } catch (error: any) {
     console.error('❌ Error seeding database:', error.message);
+    console.error(error);
     throw error;
   } finally {
     await pool.end();
@@ -157,4 +580,3 @@ Guidelines:
 }
 
 seedDatabase();
-
