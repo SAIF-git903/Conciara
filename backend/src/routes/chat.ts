@@ -6,7 +6,7 @@ const router = express.Router();
 // Process chat message
 router.post('/message', async (req, res) => {
   try {
-    const { tree_id, user_message, session_id } = req.body;
+    const { tree_id, user_message, session_id, user_id, use_memory } = req.body;
 
     if (!tree_id || typeof tree_id !== 'number') {
       return res.status(400).json({ error: 'tree_id is required and must be a number' });
@@ -16,7 +16,13 @@ router.post('/message', async (req, res) => {
       return res.status(400).json({ error: 'user_message is required and must be a string' });
     }
 
-    const response = await processChatMessage(tree_id, user_message, session_id || null);
+    const response = await processChatMessage(
+      tree_id, 
+      user_message, 
+      session_id || null,
+      user_id || null,
+      use_memory !== false // Default to true, can be disabled
+    );
     res.json(response);
   } catch (error: any) {
     console.error('Error processing chat message:', error);

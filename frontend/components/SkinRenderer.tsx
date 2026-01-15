@@ -20,6 +20,8 @@ interface SkinRendererProps {
   config: MergedSkinConfig
   apiUrl: string
   treeId: number | null
+  userId?: string | null  // New: User ID for memory system
+  useMemory?: boolean  // New: Enable memory (default: true)
   onMessage?: (message: string) => Promise<void>
   initialMessages?: Message[]
   sessionId?: string | null
@@ -29,6 +31,8 @@ export default function SkinRenderer({
   config,
   apiUrl,
   treeId,
+  userId,
+  useMemory = true,
   onMessage,
   initialMessages = [],
   sessionId: initialSessionId = null
@@ -90,7 +94,9 @@ export default function SkinRenderer({
         body: JSON.stringify({
           tree_id: treeId,
           user_message: '__START__',
-          session_id: null
+          session_id: null,
+          user_id: userId || null,
+          use_memory: useMemory
         })
       })
 
@@ -147,7 +153,9 @@ export default function SkinRenderer({
           body: JSON.stringify({
             tree_id: treeId,
             user_message: userMessage,
-            session_id: sessionId
+            session_id: sessionId,
+            user_id: userId || null,
+            use_memory: useMemory
           })
         })
 

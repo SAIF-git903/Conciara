@@ -22,6 +22,8 @@
     websiteId: null,
     domain: null,
     skinId: null,  // New: Direct skin selection
+    userId: null,  // New: User ID for memory system
+    useMemory: true,  // New: Enable memory (default: true)
     position: 'bottom-right',
     primaryColor: '#6366f1',
     backgroundColor: '#ffffff',
@@ -72,7 +74,7 @@
         try {
           const params = new URLSearchParams();
           params.append('skinId', this.rawConfig.skinId.toString());
-          
+
           const response = await fetch(`${this.rawConfig.apiUrl}/widget/config?${params.toString()}`);
           
           if (!response.ok) {
@@ -805,7 +807,9 @@
           body: JSON.stringify({
             tree_id: this.config.treeId,
             user_message: '__START__',
-            session_id: null
+            session_id: null,
+            user_id: this.config.userId || null,
+            use_memory: this.config.useMemory !== false
           })
         });
 
@@ -848,7 +852,9 @@
           body: JSON.stringify({
             tree_id: this.config.treeId,
             user_message: message,
-            session_id: this.sessionId
+            session_id: this.sessionId,
+            user_id: this.config.userId || null,
+            use_memory: this.config.useMemory !== false
           })
         });
 

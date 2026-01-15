@@ -1,6 +1,17 @@
 import { pool } from '../db/connection.js';
 import { getNodesByTreeId, getNodeById, DialogNode } from './dialogService.js';
 import { generateEmbedding } from './embeddingService.js';
+import {
+  getOrCreateUserProfile,
+  extractAndStoreUserInfo,
+  buildUserContext,
+  retrieveUserMemories,
+  getUserMemories
+} from './userMemoryService.js';
+import {
+  generateContextualResponse,
+  generateHybridResponse
+} from './llmService.js';
 
 // Check if vector extension is available (cached)
 let hasVectorExtension: boolean | null = null;
@@ -25,6 +36,7 @@ export interface ChatSession {
   session_id: string;
   tree_id: number;
   current_node_id: number | null;
+  user_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -44,7 +56,8 @@ export function generateSessionId(): string {
 // Get or create session
 export async function getOrCreateSession(
   sessionId: string | null,
-  treeId: number
+  treeId: number,
+  userId?: string | null
 ): Promise<ChatSession> {
   if (sessionId) {
     const result = await pool.query(
@@ -52,6 +65,14 @@ export async function getOrCreateSession(
       [sessionId]
     );
     if (result.rows.length > 0) {
+      // Update user_id if provided and not set
+      if (userId && !result.rows[0].user_id) {
+        await pool.query(
+          'UPDATE conversation_sessions SET user_id = $1 WHERE session_id = $2',
+          [userId, sessionId]
+        );
+        result.rows[0].user_id = userId;
+      }
       return result.rows[0];
     }
   }
@@ -59,9 +80,9 @@ export async function getOrCreateSession(
   // Create new session
   const newSessionId = sessionId || generateSessionId();
   const result = await pool.query(
-    `INSERT INTO conversation_sessions (session_id, tree_id, current_node_id)
-     VALUES ($1, $2, NULL) RETURNING *`,
-    [newSessionId, treeId]
+    `INSERT INTO conversation_sessions (session_id, tree_id, current_node_id, user_id)
+     VALUES ($1, $2, NULL, $3) RETURNING *`,
+    [newSessionId, treeId, userId || null]
   );
   return result.rows[0];
 }
@@ -515,14 +536,21 @@ async function findMatchingNode(
   return null;
 }
 
-// Process chat message
+// Process chat message with user memory support
 export async function processChatMessage(
   treeId: number,
   userMessage: string,
-  sessionId: string | null
+  sessionId: string | null,
+  userId?: string | null,
+  useMemory: boolean = true // Enable memory by default
 ): Promise<ChatMessage> {
-  // Get or create session
-  const session = await getOrCreateSession(sessionId, treeId);
+  // Get or create session with user_id
+  const session = await getOrCreateSession(sessionId, treeId, userId);
+  
+  // Get or create user profile if userId provided
+  if (userId && useMemory) {
+    await getOrCreateUserProfile(userId);
+  }
 
   // Get all nodes for this tree
   const allNodes = await getNodesByTreeId(treeId);
@@ -530,14 +558,28 @@ export async function processChatMessage(
   // Handle initial start message
   if (userMessage === '__START__' || userMessage.trim() === '') {
     const rootNode = getRootNode(allNodes);
-    if (rootNode && rootNode.bot_response) {
+    let greeting = rootNode?.bot_response || "Hello! I'm ready to help you.";
+    
+    // Personalize greeting if user has memory
+    if (userId && useMemory) {
+      const userContext = await buildUserContext(userId);
+      if (userContext) {
+        greeting = await generateHybridResponse(
+          userMessage,
+          userContext,
+          greeting
+        );
+      }
+    }
+    
+    if (rootNode) {
       await updateSessionNode(session.session_id, rootNode.id);
       await logConversation(
         session.session_id,
         treeId,
         rootNode.id,
         null,
-        rootNode.bot_response
+        greeting
       );
 
       const childNodes = allNodes.filter(node => node.parent_id === rootNode.id);
@@ -547,18 +589,23 @@ export async function processChatMessage(
         .map(node => node.user_input!);
 
       return {
-        bot_response: rootNode.bot_response,
+        bot_response: greeting,
         next_node_id: rootNode.id,
         session_id: session.session_id,
         options: options.length > 0 ? options : undefined,
       };
     } else {
       return {
-        bot_response: "Hello! I'm ready to help you.",
+        bot_response: greeting,
         next_node_id: null,
         session_id: session.session_id,
       };
     }
+  }
+
+  // Extract and store user information from message
+  if (userId && useMemory) {
+    await extractAndStoreUserInfo(userId, userMessage);
   }
 
   // Get current node (or null if starting)
@@ -566,45 +613,100 @@ export async function processChatMessage(
     ? await getNodeById(session.current_node_id)
     : null;
 
-  // Find matching next node
+  // Find matching next node (for dialog tree fallback)
   const nextNode = await findMatchingNode(userMessage, currentNode, allNodes);
 
-  if (!nextNode) {
-    // No matching node found
-    const fallbackResponse = "I'm not sure how to help with that. Could you rephrase your question?";
-    await logConversation(session.session_id, treeId, null, userMessage, fallbackResponse);
+  // Build user context for personalized response
+  let userContext = '';
+  if (userId && useMemory) {
+    userContext = await buildUserContext(userId);
     
-    return {
-      bot_response: fallbackResponse,
-      next_node_id: session.current_node_id, // Stay on current node
-      session_id: session.session_id,
-    };
+    // Also retrieve relevant memories for this specific query
+    const relevantMemories = await retrieveUserMemories(userId, userMessage, undefined, 3);
+    if (relevantMemories.length > 0) {
+      const memoryContext = relevantMemories.map(m => m.content).join('. ');
+      userContext = userContext ? `${userContext}\n\nRelevant Context: ${memoryContext}` : `Relevant Context: ${memoryContext}`;
+    }
   }
 
-  // Update session to current node
-  await updateSessionNode(session.session_id, nextNode.id);
+  let botResponse: string;
+  let finalNodeId: number | null = null;
+
+  // If user has context and we want memory-driven responses, use LLM
+  if (userId && useMemory && userContext) {
+    // Generate context-aware response using LLM
+    const dialogTreeResponse = nextNode?.bot_response || null;
+    
+    if (dialogTreeResponse) {
+      // Hybrid: combine dialog tree with user memory
+      botResponse = await generateHybridResponse(
+        userMessage,
+        userContext,
+        dialogTreeResponse
+      );
+      finalNodeId = nextNode?.id || null;
+    } else {
+      // Pure memory-driven response
+      botResponse = await generateContextualResponse(
+        userMessage,
+        userContext
+      );
+      // Don't update node if using pure memory response
+      finalNodeId = session.current_node_id;
+    }
+  } else if (nextNode) {
+    // Fallback to dialog tree if no memory or memory disabled
+    botResponse = nextNode.bot_response || "I'm here to help!";
+    finalNodeId = nextNode.id;
+  } else {
+    // No match found
+    if (userId && useMemory && userContext) {
+      // Try to generate response from memory even without dialog match
+      botResponse = await generateContextualResponse(
+        userMessage,
+        userContext
+      );
+      finalNodeId = session.current_node_id;
+    } else {
+      botResponse = "I'm not sure how to help with that. Could you rephrase your question?";
+      finalNodeId = session.current_node_id;
+    }
+  }
+
+  // Update session to current node if we matched a dialog node
+  if (finalNodeId && nextNode && finalNodeId === nextNode.id) {
+    await updateSessionNode(session.session_id, finalNodeId);
+  }
+
+  // Store the bot response in user memory for context
+  if (userId && useMemory) {
+    await extractAndStoreUserInfo(userId, userMessage, botResponse);
+  }
 
   // Log conversation
   await logConversation(
     session.session_id,
     treeId,
-    nextNode.id,
+    finalNodeId,
     userMessage,
-    nextNode.bot_response || ''
+    botResponse
   );
 
-  // Get child nodes for quick reply options
-  const childNodes = allNodes.filter(node => node.parent_id === nextNode.id);
-  const options = childNodes
-    .filter(node => node.user_input)
-    .slice(0, 3) // Limit to 3 options
-    .map(node => node.user_input!);
+  // Get child nodes for quick reply options (if using dialog tree)
+  let options: string[] | undefined;
+  if (finalNodeId && nextNode) {
+    const childNodes = allNodes.filter(node => node.parent_id === finalNodeId);
+    options = childNodes
+      .filter(node => node.user_input)
+      .slice(0, 3)
+      .map(node => node.user_input!);
+  }
 
   return {
-    bot_response: nextNode.bot_response || "I'm here to help!",
-    next_node_id: nextNode.id,
+    bot_response: botResponse,
+    next_node_id: finalNodeId,
     session_id: session.session_id,
-    options: options.length > 0 ? options : undefined,
+    options: options && options.length > 0 ? options : undefined,
   };
 }
 
