@@ -31,6 +31,7 @@ export interface Website {
   customer_type_id: number;
   name: string;
   description: string | null;
+  domain: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -200,12 +201,12 @@ export const websiteApi = {
     const response = await api.get(`/website/${id}`);
     return response.data;
   },
-  create: async (customerTypeId: number, name: string, description?: string): Promise<Website> => {
-    const response = await api.post('/website', { customer_type_id: customerTypeId, name, description });
+  create: async (customerTypeId: number, name: string, description?: string, domain?: string): Promise<Website> => {
+    const response = await api.post('/website', { customer_type_id: customerTypeId, name, description, domain });
     return response.data;
   },
-  update: async (id: number, name: string, description?: string): Promise<Website> => {
-    const response = await api.put(`/website/${id}`, { name, description });
+  update: async (id: number, name: string, description?: string, domain?: string): Promise<Website> => {
+    const response = await api.put(`/website/${id}`, { name, description, domain });
     return response.data;
   },
   delete: async (id: number): Promise<void> => {
