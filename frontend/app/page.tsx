@@ -3,10 +3,11 @@
 import { useState } from 'react'
 import DialogTreeManager from '@/components/DialogTreeManager'
 import MultiTenantNavigator from '@/components/MultiTenantNavigator'
-import { DialogTree } from '@/lib/api'
+import { DialogTree, Website } from '@/lib/api'
 
 export default function Home() {
   const [selectedTree, setSelectedTree] = useState<DialogTree | null>(null)
+  const [selectedWebsite, setSelectedWebsite] = useState<Website | null>(null)
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex">
@@ -15,13 +16,14 @@ export default function Home() {
         <MultiTenantNavigator 
           onSelectTree={setSelectedTree}
           selectedTreeId={selectedTree?.id || null}
+          onWebsiteChange={setSelectedWebsite}
         />
       </div>
 
       {/* Main Content Area */}
       <div className="flex-1">
         {selectedTree ? (
-          <DialogTreeManager initialTree={selectedTree} />
+          <DialogTreeManager initialTree={selectedTree} website={selectedWebsite} />
         ) : (
           <div className="h-full flex items-center justify-center">
             <div className="text-center max-w-md mx-auto p-8">
@@ -51,4 +53,3 @@ export default function Home() {
     </main>
   )
 }
-
