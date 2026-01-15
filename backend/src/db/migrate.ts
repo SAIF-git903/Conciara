@@ -164,6 +164,42 @@ export async function migrate() {
       );
     `);
 
+    // Create user_profiles table for storing user information
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_profiles (
+        id SERIAL PRIMARY KEY,
+        user_id VARCHAR(255) NOT NULL UNIQUE,
+        name VARCHAR(255),
+        email VARCHAR(255),
+        metadata JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // Create user_memory table for storing user context/knowledge with vector embeddings
+    const userMemoryVectorType = hasVector ? 'VECTOR(1536)' : 'TEXT';
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_memory (
+        id SERIAL PRIMARY KEY,
+        user_id VARCHAR(255) NOT NULL,
+        memory_type VARCHAR(50) NOT NULL,
+        content TEXT NOT NULL,
+        metadata JSONB DEFAULT '{}'::jsonb,
+        vector_embedding ${userMemoryVectorType},
+        relevance_score FLOAT DEFAULT 1.0,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        CONSTRAINT memory_type_check CHECK (memory_type IN ('profile', 'preference', 'constraint', 'conversation', 'fact', 'knowledge'))
+      );
+    `);
+
+    // Add user_id to conversation_sessions
+    await pool.query(`
+      ALTER TABLE conversation_sessions 
+      ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);
+    `);
+
     // Create indexes for better performance
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_dialog_nodes_tree_id ON dialog_nodes(tree_id);
@@ -177,6 +213,11 @@ export async function migrate() {
       CREATE INDEX IF NOT EXISTS idx_conversation_sessions_tree_id ON conversation_sessions(tree_id);
       CREATE INDEX IF NOT EXISTS idx_conversation_history_session_id ON conversation_history(session_id);
       CREATE INDEX IF NOT EXISTS idx_conversation_history_tree_id ON conversation_history(tree_id);
+      CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON user_profiles(user_id);
+      CREATE INDEX IF NOT EXISTS idx_user_memory_user_id ON user_memory(user_id);
+      CREATE INDEX IF NOT EXISTS idx_user_memory_type ON user_memory(memory_type);
+      CREATE INDEX IF NOT EXISTS idx_user_memory_user_type ON user_memory(user_id, memory_type);
+      CREATE INDEX IF NOT EXISTS idx_conversation_sessions_user_id ON conversation_sessions(user_id);
     `);
 
     console.log('Migration completed successfully');

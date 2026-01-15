@@ -12,7 +12,9 @@
     "setup-db": "tsx src/db/setup.ts",
     "update-vector": "tsx src/db/updateVectorColumn.ts",
     "seed": "tsx src/db/seed.ts",
-    "regenerate-embeddings": "tsx src/regenerateEmbeddings.ts"
+    "regenerate-embeddings": "tsx src/regenerateEmbeddings.ts",
+    "create-test-tree": "tsx src/db/createTestTree.ts",
+    "list-trees": "tsx src/db/listTrees.ts"
   },
   "keywords": ["dialog", "tree", "api"],
   "author": "",

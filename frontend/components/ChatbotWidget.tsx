@@ -10,6 +10,8 @@ interface ChatbotWidgetProps {
   websiteId?: number
   domain?: string
   skinId?: number  // New: Direct skin selection
+  userId?: string  // New: User ID for memory system
+  useMemory?: boolean  // New: Enable memory (default: true)
   position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
   theme?: {
     primaryColor?: string
@@ -27,6 +29,8 @@ export default function ChatbotWidget({
   websiteId,
   domain,
   skinId,
+  userId,
+  useMemory = true,
   position = 'bottom-right',
   theme = {},
   skinConfig: propSkinConfig
@@ -209,6 +213,8 @@ export default function ChatbotWidget({
       config={skinConfig}
       apiUrl={apiUrl}
       treeId={resolvedTreeId}
+      userId={userId}
+      useMemory={useMemory}
     />
   )
 }
