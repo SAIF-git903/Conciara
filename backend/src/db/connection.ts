@@ -8,6 +8,7 @@ const { Pool } = pg;
 // Build connection string from DATABASE_URL or individual DB_* variables
 function getConnectionString(): string {
   // If DATABASE_URL is set, use it directly
+  console.log('DATABASE_URL is set', process.env.DATABASE_URL);
   if (process.env.DATABASE_URL) {
     return process.env.DATABASE_URL;
   }
