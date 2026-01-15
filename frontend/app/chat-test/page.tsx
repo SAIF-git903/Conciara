@@ -88,7 +88,7 @@ export default function ChatTestPage() {
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <h3 className="font-semibold text-yellow-900 mb-2">Testing Tips:</h3>
               <ul className="list-disc list-inside space-y-1 text-sm text-yellow-800">
-                <li>Try exact matches: Use the exact text from "User Input" fields</li>
+                <li>Try exact matches: Use the exact text from &quot;User Input&quot; fields</li>
                 <li>Try partial matches: Use similar words or phrases</li>
                 <li>Try keywords: Use key words from the user input</li>
                 <li>Try unrelated text: See how the bot handles unmatched input</li>
