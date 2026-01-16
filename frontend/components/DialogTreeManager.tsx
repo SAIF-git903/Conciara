@@ -199,8 +199,10 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
     }
   }
 
-  const handleNodeCreate = async (parentId: number | null, userInput: string, botResponse: string) => {
-    if (!selectedTree) return
+  const handleNodeCreate = async (parentId: number | null, userInput: string, botResponse: string): Promise<DialogNode> => {
+    if (!selectedTree) {
+      throw new Error('No tree selected')
+    }
 
     try {
       const newNode = await dialogNodeApi.create(
@@ -211,22 +213,26 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
       )
       setNodes([...nodes, newNode])
       showToast('Node created successfully!', 'success')
+      return newNode
     } catch (err: any) {
       const errorMsg = err.message || 'Failed to create node'
       setError(errorMsg)
       showToast(errorMsg, 'error')
+      throw err
     }
   }
 
-  const handleNodeUpdate = async (id: number, userInput: string, botResponse: string) => {
+  const handleNodeUpdate = async (id: number, userInput: string, botResponse: string): Promise<DialogNode> => {
     try {
       const updated = await dialogNodeApi.update(id, userInput, botResponse)
       setNodes(nodes.map(n => n.id === id ? updated : n))
       showToast('Node updated successfully!', 'success')
+      return updated
     } catch (err: any) {
       const errorMsg = err.message || 'Failed to update node'
       setError(errorMsg)
       showToast(errorMsg, 'error')
+      throw err
     }
   }
 
@@ -552,15 +558,7 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
                   selectedNodeId={selectedNodeId}
                   onNodeClick={(node) => {
                     setSelectedNodeId(node.id)
-                    setActiveTab('editor')
-                    const nodeElement = document.getElementById(`node-${node.id}`)
-                    if (nodeElement) {
-                      nodeElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                      nodeElement.classList.add('ring-4', 'ring-primary-300')
-                      setTimeout(() => {
-                        nodeElement.classList.remove('ring-4', 'ring-primary-300')
-                      }, 2000)
-                    }
+                    // Don't switch tabs - show details in tree view
                   }}
                   onNodeEdit={(node) => {
                     setSelectedNodeId(node.id)
@@ -568,13 +566,27 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
                     const event = new CustomEvent('editNode', { detail: { nodeId: node.id } })
                     window.dispatchEvent(event)
                   }}
-                  onNodeDelete={handleNodeDelete}
-                  onNodeAddChild={(parentId) => {
-                    setSelectedNodeId(null)
-                    setActiveTab('editor')
-                    const event = new CustomEvent('addChildNode', { detail: { parentId } })
-                    window.dispatchEvent(event)
+                  onNodeDelete={async (nodeId: number) => {
+                    try {
+                      await dialogNodeApi.delete(nodeId)
+                      setNodes(nodes.filter(n => n.id !== nodeId))
+                      showToast('Node deleted successfully', 'success')
+                    } catch (err: any) {
+                      const errorMsg = err.message || 'Failed to delete node'
+                      setError(errorMsg)
+                      showToast(errorMsg, 'error')
+                      throw err
+                    }
                   }}
+                  onNodeAddChild={(parentId) => {
+                    // Handled inline in TreeVisualization now
+                  }}
+                  onNodeAddRoot={() => {
+                    // Handled inline in TreeVisualization now
+                  }}
+                  onNodeCreate={handleNodeCreate}
+                  onNodeUpdate={handleNodeUpdate}
+                  onNodesUpdate={setNodes}
                 />
               </div>
             )
