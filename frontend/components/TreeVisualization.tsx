@@ -25,7 +25,8 @@ interface TreeNode {
   attributes?: {
     userInput?: string
     botResponse?: string
-    nodeId?: number
+    nodeId?: number,
+    isEditingExisting?: boolean | null
   }
   children?: TreeNode[]
 }
@@ -60,10 +61,10 @@ export default function TreeVisualization({
     return map
   }, [nodes])
 
-  const treeData = useMemo(() => {
+  const treeData : any = useMemo(() => {
     const buildTree = (parentId: number | null): TreeNode[] => {
       const children = nodes.filter(n => n.parent_id === parentId)
-      const result: TreeNode[] = []
+      const result : any[] = []
       
       // Add actual nodes
       children.forEach(node => {
@@ -340,7 +341,7 @@ export default function TreeVisualization({
               separation={{ siblings: 1.5, nonSiblings: 1.5 }}
               zoom={zoom}
               scaleExtent={{ min: 0.5, max: 2 }}
-              onNodeClick={(nodeData) => {
+              onNodeClick={(nodeData: any) => {
                 // Don't open details panel for editing nodes
                 const nodeId = (nodeData.attributes as any)?.nodeId
                 if (nodeId && nodeId > 0) {
