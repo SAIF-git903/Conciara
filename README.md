@@ -1,11 +1,11 @@
-# Dialog Tree Manager
+# ConversaTree
 
-A full-stack application for creating, editing, and managing dialog trees with vector embeddings. Built with Node.js/Express backend and Next.js/React frontend.
+A full-stack conversational AI chatbot platform with user memory, semantic matching, and data-driven theming. Built with Node.js/Express backend and Next.js/React frontend.
 
 ## Project Structure
 
 ```
-wine_v2/
+ConversaTree/
 ├── backend/          # Node.js/Express API server
 │   ├── src/
 │   │   ├── db/      # Database connection and migrations
@@ -18,17 +18,26 @@ wine_v2/
     ├── app/         # Next.js app directory
     ├── components/  # React components
     ├── lib/         # API client and utilities
+    ├── public/      # Static assets (widget.js)
     └── package.json
 ```
 
 ## Features
 
-- **Dialog Tree Management**: Create, edit, and delete dialog trees
-- **Preprompt Editor**: Manage system prompts for each tree
-- **Hierarchical Nodes**: Create parent-child relationships between dialog nodes
+### Core Features
+- **Dialog Tree Management**: Create, edit, and delete hierarchical dialog trees
+- **Preprompt Editor**: Manage system prompts for LLM-powered responses
 - **Vector Embeddings**: Automatic embedding generation using OpenAI
+- **Semantic Matching**: Intelligent node matching using pgvector similarity search
 - **Tree Visualization**: Interactive tree view with react-d3-tree
-- **Modern UI**: Beautiful, responsive design with Tailwind CSS
+
+### Advanced Features
+- **User Memory System**: Remember user context, preferences, and conversation history
+- **LLM-Powered Responses**: Generate concise, personalized responses using OpenAI
+- **Standalone Chatbot Widget**: Embeddable JavaScript widget (no iframe needed)
+- **Data-Driven Theming**: Dynamic UI configuration via database (skins)
+- **A/B Variation Testing**: Test different conversation flows and UI designs
+- **Multi-Tenant Support**: Website-based configuration and isolation
 
 ## Quick Start
 
@@ -36,7 +45,7 @@ wine_v2/
 
 - Node.js 18+ and npm
 - PostgreSQL 12+ with pgvector extension
-- OpenAI API key (for embeddings)
+- OpenAI API key (for embeddings and LLM)
 
 ### Backend Setup
 
@@ -58,7 +67,7 @@ cp .env.example .env
 4. Update `.env` with your configuration:
 ```
 PORT=3001
-DATABASE_URL=postgresql://user:password@localhost:5432/dialog_trees
+DATABASE_URL=postgresql://user:password@localhost:5432/conversatree
 OPENAI_API_KEY=your_openai_api_key_here
 NODE_ENV=development
 ```
@@ -68,7 +77,12 @@ NODE_ENV=development
 npm run migrate
 ```
 
-6. Start the development server:
+6. (Optional) Seed the database with sample data:
+```bash
+npm run seed
+```
+
+7. Start the development server:
 ```bash
 npm run dev
 ```
@@ -99,31 +113,75 @@ npm run dev
 
 The application will be available at `http://localhost:3000`
 
+## Widget Integration
+
+### Basic Usage
+
+```html
+<script src="http://localhost:3000/widget.js"></script>
+<script>
+  ConversaTree.init({
+    apiUrl: 'http://localhost:3001/api',
+    treeId: 1,  // Your dialog tree ID
+    userId: 'user-123',  // Optional: for user memory
+    useMemory: true  // Optional: enable memory system
+  });
+</script>
+```
+
+### Domain-Based Auto-Configuration
+
+```html
+<script src="http://localhost:3000/widget.js"></script>
+<script>
+  ConversaTree.init({
+    apiUrl: 'http://localhost:3001/api',
+    domain: 'yourwebsite.com'  // Auto-detects website, skin, and tree
+  });
+</script>
+```
+
+For complete widget documentation, see [FINAL_WIDGET_USAGE.md](./FINAL_WIDGET_USAGE.md)
+
 ## Database Schema
 
-### dialog_trees
-- `id` (SERIAL PRIMARY KEY)
-- `name` (VARCHAR)
-- `description` (TEXT)
-- `created_at` (TIMESTAMP)
-- `updated_at` (TIMESTAMP)
+### Core Tables
 
-### dialog_nodes
-- `id` (SERIAL PRIMARY KEY)
-- `tree_id` (INT, FK to dialog_trees)
-- `parent_id` (INT, FK to dialog_nodes, nullable)
-- `user_input` (TEXT, nullable)
-- `bot_response` (TEXT, nullable)
-- `vector_embedding` (VECTOR(1536))
-- `created_at` (TIMESTAMP)
-- `updated_at` (TIMESTAMP)
+**dialog_trees**
+- `id`, `name`, `description`, `website_id`, `ab_variation_id`, `created_at`, `updated_at`
 
-### preprompts
-- `id` (SERIAL PRIMARY KEY)
-- `tree_id` (INT, FK to dialog_trees)
-- `content` (TEXT)
-- `created_at` (TIMESTAMP)
-- `updated_at` (TIMESTAMP)
+**dialog_nodes**
+- `id`, `tree_id`, `parent_id`, `user_input`, `bot_response`, `vector_embedding`, `created_at`, `updated_at`
+
+**preprompts**
+- `id`, `tree_id`, `content`, `created_at`, `updated_at`
+
+### User Memory Tables
+
+**user_profiles**
+- `id`, `user_id`, `name`, `email`, `metadata`, `created_at`, `updated_at`
+
+**user_memory**
+- `id`, `user_id`, `memory_type`, `content`, `metadata`, `vector_embedding`, `relevance_score`, `created_at`, `updated_at`
+
+### Theming Tables
+
+**websites**
+- `id`, `name`, `domain`, `created_at`, `updated_at`
+
+**skins**
+- `id`, `website_id`, `name`, `description`, `theme_config`, `is_active`, `created_at`, `updated_at`
+
+**ab_variations**
+- `id`, `skin_id`, `name`, `description`, `variation_config`, `is_active`, `created_at`, `updated_at`
+
+### Session Tables
+
+**conversation_sessions**
+- `id`, `session_id`, `tree_id`, `current_node_id`, `user_id`, `created_at`, `updated_at`
+
+**conversation_history**
+- `id`, `session_id`, `tree_id`, `node_id`, `user_message`, `bot_response`, `created_at`
 
 ## API Endpoints
 
@@ -141,34 +199,74 @@ The application will be available at `http://localhost:3000`
 - `PUT /api/dialog-node/:id` - Update node
 - `DELETE /api/dialog-node/:id` - Delete node
 
+### Chat
+- `POST /api/chat/message` - Process chat message
+
+### Widget Configuration
+- `GET /api/widget/config` - Get widget configuration (auto-detects by domain)
+
 ### Preprompts
 - `GET /api/preprompt/tree/:treeId` - Get preprompt for a tree
 - `POST /api/preprompt` - Create or update preprompt
 - `DELETE /api/preprompt/:id` - Delete preprompt
 
+### Skins & Variations
+- `GET /api/skin` - Get all skins
+- `GET /api/skin/:id` - Get skin by ID
+- `POST /api/skin` - Create skin
+- `PUT /api/skin/:id` - Update skin
+- `DELETE /api/skin/:id` - Delete skin
+- `GET /api/ab-variation` - Get variations
+- `POST /api/ab-variation` - Create variation
+
 ## Tech Stack
 
 ### Backend
-- Node.js
-- Express
-- TypeScript
-- PostgreSQL with pgvector
-- OpenAI API (for embeddings)
+- **Runtime**: Node.js
+- **Framework**: Express
+- **Language**: TypeScript
+- **Database**: PostgreSQL with pgvector extension
+- **AI/ML**: OpenAI API (for embeddings and LLM)
+- **Vector Search**: pgvector for semantic similarity
 
 ### Frontend
-- Next.js 14
-- React 18
-- TypeScript
-- Tailwind CSS
-- Axios
-- react-d3-tree
-- Lucide React
+- **Framework**: Next.js 14
+- **UI Library**: React 18
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS
+- **HTTP Client**: Axios
+- **Visualization**: react-d3-tree
+- **Icons**: Lucide React
+
+## Key Documentation
+
+- [FINAL_WIDGET_USAGE.md](./FINAL_WIDGET_USAGE.md) - Complete widget integration guide
+- [CLIENT_INTEGRATION_GUIDE.md](./CLIENT_INTEGRATION_GUIDE.md) - Client integration instructions
+- [CLIENT_EXPLANATION_MEMORY_FEATURE.md](./CLIENT_EXPLANATION_MEMORY_FEATURE.md) - User memory feature explanation
+- [USER_MEMORY_SYSTEM.md](./USER_MEMORY_SYSTEM.md) - Technical documentation for user memory
+- [DATABASE_CONNECTION_GUIDE.md](./DATABASE_CONNECTION_GUIDE.md) - Database setup and connection guide
 
 ## Development
 
 Both backend and frontend support hot-reload during development. Make sure both servers are running simultaneously for full functionality.
 
+### Useful Commands
+
+**Backend:**
+```bash
+npm run migrate      # Run database migrations
+npm run seed         # Seed database with sample data
+npm run regenerate-embeddings  # Regenerate embeddings for all nodes
+npm run list-trees   # List all dialog trees
+```
+
+**Frontend:**
+```bash
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run start        # Start production server
+```
+
 ## License
 
 ISC
-

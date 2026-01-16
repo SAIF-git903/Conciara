@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Save, Trash2, Edit2, X, MessageSquare, Sparkles, Layers, Zap, Menu, ChevronRight, Settings } from 'lucide-react'
-import { dialogTreeApi, dialogNodeApi, prepromptApi, DialogTree, DialogNode, Preprompt } from '@/lib/api'
+import { Plus, Save, Trash2, Edit2, X, MessageSquare, Sparkles, Layers, Zap, Menu, ChevronRight, Settings, Code, Copy, Check } from 'lucide-react'
+import { dialogTreeApi, dialogNodeApi, prepromptApi, DialogTree, DialogNode, Preprompt, Website } from '@/lib/api'
 import TreeSelector from './TreeSelector'
 import PrepromptEditor from './PrepromptEditor'
 import NodeEditor from './NodeEditor'
@@ -13,9 +13,10 @@ import LoadingSpinner from './LoadingSpinner'
 
 interface DialogTreeManagerProps {
   initialTree?: DialogTree | null
+  website?: Website | null
 }
 
-export default function DialogTreeManager({ initialTree }: DialogTreeManagerProps = {}) {
+export default function DialogTreeManager({ initialTree, website }: DialogTreeManagerProps = {}) {
   const [trees, setTrees] = useState<DialogTree[]>([])
   const [selectedTree, setSelectedTree] = useState<DialogTree | null>(initialTree || null)
   const [preprompt, setPreprompt] = useState<Preprompt | null>(null)
@@ -38,6 +39,61 @@ export default function DialogTreeManager({ initialTree }: DialogTreeManagerProp
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'editor' | 'visualization'>('editor')
+  const [showEmbedCode, setShowEmbedCode] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const generateEmbedScript = () => {
+    if (!website) return ''
+    
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
+    const widgetUrl = typeof window !== 'undefined' ? `${window.location.origin}/widget.js` : 'http://localhost:3000/widget.js'
+    
+    // Build config object
+    const configParts: string[] = [
+      `apiUrl: '${apiUrl}'`
+    ]
+    
+    // Add tree-id if available (highest priority)
+    if (selectedTree?.id) {
+      configParts.push(`treeId: ${selectedTree.id}`)
+    }
+    
+    // Add website-id if no tree-id
+    if (!selectedTree?.id && website.id) {
+      configParts.push(`websiteId: ${website.id}`)
+    }
+    
+    // Add domain if available
+    if (website.domain) {
+      configParts.push(`domain: '${website.domain}'`)
+    }
+    
+    // Add skin-id if available (from website's active skin)
+    // Note: This would need to be fetched if you want to include it
+    
+    // Add theming options (if you want to show examples)
+    // These are optional, so we'll leave them out for now
+    
+    return `<!-- ConversaTree Intelligent Chatbot Widget -->
+<!-- Memory-enabled: Remembers user preferences across sessions -->
+<script src="${widgetUrl}"></script>
+<script>
+  ConversaTree.init({
+    ${configParts.join(',\n    ')}
+  });
+</script>`
+  }
+
+  const copyToClipboard = async () => {
+    const script = generateEmbedScript()
+    try {
+      await navigator.clipboard.writeText(script)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
 
   useEffect(() => {
     if (initialTree) {
@@ -143,8 +199,10 @@ export default function DialogTreeManager({ initialTree }: DialogTreeManagerProp
     }
   }
 
-  const handleNodeCreate = async (parentId: number | null, userInput: string, botResponse: string) => {
-    if (!selectedTree) return
+  const handleNodeCreate = async (parentId: number | null, userInput: string, botResponse: string): Promise<DialogNode> => {
+    if (!selectedTree) {
+      throw new Error('No tree selected')
+    }
 
     try {
       const newNode = await dialogNodeApi.create(
@@ -155,22 +213,26 @@ export default function DialogTreeManager({ initialTree }: DialogTreeManagerProp
       )
       setNodes([...nodes, newNode])
       showToast('Node created successfully!', 'success')
+      return newNode
     } catch (err: any) {
       const errorMsg = err.message || 'Failed to create node'
       setError(errorMsg)
       showToast(errorMsg, 'error')
+      throw err
     }
   }
 
-  const handleNodeUpdate = async (id: number, userInput: string, botResponse: string) => {
+  const handleNodeUpdate = async (id: number, userInput: string, botResponse: string): Promise<DialogNode> => {
     try {
       const updated = await dialogNodeApi.update(id, userInput, botResponse)
       setNodes(nodes.map(n => n.id === id ? updated : n))
       showToast('Node updated successfully!', 'success')
+      return updated
     } catch (err: any) {
       const errorMsg = err.message || 'Failed to update node'
       setError(errorMsg)
       showToast(errorMsg, 'error')
+      throw err
     }
   }
 
@@ -299,30 +361,150 @@ export default function DialogTreeManager({ initialTree }: DialogTreeManagerProp
           </div>
 
           {selectedTree && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setActiveTab('editor')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                  activeTab === 'editor'
-                    ? 'bg-primary-100 text-primary-700'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                Editor
-              </button>
-              <button
-                onClick={() => setActiveTab('visualization')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                  activeTab === 'visualization'
-                    ? 'bg-primary-100 text-primary-700'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                Tree View
-              </button>
+            <div className="flex items-center gap-3">
+              {/* View Tabs */}
+              <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
+                <button
+                  onClick={() => setActiveTab('editor')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                    activeTab === 'editor'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Editor
+                </button>
+                <button
+                  onClick={() => setActiveTab('visualization')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                    activeTab === 'visualization'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Tree View
+                </button>
+              </div>
+
+              {/* Divider */}
+              <div className="h-6 w-px bg-gray-200" />
+
+              {/* Embed Code Button - Material Style */}
+              {website && (
+                <button
+                  onClick={() => setShowEmbedCode(!showEmbedCode)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                    showEmbedCode
+                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                      : 'bg-blue-500 text-white hover:bg-blue-600 hover:shadow-md shadow-sm'
+                  }`}
+                >
+                  <Code className="w-4 h-4" />
+                  <span>{showEmbedCode ? 'Hide code' : 'Get embed code'}</span>
+                </button>
+              )}
             </div>
           )}
         </div>
+
+        {/* Embed Code Panel - Material Design */}
+        {showEmbedCode && website && (
+          <div className="bg-white border-b border-gray-200 shadow-md animate-slide-down overflow-hidden">
+            <div className="px-6 py-4">
+              {/* Material Card */}
+              <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+                {/* Card Header */}
+                <div className="bg-white px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 bg-blue-500 rounded-full flex items-center justify-center">
+                      <Code className="w-4 h-4 text-white" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-medium text-gray-900 text-sm">Installation</h3>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium">
+                          <Sparkles className="w-3 h-3" />
+                          Memory Enabled
+                        </span>
+                      </div>
+                      <p className="text-gray-500 text-xs">
+                        Add this snippet before closing <code className="text-blue-600 font-mono">&lt;/body&gt;</code> tag
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={copyToClipboard}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                        copied 
+                          ? 'bg-green-500 text-white' 
+                          : 'bg-blue-500 text-white hover:bg-blue-600 shadow-sm hover:shadow-md'
+                      }`}
+                    >
+                      {copied ? (
+                        <>
+                          <Check className="w-4 h-4" />
+                          <span>Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4" />
+                          <span>Copy code</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setShowEmbedCode(false)}
+                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Code Block */}
+                <div className="bg-gray-900 p-4">
+                  <pre className="text-gray-100 text-sm overflow-x-auto font-mono leading-relaxed whitespace-pre-wrap">
+                    <code>{generateEmbedScript()}</code>
+                  </pre>
+                </div>
+
+                {/* Card Footer */}
+                <div className="bg-white px-4 py-3 border-t border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4 text-xs text-gray-500">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+                        {website.name}
+                      </span>
+                      {website.domain && (
+                        <span className="flex items-center gap-1.5 text-gray-400">
+                          <span className="w-1.5 h-1.5 bg-blue-400 rounded-full" />
+                          {website.domain}
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1.5 text-emerald-600">
+                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                        Auto-persisted user memory
+                      </span>
+                    </div>
+                    {!website.domain && (
+                      <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
+                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        <span>Add domain for auto-detection</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Error Message */}
         {error && (
@@ -376,15 +558,7 @@ export default function DialogTreeManager({ initialTree }: DialogTreeManagerProp
                   selectedNodeId={selectedNodeId}
                   onNodeClick={(node) => {
                     setSelectedNodeId(node.id)
-                    setActiveTab('editor')
-                    const nodeElement = document.getElementById(`node-${node.id}`)
-                    if (nodeElement) {
-                      nodeElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                      nodeElement.classList.add('ring-4', 'ring-primary-300')
-                      setTimeout(() => {
-                        nodeElement.classList.remove('ring-4', 'ring-primary-300')
-                      }, 2000)
-                    }
+                    // Don't switch tabs - show details in tree view
                   }}
                   onNodeEdit={(node) => {
                     setSelectedNodeId(node.id)
@@ -392,13 +566,27 @@ export default function DialogTreeManager({ initialTree }: DialogTreeManagerProp
                     const event = new CustomEvent('editNode', { detail: { nodeId: node.id } })
                     window.dispatchEvent(event)
                   }}
-                  onNodeDelete={handleNodeDelete}
-                  onNodeAddChild={(parentId) => {
-                    setSelectedNodeId(null)
-                    setActiveTab('editor')
-                    const event = new CustomEvent('addChildNode', { detail: { parentId } })
-                    window.dispatchEvent(event)
+                  onNodeDelete={async (nodeId: number) => {
+                    try {
+                      await dialogNodeApi.delete(nodeId)
+                      setNodes(nodes.filter(n => n.id !== nodeId))
+                      showToast('Node deleted successfully', 'success')
+                    } catch (err: any) {
+                      const errorMsg = err.message || 'Failed to delete node'
+                      setError(errorMsg)
+                      showToast(errorMsg, 'error')
+                      throw err
+                    }
                   }}
+                  onNodeAddChild={(parentId) => {
+                    // Handled inline in TreeVisualization now
+                  }}
+                  onNodeAddRoot={() => {
+                    // Handled inline in TreeVisualization now
+                  }}
+                  onNodeCreate={handleNodeCreate}
+                  onNodeUpdate={handleNodeUpdate}
+                  onNodesUpdate={setNodes}
                 />
               </div>
             )

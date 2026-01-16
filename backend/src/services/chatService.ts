@@ -1,5 +1,5 @@
 import { pool } from '../db/connection.js';
-import { getNodesByTreeId, getNodeById, DialogNode } from './dialogService.js';
+import { getNodesByTreeId, getNodeById, DialogNode, getPrepromptByTreeId } from './dialogService.js';
 import { generateEmbedding } from './embeddingService.js';
 import {
   getOrCreateUserProfile,
@@ -10,7 +10,11 @@ import {
 } from './userMemoryService.js';
 import {
   generateContextualResponse,
-  generateHybridResponse
+  generateHybridResponse,
+  LLMError,
+  isLLMLimitError,
+  isLLMAuthError,
+  hasLLMCredits
 } from './llmService.js';
 
 // Check if vector extension is available (cached)
@@ -549,11 +553,20 @@ export async function processChatMessage(
   
   // Get or create user profile if userId provided
   if (userId && useMemory) {
-    await getOrCreateUserProfile(userId);
+    try {
+      await getOrCreateUserProfile(userId);
+    } catch (error: any) {
+      console.error('[ChatService] Error creating/getting user profile:', error.message);
+      // Don't throw - continue with conversation even if profile creation fails
+    }
   }
 
   // Get all nodes for this tree
   const allNodes = await getNodesByTreeId(treeId);
+  
+  // Get preprompt for this tree (if configured)
+  const preprompt = await getPrepromptByTreeId(treeId);
+  const prepromptContent = preprompt?.content || undefined;
 
   // Handle initial start message
   if (userMessage === '__START__' || userMessage.trim() === '') {
@@ -564,11 +577,21 @@ export async function processChatMessage(
     if (userId && useMemory) {
       const userContext = await buildUserContext(userId);
       if (userContext) {
-        greeting = await generateHybridResponse(
-          userMessage,
-          userContext,
-          greeting
-        );
+        try {
+          greeting = await generateHybridResponse(
+            userMessage,
+            userContext,
+            greeting,
+            undefined, // productCatalog
+            prepromptContent // preprompt
+          );
+        } catch (error: any) {
+          // LLM failed - use original greeting from dialog tree
+          if (error instanceof LLMError && error.shouldFallback) {
+            console.warn('[ChatService] LLM limit exceeded during greeting. Using dialog tree greeting.');
+          }
+          // greeting already has the dialog tree value, so just continue
+        }
       }
     }
     
@@ -605,7 +628,12 @@ export async function processChatMessage(
 
   // Extract and store user information from message
   if (userId && useMemory) {
-    await extractAndStoreUserInfo(userId, userMessage);
+    try {
+      await extractAndStoreUserInfo(userId, userMessage);
+    } catch (error: any) {
+      console.error('[ChatService] Error extracting user info:', error.message);
+      // Don't throw - continue with conversation even if memory extraction fails
+    }
   }
 
   // Get current node (or null if starting)
@@ -629,48 +657,117 @@ export async function processChatMessage(
     }
   }
 
+  // asd/
   let botResponse: string;
   let finalNodeId: number | null = null;
+  let useLLMResponse = false; // Track if we used LLM (to determine if we should show options)
 
-  // If user has context and we want memory-driven responses, use LLM
-  if (userId && useMemory && userContext) {
+  // Check if LLM/credits are available
+  // This checks if API key is configured (credits available)
+  const hasCredits = hasLLMCredits();
+  
+  console.log(`[ChatService] Decision point - Credits: ${hasCredits}, userId: ${userId || 'none'}, useMemory: ${useMemory}, userContext: ${userContext ? 'has context' : 'no context'}`);
+  
+  // CRITICAL: Use LLM if credits are available, REGARDLESS of userId
+  // userId is ONLY for saving history and getting context - NOT for enabling LLM
+  // Priority 1: Use LLM if credits are available (intelligent chatbot) - works with or without userId
+  // Priority 2: Fallback to dialog nodes if no credits (simple bot)
+  if (hasCredits) {
+    console.log('[ChatService] ✅ Using intelligent LLM-powered chatbot (credits available)');
     // Generate context-aware response using LLM
     const dialogTreeResponse = nextNode?.bot_response || null;
     
-    if (dialogTreeResponse) {
-      // Hybrid: combine dialog tree with user memory
-      botResponse = await generateHybridResponse(
-        userMessage,
-        userContext,
-        dialogTreeResponse
-      );
-      finalNodeId = nextNode?.id || null;
-    } else {
-      // Pure memory-driven response
-      botResponse = await generateContextualResponse(
-        userMessage,
-        userContext
-      );
-      // Don't update node if using pure memory response
-      finalNodeId = session.current_node_id;
+    try {
+      if (dialogTreeResponse) {
+        // Hybrid: combine dialog tree with user context (if available) or just use dialog tree + LLM
+        botResponse = await generateHybridResponse(
+          userMessage,
+          userContext || '', // Can be empty if no user-id provided
+          dialogTreeResponse,
+          undefined, // productCatalog
+          prepromptContent // preprompt
+        );
+        finalNodeId = nextNode?.id || null;
+        useLLMResponse = true; // LLM succeeded, but we still want options from dialog tree
+      } else {
+        // Pure LLM response (with user context if available, otherwise just LLM)
+        // This works even without userId - LLM is intelligent on its own
+        console.log('[ChatService] Generating pure LLM response (no dialog tree match)');
+        botResponse = await generateContextualResponse(
+          userMessage,
+          userContext || '', // Can be empty if no user-id provided - LLM still works!
+          undefined, // productCatalog
+          150, // maxLength
+          prepromptContent // preprompt - this makes it intelligent even without user context
+        );
+        // Don't update node if using pure LLM response
+        finalNodeId = session.current_node_id;
+        useLLMResponse = true; // LLM succeeded, no dialog tree match
+        console.log('[ChatService] ✅ LLM response generated successfully');
+      }
+    } catch (error: any) {
+      // Check error type and handle appropriately
+      const isAuthError = error.message?.includes('authentication') || 
+                         error.message?.includes('User not found') ||
+                         error.status === 401 || error.statusCode === 401;
+      
+      if (error instanceof LLMError && error.shouldFallback) {
+        if (isAuthError) {
+          console.warn('[ChatService] LLM authentication failed (invalid API key). Falling back to dialog tree.');
+        } else {
+          console.warn('[ChatService] LLM limit/quota exceeded. Falling back to dialog tree.');
+        }
+        if (nextNode && nextNode.bot_response) {
+          botResponse = nextNode.bot_response;
+          finalNodeId = nextNode.id; // Set node ID so options will be generated
+          useLLMResponse = false; // Using dialog tree, show options
+        } else {
+          // No dialog tree match, use generic response but try to get options from current node
+          botResponse = "I'm here to help you. Could you tell me more about what you're looking for?";
+          finalNodeId = session.current_node_id; // Keep current node to show its options
+          useLLMResponse = false;
+        }
+      } else if (isLLMLimitError(error)) {
+        // Handle non-LLMError objects that are limit errors
+        console.warn('[ChatService] LLM limit exceeded. Falling back to dialog tree.');
+        if (nextNode && nextNode.bot_response) {
+          botResponse = nextNode.bot_response;
+          finalNodeId = nextNode.id;
+          useLLMResponse = false;
+        } else {
+          botResponse = "I'm here to help you. Could you tell me more about what you're looking for?";
+          finalNodeId = session.current_node_id;
+          useLLMResponse = false;
+        }
+      } else {
+        // Other LLM errors (including auth errors) - try dialog tree fallback with options
+        if (isAuthError) {
+          console.warn('[ChatService] LLM authentication failed (invalid API key). Falling back to dialog tree.');
+        } else {
+          console.warn('[ChatService] LLM error. Falling back to dialog tree.');
+        }
+        if (nextNode && nextNode.bot_response) {
+          botResponse = nextNode.bot_response;
+          finalNodeId = nextNode.id;
+          useLLMResponse = false;
+        } else {
+          botResponse = "I'm here to help you. Could you tell me more about what you're looking for?";
+          finalNodeId = session.current_node_id;
+          useLLMResponse = false;
+        }
+      }
     }
   } else if (nextNode) {
-    // Fallback to dialog tree if no memory or memory disabled
+    // Fallback to dialog tree if no credits available (simple bot mode)
+    console.log('[ChatService] Using simple dialog tree bot (no credits available)');
     botResponse = nextNode.bot_response || "I'm here to help!";
     finalNodeId = nextNode.id;
+    useLLMResponse = false; // Using dialog tree, show options
   } else {
-    // No match found
-    if (userId && useMemory && userContext) {
-      // Try to generate response from memory even without dialog match
-      botResponse = await generateContextualResponse(
-        userMessage,
-        userContext
-      );
-      finalNodeId = session.current_node_id;
-    } else {
-      botResponse = "I'm not sure how to help with that. Could you rephrase your question?";
-      finalNodeId = session.current_node_id;
-    }
+    // No dialog node match found - use generic response
+    botResponse = "I'm not sure how to help with that. Could you rephrase your question?";
+    finalNodeId = session.current_node_id;
+    useLLMResponse = false;
   }
 
   // Update session to current node if we matched a dialog node
@@ -679,11 +776,18 @@ export async function processChatMessage(
   }
 
   // Store the bot response in user memory for context
+  // IMPORTANT: Always save user memory when userId is provided, regardless of LLM usage
   if (userId && useMemory) {
-    await extractAndStoreUserInfo(userId, userMessage, botResponse);
+    try {
+      await extractAndStoreUserInfo(userId, userMessage, botResponse);
+      console.log(`[ChatService] Saved user memory for userId: ${userId}`);
+    } catch (error: any) {
+      console.error('[ChatService] Error storing bot response in memory:', error.message);
+      // Don't throw - continue with conversation even if memory storage fails
+    }
   }
 
-  // Log conversation
+  // Log conversation (always logged, regardless of userId)
   await logConversation(
     session.session_id,
     treeId,
@@ -692,10 +796,20 @@ export async function processChatMessage(
     botResponse
   );
 
-  // Get child nodes for quick reply options (if using dialog tree)
+  // Get child nodes for quick reply options
+  // Always show options when we have a valid node (including LLM fallback cases)
   let options: string[] | undefined;
-  if (finalNodeId && nextNode) {
+  if (finalNodeId) {
     const childNodes = allNodes.filter(node => node.parent_id === finalNodeId);
+    options = childNodes
+      .filter(node => node.user_input)
+      .slice(0, 3)
+      .map(node => node.user_input!);
+  }
+  
+  // If we have a matched node but finalNodeId doesn't match, use the matched node for options
+  if ((!options || options.length === 0) && nextNode && nextNode.id) {
+    const childNodes = allNodes.filter(node => node.parent_id === nextNode.id);
     options = childNodes
       .filter(node => node.user_input)
       .slice(0, 3)
@@ -728,4 +842,3 @@ export async function resetSession(sessionId: string): Promise<void> {
     [sessionId]
   );
 }
-

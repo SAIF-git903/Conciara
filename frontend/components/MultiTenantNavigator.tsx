@@ -13,9 +13,10 @@ import LoadingSpinner from './LoadingSpinner'
 interface MultiTenantNavigatorProps {
   onSelectTree: (tree: DialogTree) => void
   selectedTreeId: number | null
+  onWebsiteChange?: (website: Website | null) => void
 }
 
-export default function MultiTenantNavigator({ onSelectTree, selectedTreeId }: MultiTenantNavigatorProps) {
+export default function MultiTenantNavigator({ onSelectTree, selectedTreeId, onWebsiteChange }: MultiTenantNavigatorProps) {
   const [customerTypes, setCustomerTypes] = useState<CustomerType[]>([])
   const [websites, setWebsites] = useState<Website[]>([])
   const [skins, setSkins] = useState<Skin[]>([])
@@ -75,6 +76,8 @@ export default function MultiTenantNavigator({ onSelectTree, selectedTreeId }: M
       setVariations([])
       setTrees([])
     }
+    // Notify parent of website change
+    onWebsiteChange?.(selectedWebsite)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWebsite])
 

@@ -2,14 +2,42 @@
  * ConversaTree Chatbot Widget
  * Standalone JavaScript widget - no iframe needed
  * 
- * Usage:
+ * Usage (Data Attributes - Recommended):
+ * <script 
+ *   src="http://localhost:3000/widget.js" 
+ *   data-conversatree 
+ *   data-api-url="http://localhost:3001/api"
+ *   data-tree-id="35"
+ *   data-user-id="user123"
+ *   data-primary-color="#6366f1"
+ *   data-position="bottom-right">
+ * </script>
+ * 
+ * Usage (Programmatic):
  * <script src="http://localhost:3000/widget.js"></script>
  * <script>
  *   ConversaTree.init({
  *     apiUrl: 'http://localhost:3001/api',
- *     treeId: 1
+ *     treeId: 35,
+ *     userId: 'user123',
+ *     primaryColor: '#6366f1',
+ *     position: 'bottom-right'
  *   });
  * </script>
+ * 
+ * Available Data Attributes:
+ * - data-api-url: Backend API URL
+ * - data-tree-id: Dialog tree ID (direct selection)
+ * - data-skin-id: Skin ID (direct selection)
+ * - data-website-id: Website ID (auto-config)
+ * - data-domain: Domain name (auto-config, e.g., "example.com")
+ * - data-user-id: User ID for memory system
+ * - data-use-memory: Enable memory (true/false, default: true)
+ * - data-primary-color: Primary color (e.g., "#6366f1")
+ * - data-background-color: Background color (e.g., "#ffffff")
+ * - data-text-color: Text color (e.g., "#1f2937")
+ * - data-position: Widget position (bottom-right, bottom-left, top-right, top-left)
+ * - data-title: Widget title (e.g., "Chat Assistant")
  */
 
 (function() {
@@ -63,9 +91,15 @@
     async loadConfig() {
       // If treeId is provided directly, use it (manual mode - bypasses all lookups)
       if (this.rawConfig.treeId) {
-        this.config = { ...this.rawConfig };
+        // Merge with defaults to ensure all required properties are set
+        this.config = {
+          ...defaults,
+          ...this.rawConfig
+        };
         this.configLoaded = true;
-        return;
+        
+        // Return resolved promise to ensure init() is called
+        return Promise.resolve();
       }
 
       // PRIORITY: skinId > websiteId > domain
@@ -117,6 +151,9 @@
             ...defaults,
             apiUrl: this.rawConfig.apiUrl || defaults.apiUrl,
             treeId: widgetConfig.treeId || this.rawConfig.treeId || null,
+            // Preserve userId and useMemory from rawConfig
+            userId: this.rawConfig.userId || defaults.userId,
+            useMemory: this.rawConfig.hasOwnProperty('useMemory') ? this.rawConfig.useMemory : defaults.useMemory,
             // Use API colors unless user explicitly provided them
             primaryColor: wasPrimaryColorProvided ? this.rawConfig.primaryColor : primaryColor,
             backgroundColor: wasBackgroundColorProvided ? this.rawConfig.backgroundColor : backgroundColor,
@@ -233,6 +270,9 @@
             ...defaults,
             apiUrl: this.rawConfig.apiUrl || defaults.apiUrl,
             treeId: widgetConfig.treeId || this.rawConfig.treeId || null,
+            // Preserve userId and useMemory from rawConfig
+            userId: this.rawConfig.userId || defaults.userId,
+            useMemory: this.rawConfig.hasOwnProperty('useMemory') ? this.rawConfig.useMemory : defaults.useMemory,
             // Use API colors unless user explicitly provided them
             primaryColor: wasPrimaryColorProvided ? this.rawConfig.primaryColor : primaryColor,
             backgroundColor: wasBackgroundColorProvided ? this.rawConfig.backgroundColor : backgroundColor,
@@ -276,6 +316,9 @@
                 ...defaults,
                 ...this.rawConfig,
                 treeId: widgetConfig.treeId,
+                // Preserve userId and useMemory from rawConfig
+                userId: this.rawConfig.userId || defaults.userId,
+                useMemory: this.rawConfig.hasOwnProperty('useMemory') ? this.rawConfig.useMemory : defaults.useMemory,
                 primaryColor: this.rawConfig.primaryColor || widgetConfig.theme?.primaryColor || defaults.primaryColor,
                 backgroundColor: this.rawConfig.backgroundColor || widgetConfig.theme?.backgroundColor || defaults.backgroundColor,
                 textColor: this.rawConfig.textColor || widgetConfig.theme?.textColor || defaults.textColor,
@@ -305,17 +348,49 @@
         return;
       }
 
-      // Create widget container
-      this.container = document.createElement('div');
-      this.container.id = 'conversatree-widget';
-      this.container.innerHTML = this.renderButton();
-      document.body.appendChild(this.container);
+      try {
+        // Check if container already exists
+        const existingContainer = document.getElementById('conversatree-widget');
+        if (existingContainer) {
+          console.warn('[ConversaTree] Widget container already exists, removing old one');
+          existingContainer.remove();
+        }
 
-      // Add styles
-      this.injectStyles();
+        // Ensure document.body exists
+        if (!document.body) {
+          console.warn('[ConversaTree] document.body not ready, waiting...');
+          setTimeout(() => this.init(), 100);
+          return;
+        }
 
-      // Add event listeners
-      this.attachEventListeners();
+        // Create widget container
+        this.container = document.createElement('div');
+        this.container.id = 'conversatree-widget';
+        this.container.innerHTML = this.renderButton();
+        
+        // Apply position styles
+        const positionStyles = this.getPositionStyles();
+        this.container.setAttribute('style', `position: fixed; z-index: 9999; ${positionStyles}`);
+        
+        document.body.appendChild(this.container);
+
+        // Add styles
+        this.injectStyles();
+
+        // Add event listeners
+        this.attachEventListeners();
+      } catch (error) {
+        console.error('[ConversaTree] Error initializing widget:', error);
+        // Still try to create a basic container
+        try {
+          this.container = document.createElement('div');
+          this.container.id = 'conversatree-widget';
+          this.container.innerHTML = '<button style="position: fixed; bottom: 20px; right: 20px; z-index: 9999; padding: 12px; background: #6366f1; color: white; border: none; border-radius: 50%; cursor: pointer;">Chat</button>';
+          document.body.appendChild(this.container);
+        } catch (fallbackError) {
+          console.error('[ConversaTree] Failed to create fallback widget:', fallbackError);
+        }
+      }
     }
 
     injectStyles() {
@@ -533,8 +608,8 @@
         }
 
         .ct-quick-reply:hover {
-          background-color: ${this.config.primaryColor};
-          color: white;
+          background-color: ${primaryColor} !important;
+          color: white !important;
         }
 
         .ct-input-container {
@@ -706,7 +781,7 @@
       return `
         <div class="ct-quick-replies">
           ${this.quickReplies.map(reply => `
-            <button class="ct-quick-reply" data-reply="${this.escapeHtml(reply)}" style="border-color: ${primaryColor} !important; color: ${primaryColor} !important;">
+            <button class="ct-quick-reply" data-reply="${this.escapeHtml(reply)}" style="border-color: ${primaryColor} !important;">
               ${this.escapeHtml(reply)}
             </button>
           `).join('')}
@@ -801,16 +876,18 @@
       this.updateView();
 
       try {
+        const requestBody = {
+          tree_id: this.config.treeId,
+          user_message: '__START__',
+          session_id: null,
+          user_id: this.config.userId || null,
+          use_memory: this.config.useMemory !== false
+        };
+        
         const response = await fetch(`${this.config.apiUrl}/chat/message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tree_id: this.config.treeId,
-            user_message: '__START__',
-            session_id: null,
-            user_id: this.config.userId || null,
-            use_memory: this.config.useMemory !== false
-          })
+          body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {
@@ -822,11 +899,15 @@
         this.sessionId = data.session_id;
 
         if (data.bot_response) {
-          this.addMessage('bot', data.bot_response);
+          // Set options BEFORE adding message (so they're included when updateView is called)
           if (data.options && data.options.length > 0) {
             this.quickReplies = data.options;
-            this.updateView();
+          } else {
+            this.quickReplies = [];
           }
+          
+          // Add message (this will call updateView which will include the quick replies)
+          this.addMessage('bot', data.bot_response);
         } else {
           this.addMessage('bot', "Sorry, I received an empty response. Please try again.");
         }
@@ -840,22 +921,31 @@
     }
 
     async sendMessage(message) {
+      // Don't send if treeId is not set
+      if (!this.config.treeId) {
+        console.warn('[ConversaTree] Cannot send message: treeId is not set.');
+        this.addMessage('bot', "Sorry, the chatbot is not properly configured. Please contact support.");
+        return;
+      }
+      
       this.addMessage('user', message);
       this.quickReplies = [];
       this.isLoading = true;
       this.updateView();
 
       try {
+        const requestBody = {
+          tree_id: this.config.treeId,
+          user_message: message,
+          session_id: this.sessionId,
+          user_id: this.config.userId || null,
+          use_memory: this.config.useMemory !== false
+        };
+        
         const response = await fetch(`${this.config.apiUrl}/chat/message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tree_id: this.config.treeId,
-            user_message: message,
-            session_id: this.sessionId,
-            user_id: this.config.userId || null,
-            use_memory: this.config.useMemory !== false
-          })
+          body: JSON.stringify(requestBody)
         });
 
         const data = await response.json();
@@ -865,10 +955,15 @@
         }
 
         if (data.bot_response) {
-          this.addMessage('bot', data.bot_response);
+          // Set options BEFORE adding message (so they're included when updateView is called)
           if (data.options && data.options.length > 0) {
             this.quickReplies = data.options;
+          } else {
+            this.quickReplies = [];
           }
+          
+          // Add message (this will call updateView which will include the quick replies)
+          this.addMessage('bot', data.bot_response);
         }
       } catch (error) {
         console.error('Error sending message:', error);
@@ -916,6 +1011,9 @@
         treeId: script.getAttribute('data-tree-id') ? parseInt(script.getAttribute('data-tree-id')) : null,
         websiteId: script.getAttribute('data-website-id') ? parseInt(script.getAttribute('data-website-id')) : null,
         domain: script.getAttribute('data-domain') || null,
+        skinId: script.getAttribute('data-skin-id') ? parseInt(script.getAttribute('data-skin-id')) : null,
+        userId: script.getAttribute('data-user-id') || script.getAttribute('data-user_id') || null,
+        useMemory: script.getAttribute('data-use-memory') !== 'false',
         position: script.getAttribute('data-position') || defaults.position,
         primaryColor: script.getAttribute('data-primary-color') || null,
         backgroundColor: script.getAttribute('data-background-color') || null,
@@ -926,4 +1024,3 @@
     }
   }
 })();
-
