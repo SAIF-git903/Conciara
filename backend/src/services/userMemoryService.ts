@@ -129,8 +129,6 @@ export async function storeUserMemory(
         ? [userId, memoryType, content, JSON.stringify(metadata), embeddingValue, relevanceScore]
         : [userId, memoryType, content, JSON.stringify(metadata), relevanceScore]
     );
-      content: content.substring(0, 50) + (content.length > 50 ? '...' : '')
-    });
     
     return result.rows[0];
   } catch (error: any) {
