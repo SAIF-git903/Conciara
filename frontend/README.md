@@ -1,6 +1,6 @@
-# Dialog Tree Frontend
+# ConversaTree Frontend
 
-Modern React/Next.js frontend for managing dialog trees with a beautiful UI.
+Modern React/Next.js frontend for managing dialog trees, user memory, and chatbot widgets.
 
 ## Setup
 
@@ -23,20 +23,62 @@ The application will be available at `http://localhost:3000`
 
 ## Features
 
+### Admin Interface
 - **Tree Management**: Create, edit, and delete dialog trees
-- **Preprompt Editor**: Manage system prompts for each tree
 - **Node Editor**: Create hierarchical dialog nodes with user inputs and bot responses
+- **Preprompt Editor**: Manage system prompts for LLM-powered responses
 - **Tree Visualization**: Interactive tree view using react-d3-tree
-- **Vector Embeddings**: Automatic embedding generation for nodes (via backend)
-- **Modern UI**: Beautiful, responsive design with Tailwind CSS
+- **Skin Management**: Configure themes and A/B variations
+
+### Widget
+- **Standalone Widget**: Embeddable JavaScript widget (no iframe needed)
+- **Data-Driven UI**: Dynamic theming from database configuration
+- **User Memory Integration**: Supports personalized conversations
+- **Auto-Configuration**: Domain-based automatic setup
+
+### Testing Pages
+- **Memory Test**: Interactive testing of user memory system
+- **Widget Demo**: Live widget demonstration with configuration
 
 ## Tech Stack
 
-- Next.js 14
-- React 18
-- TypeScript
-- Tailwind CSS
-- Axios
-- react-d3-tree
-- Lucide React (icons)
+- **Framework**: Next.js 14
+- **UI Library**: React 18
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS
+- **HTTP Client**: Axios
+- **Visualization**: react-d3-tree
+- **Icons**: Lucide React
 
+## Project Structure
+
+```
+frontend/
+├── app/                    # Next.js app directory
+│   ├── page.tsx           # Main admin dashboard
+│   ├── memory-test/       # User memory testing page
+│   └── widget-demo/       # Widget demonstration page
+├── components/             # React components
+│   ├── DialogTreeManager.tsx  # Main tree management component
+│   ├── ChatbotWidget.tsx      # React widget component
+│   ├── SkinRenderer.tsx       # Data-driven UI renderer
+│   └── ...
+├── lib/                    # Utilities
+│   └── api.ts             # API client
+├── public/                 # Static assets
+│   └── widget.js          # Standalone embeddable widget
+└── types/                  # TypeScript types
+```
+
+## Building the Widget
+
+The standalone widget (`public/widget.js`) is a self-contained JavaScript file that can be embedded on any website. It includes:
+
+- Automatic configuration detection
+- Dynamic theming from database
+- User memory support
+- No external dependencies (except API calls)
+
+## Development
+
+The frontend supports hot-reload during development. Make sure the backend API is running at `http://localhost:3001` for full functionality.

@@ -46,23 +46,30 @@ async function checkVectorExtension(): Promise<boolean> {
 
 // Get or create user profile
 export async function getOrCreateUserProfile(userId: string): Promise<UserProfile> {
-  const result = await pool.query(
-    'SELECT * FROM user_profiles WHERE user_id = $1',
-    [userId]
-  );
-  
-  if (result.rows.length > 0) {
-    return result.rows[0];
+  try {
+    const result = await pool.query(
+      'SELECT * FROM user_profiles WHERE user_id = $1',
+      [userId]
+    );
+    
+    if (result.rows.length > 0) {
+      return result.rows[0];
+    }
+    
+    // Create new profile
+    const insertResult = await pool.query(
+      `INSERT INTO user_profiles (user_id, metadata)
+       VALUES ($1, '{}'::jsonb)
+       RETURNING *`,
+      [userId]
+    );
+    
+    return insertResult.rows[0];
+  } catch (error: any) {
+    console.error('[UserMemory] ❌ Error in getOrCreateUserProfile:', error.message);
+    console.error('[UserMemory] Error details:', error);
+    throw error;
   }
-  
-  // Create new profile
-  const insertResult = await pool.query(
-    `INSERT INTO user_profiles (user_id, metadata)
-     VALUES ($1, '{}'::jsonb)
-     RETURNING *`,
-    [userId]
-  );
-  return insertResult.rows[0];
 }
 
 // Update user profile metadata
@@ -109,20 +116,27 @@ export async function storeUserMemory(
     }
   }
   
-  const result = await pool.query(
-    hasVector && embeddingValue
-      ? `INSERT INTO user_memory (user_id, memory_type, content, metadata, vector_embedding, relevance_score)
-         VALUES ($1, $2, $3, $4::jsonb, $5::vector, $6)
-         RETURNING *`
-      : `INSERT INTO user_memory (user_id, memory_type, content, metadata, relevance_score)
-         VALUES ($1, $2, $3, $4::jsonb, $5)
-         RETURNING *`,
-    hasVector && embeddingValue
-      ? [userId, memoryType, content, JSON.stringify(metadata), embeddingValue, relevanceScore]
-      : [userId, memoryType, content, JSON.stringify(metadata), relevanceScore]
-  );
-  
-  return result.rows[0];
+  try {
+    const result = await pool.query(
+      hasVector && embeddingValue
+        ? `INSERT INTO user_memory (user_id, memory_type, content, metadata, vector_embedding, relevance_score)
+           VALUES ($1, $2, $3, $4::jsonb, $5::vector, $6)
+           RETURNING *`
+        : `INSERT INTO user_memory (user_id, memory_type, content, metadata, relevance_score)
+           VALUES ($1, $2, $3, $4::jsonb, $5)
+           RETURNING *`,
+      hasVector && embeddingValue
+        ? [userId, memoryType, content, JSON.stringify(metadata), embeddingValue, relevanceScore]
+        : [userId, memoryType, content, JSON.stringify(metadata), relevanceScore]
+    );
+      content: content.substring(0, 50) + (content.length > 50 ? '...' : '')
+    });
+    
+    return result.rows[0];
+  } catch (error: any) {
+    console.error('[UserMemory] ❌ Error storing memory:', error.message);
+    throw error;
+  }
 }
 
 // Retrieve relevant user memories using semantic search
@@ -137,18 +151,25 @@ export async function retrieveUserMemories(
   
   if (!hasVector) {
     // Fallback to keyword search if vector extension not available
-    const typeFilter = memoryTypes && memoryTypes.length > 0
-      ? `AND memory_type = ANY($2::varchar[])`
-      : '';
-    const result = await pool.query(
-      `SELECT * FROM user_memory 
-       WHERE user_id = $1 ${typeFilter}
+    let sqlQuery: string;
+    let params: any[];
+    
+    if (memoryTypes && memoryTypes.length > 0) {
+      sqlQuery = `SELECT * FROM user_memory 
+       WHERE user_id = $1 
+       AND memory_type = ANY($2::varchar[])
        ORDER BY relevance_score DESC, created_at DESC
-       LIMIT $3`,
-      memoryTypes && memoryTypes.length > 0
-        ? [userId, memoryTypes, limit]
-        : [userId, limit]
-    );
+       LIMIT $3`;
+      params = [userId, memoryTypes, limit];
+    } else {
+      sqlQuery = `SELECT * FROM user_memory 
+       WHERE user_id = $1 
+       ORDER BY relevance_score DESC, created_at DESC
+       LIMIT $2`;
+      params = [userId, limit];
+    }
+    
+    const result = await pool.query(sqlQuery, params);
     return result.rows;
   }
   
@@ -361,7 +382,8 @@ export async function extractAndStoreUserInfo(
     );
   }
   
-  // Store conversation context
+  // Store conversation context (always store, even if no keywords matched)
+  // This ensures we have conversation history
   if (botResponse) {
     await storeUserMemory(
       userId,
@@ -370,6 +392,21 @@ export async function extractAndStoreUserInfo(
       { timestamp: new Date().toISOString() },
       0.8
     );
+  } else {
+    // Store user message even without bot response (for context)
+    // Only store if message is meaningful (not just greetings)
+    const meaningfulMessage = userMessage.trim().length > 3 && 
+      !['hi', 'hello', 'hey', 'start', '__start__'].includes(message.trim());
+    
+    if (meaningfulMessage) {
+      await storeUserMemory(
+        userId,
+        'conversation',
+        `User said: "${userMessage}"`,
+        { timestamp: new Date().toISOString() },
+        0.7
+      );
+    }
   }
 }
 

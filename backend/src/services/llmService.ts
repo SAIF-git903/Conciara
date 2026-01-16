@@ -23,6 +23,49 @@ export interface LLMResponse {
   tokens?: number;
 }
 
+export class LLMError extends Error {
+  constructor(
+    message: string,
+    public code?: string,
+    public statusCode?: number,
+    public shouldFallback: boolean = true
+  ) {
+    super(message);
+    this.name = 'LLMError';
+  }
+}
+
+// Check if error indicates we should fallback to dialog tree
+export function isLLMLimitError(error: any): boolean {
+  if (!error) return false;
+  
+  // Check status codes
+  if (error.status === 429 || error.statusCode === 429) {
+    return true; // Rate limit
+  }
+  
+  if (error.status === 402 || error.statusCode === 402) {
+    return true; // Quota exceeded
+  }
+  
+  // Check error messages
+  const message = error.message?.toLowerCase() || '';
+  const errorString = JSON.stringify(error).toLowerCase();
+  
+  if (
+    message.includes('rate limit') ||
+    message.includes('quota') ||
+    message.includes('limit exceeded') ||
+    message.includes('insufficient quota') ||
+    errorString.includes('rate limit') ||
+    errorString.includes('quota')
+  ) {
+    return true;
+  }
+  
+  return false;
+}
+
 /**
  * Generate a concise, personalized response based on user context and query
  * This replaces the rigid dialog tree approach with dynamic, context-aware responses
@@ -31,17 +74,22 @@ export async function generateContextualResponse(
   userMessage: string,
   userContext: string,
   productCatalog?: string,
-  maxLength: number = 150 // Keep responses concise (1-2 sentences)
+  maxLength: number = 150, // Keep responses concise (1-2 sentences)
+  preprompt?: string // Optional preprompt from dialog tree configuration
 ): Promise<string> {
   if (!openai || !apiKey) {
     const provider = useOpenRouter ? 'OpenRouter' : 'OpenAI';
-    console.warn(`${provider} API key not configured. Falling back to default response.`);
+    console.warn(`[LLMService] ${provider} API key not configured. Falling back to default response.`);
+    console.warn(`[LLMService] useOpenRouter: ${useOpenRouter}, hasKey: ${!!apiKey}`);
     return "I'm here to help you. Could you tell me more about what you're looking for?";
   }
 
   try {
     // Build the prompt for concise, personalized responses
-    let systemPrompt = `You are a helpful, conversational assistant. Your goal is to provide concise, personalized recommendations in 1-2 sentences maximum (${maxLength} characters or less).
+    // If preprompt is provided, use it as the base; otherwise use default
+    let systemPrompt = preprompt 
+      ? `${preprompt}\n\nIMPORTANT: Keep responses concise (1-2 sentences, ${maxLength} characters or less). Be conversational and direct.`
+      : `You are a helpful, conversational assistant. Your goal is to provide concise, personalized recommendations in 1-2 sentences maximum (${maxLength} characters or less).
 
 IMPORTANT RULES:
 1. Be conversational and friendly, like talking to a friend
@@ -70,7 +118,7 @@ Example bad response: "I'd be happy to help you find a laptop. What are you look
     const model = useOpenRouter 
       ? 'openai/gpt-4o-mini'  // Fast and cost-effective
       : 'gpt-4o-mini';
-
+    
     const response = await openai.chat.completions.create({
       model: model,
       messages: [
@@ -96,7 +144,26 @@ Example bad response: "I'd be happy to help you find a laptop. What are you look
     return content;
   } catch (error: any) {
     console.error('Error generating LLM response:', error.message || error);
-    return "I'm here to help you. Could you tell me more about what you're looking for?";
+    
+    // Check if this is a limit/quota error that should trigger fallback
+    if (isLLMLimitError(error)) {
+      console.warn('[LLM] Rate limit or quota exceeded. Will fallback to dialog tree.');
+      throw new LLMError(
+        'LLM API limit exceeded',
+        error.code || 'RATE_LIMIT',
+        error.status || error.statusCode || 429,
+        true
+      );
+    }
+    
+    // For other errors, return a generic fallback message
+    // The caller can decide whether to use dialog tree
+    throw new LLMError(
+      error.message || 'LLM API error',
+      error.code,
+      error.status || error.statusCode,
+      false // Don't force fallback for unknown errors
+    );
   }
 }
 
@@ -108,14 +175,18 @@ export async function generateHybridResponse(
   userMessage: string,
   userContext: string,
   dialogTreeContext?: string,
-  productCatalog?: string
+  productCatalog?: string,
+  preprompt?: string // Optional preprompt from dialog tree configuration
 ): Promise<string> {
   if (!openai || !apiKey) {
     return dialogTreeContext || "I'm here to help you. Could you tell me more about what you're looking for?";
   }
 
   try {
-    const systemPrompt = `You are a helpful, conversational assistant. Combine the dialog tree response with user context to create a personalized, concise answer (1-2 sentences max).
+    // If preprompt is provided, use it as the base; otherwise use default
+    const systemPrompt = preprompt
+      ? `${preprompt}\n\nIMPORTANT: Combine the dialog tree response with user context to create a personalized, concise answer (1-2 sentences max).`
+      : `You are a helpful, conversational assistant. Combine the dialog tree response with user context to create a personalized, concise answer (1-2 sentences max).
 
 Rules:
 1. Use the dialog tree response as a base, but personalize it with user context
@@ -142,7 +213,7 @@ Rules:
     const model = useOpenRouter 
       ? 'openai/gpt-4o-mini'
       : 'gpt-4o-mini';
-
+    
     const response = await openai.chat.completions.create({
       model: model,
       messages: [
@@ -156,7 +227,30 @@ Rules:
     return response.choices[0]?.message?.content?.trim() || dialogTreeContext || "I'm here to help you.";
   } catch (error: any) {
     console.error('Error generating hybrid response:', error.message || error);
-    return dialogTreeContext || "I'm here to help you.";
+    
+    // Check if this is a limit/quota error that should trigger fallback
+    if (isLLMLimitError(error)) {
+      console.warn('[LLM] Rate limit or quota exceeded. Will fallback to dialog tree.');
+      throw new LLMError(
+        'LLM API limit exceeded',
+        error.code || 'RATE_LIMIT',
+        error.status || error.statusCode || 429,
+        true
+      );
+    }
+    
+    // For other errors, return dialog tree context if available
+    if (dialogTreeContext) {
+      return dialogTreeContext;
+    }
+    
+    // If no dialog tree context, throw error so caller can handle
+    throw new LLMError(
+      error.message || 'LLM API error',
+      error.code,
+      error.status || error.statusCode,
+      false
+    );
   }
 }
 

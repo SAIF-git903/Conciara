@@ -21,8 +21,7 @@ const openai = apiKey
 export async function generateEmbedding(text: string): Promise<number[] | null> {
   // Return null if API key is not configured
   if (!openai || !apiKey) {
-    const provider = useOpenRouter ? 'OpenRouter' : 'OpenAI';
-    console.warn(`${provider} API key not configured. Embeddings will not be generated.`);
+    console.warn(`[EmbeddingService] API key not configured. Embeddings will not be generated.`);
     return null;
   }
 
@@ -41,8 +40,7 @@ export async function generateEmbedding(text: string): Promise<number[] | null> 
   } catch (error: any) {
     // Log error but don't throw - allow nodes to be created without embeddings
     const provider = useOpenRouter ? 'OpenRouter' : 'OpenAI';
-    console.error(`Error generating embedding (${provider}):`, error.message || error);
-    console.warn('Continuing without embedding. Node will be created without vector embedding.');
+    console.error(`[EmbeddingService] Error generating embedding (${provider}):`, error.message || error);
     return null;
   }
 }

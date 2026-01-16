@@ -14,7 +14,9 @@
     "seed": "tsx src/db/seed.ts",
     "regenerate-embeddings": "tsx src/regenerateEmbeddings.ts",
     "create-test-tree": "tsx src/db/createTestTree.ts",
-    "list-trees": "tsx src/db/listTrees.ts"
+    "list-trees": "tsx src/db/listTrees.ts",
+    "test-profile": "tsx src/db/testProfileCreation.ts",
+    "test-openai": "tsx test-openai-connection.ts"
   },
   "keywords": ["dialog", "tree", "api"],
   "author": "",

@@ -48,21 +48,40 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
     const widgetUrl = typeof window !== 'undefined' ? `${window.location.origin}/widget.js` : 'http://localhost:3000/widget.js'
     
+    // Build config object
+    const configParts: string[] = [
+      `apiUrl: '${apiUrl}'`
+    ]
+    
+    // Add tree-id if available (highest priority)
+    if (selectedTree?.id) {
+      configParts.push(`treeId: ${selectedTree.id}`)
+    }
+    
+    // Add website-id if no tree-id
+    if (!selectedTree?.id && website.id) {
+      configParts.push(`websiteId: ${website.id}`)
+    }
+    
+    // Add domain if available
     if (website.domain) {
-      return `<!-- ConversaTree Intelligent Chatbot Widget -->
-<!-- Memory-enabled: Remembers user preferences across sessions -->
-<script src="${widgetUrl}" data-conversatree data-api-url="${apiUrl}" data-domain="${website.domain}"></script>`
-    } else {
-      return `<!-- ConversaTree Intelligent Chatbot Widget -->
+      configParts.push(`domain: '${website.domain}'`)
+    }
+    
+    // Add skin-id if available (from website's active skin)
+    // Note: This would need to be fetched if you want to include it
+    
+    // Add theming options (if you want to show examples)
+    // These are optional, so we'll leave them out for now
+    
+    return `<!-- ConversaTree Intelligent Chatbot Widget -->
 <!-- Memory-enabled: Remembers user preferences across sessions -->
 <script src="${widgetUrl}"></script>
 <script>
   ConversaTree.init({
-    apiUrl: '${apiUrl}',
-    websiteId: ${website.id}
+    ${configParts.join(',\n    ')}
   });
 </script>`
-    }
   }
 
   const copyToClipboard = async () => {
