@@ -19,8 +19,6 @@ cp .env.example .env
 PORT=3001
 DATABASE_URL=postgresql://user:password@localhost:5432/conversatree
 OPENAI_API_KEY=your_openai_api_key_here
-USE_OPENROUTER=false
-OPENROUTER_API_KEY=your_openrouter_key_here  # Optional, if USE_OPENROUTER=true
 NODE_ENV=development
 ```
 
@@ -59,7 +57,6 @@ The API will be available at `http://localhost:3001`
 
 ### Chat
 - `POST /api/chat/message` - Process chat message (supports user memory)
-- `POST /api/chat/initialize` - Initialize conversation
 
 ### Widget Configuration
 - `GET /api/widget/config` - Get widget configuration (auto-detects by domain, websiteId, or skinId)
@@ -93,8 +90,7 @@ The API will be available at `http://localhost:3001`
 - Backtracking support for context switching
 
 ### Embedding Generation
-- Automatic embedding generation for dialog nodes
-- Supports OpenAI and OpenRouter APIs
+- Automatic embedding generation for dialog nodes using OpenAI
 - Graceful fallback if embeddings unavailable
 
 ## Database Requirements

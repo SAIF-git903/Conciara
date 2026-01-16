@@ -27,13 +27,13 @@ ConversaTree/
 ### Core Features
 - **Dialog Tree Management**: Create, edit, and delete hierarchical dialog trees
 - **Preprompt Editor**: Manage system prompts for LLM-powered responses
-- **Vector Embeddings**: Automatic embedding generation using OpenAI/OpenRouter
+- **Vector Embeddings**: Automatic embedding generation using OpenAI
 - **Semantic Matching**: Intelligent node matching using pgvector similarity search
 - **Tree Visualization**: Interactive tree view with react-d3-tree
 
 ### Advanced Features
 - **User Memory System**: Remember user context, preferences, and conversation history
-- **LLM-Powered Responses**: Generate concise, personalized responses using OpenAI/OpenRouter
+- **LLM-Powered Responses**: Generate concise, personalized responses using OpenAI
 - **Standalone Chatbot Widget**: Embeddable JavaScript widget (no iframe needed)
 - **Data-Driven Theming**: Dynamic UI configuration via database (skins)
 - **A/B Variation Testing**: Test different conversation flows and UI designs
@@ -45,7 +45,7 @@ ConversaTree/
 
 - Node.js 18+ and npm
 - PostgreSQL 12+ with pgvector extension
-- OpenAI API key (for embeddings and LLM) OR OpenRouter API key
+- OpenAI API key (for embeddings and LLM)
 
 ### Backend Setup
 
@@ -69,7 +69,6 @@ cp .env.example .env
 PORT=3001
 DATABASE_URL=postgresql://user:password@localhost:5432/conversatree
 OPENAI_API_KEY=your_openai_api_key_here
-USE_OPENROUTER=false
 NODE_ENV=development
 ```
 
@@ -202,7 +201,6 @@ For complete widget documentation, see [FINAL_WIDGET_USAGE.md](./FINAL_WIDGET_US
 
 ### Chat
 - `POST /api/chat/message` - Process chat message
-- `POST /api/chat/initialize` - Initialize conversation
 
 ### Widget Configuration
 - `GET /api/widget/config` - Get widget configuration (auto-detects by domain)
@@ -228,7 +226,7 @@ For complete widget documentation, see [FINAL_WIDGET_USAGE.md](./FINAL_WIDGET_US
 - **Framework**: Express
 - **Language**: TypeScript
 - **Database**: PostgreSQL with pgvector extension
-- **AI/ML**: OpenAI API / OpenRouter (for embeddings and LLM)
+- **AI/ML**: OpenAI API (for embeddings and LLM)
 - **Vector Search**: pgvector for semantic similarity
 
 ### Frontend
