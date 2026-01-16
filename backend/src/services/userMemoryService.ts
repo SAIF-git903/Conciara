@@ -1,5 +1,6 @@
 import { pool } from '../db/connection.js';
 import { generateEmbedding } from './embeddingService.js';
+import { hasLLMCredits } from './llmService.js';
 
 export type MemoryType = 'profile' | 'preference' | 'constraint' | 'conversation' | 'fact' | 'knowledge';
 
@@ -104,32 +105,59 @@ export async function storeUserMemory(
   relevanceScore: number = 1.0
 ): Promise<UserMemory> {
   const hasVector = await checkVectorExtension();
+  const hasCredits = hasLLMCredits(); // Check if LLM/embeddings are available
   
-  // Generate embedding for the content
+  // Generate embedding for the content if LLM is available
+  // This enables semantic search even if vector extension is not installed
   let embedding: number[] | null = null;
   let embeddingValue: string | null = null;
   
-  if (hasVector) {
+  if (hasCredits) {
+    // Always try to generate embeddings if LLM is working
     embedding = await generateEmbedding(content);
     if (embedding) {
-      embeddingValue = `[${embedding.join(',')}]`;
+      if (hasVector) {
+        // Use vector type if extension is available
+        embeddingValue = `[${embedding.join(',')}]`;
+      } else {
+        // Store as JSON array if vector extension not available
+        embeddingValue = JSON.stringify(embedding);
+      }
+      console.log(`[UserMemory] ✅ Generated embedding for memory (type: ${memoryType}, hasVector: ${hasVector})`);
+    } else {
+      console.warn('[UserMemory] ⚠️ Failed to generate embedding (API may be unavailable)');
     }
+  } else {
+    console.log('[UserMemory] ⚠️ Skipping embedding generation - LLM not available');
   }
   
   try {
-    const result = await pool.query(
-      hasVector && embeddingValue
-        ? `INSERT INTO user_memory (user_id, memory_type, content, metadata, vector_embedding, relevance_score)
-           VALUES ($1, $2, $3, $4::jsonb, $5::vector, $6)
-           RETURNING *`
-        : `INSERT INTO user_memory (user_id, memory_type, content, metadata, relevance_score)
-           VALUES ($1, $2, $3, $4::jsonb, $5)
-           RETURNING *`,
-      hasVector && embeddingValue
-        ? [userId, memoryType, content, JSON.stringify(metadata), embeddingValue, relevanceScore]
-        : [userId, memoryType, content, JSON.stringify(metadata), relevanceScore]
-    );
+    // Build query based on whether we have embedding and vector extension
+    let query: string;
+    let params: any[];
     
+    if (hasVector && embeddingValue) {
+      // Use vector type if extension is available and we have embedding
+      query = `INSERT INTO user_memory (user_id, memory_type, content, metadata, vector_embedding, relevance_score)
+               VALUES ($1, $2, $3, $4::jsonb, $5::vector, $6)
+               RETURNING *`;
+      params = [userId, memoryType, content, JSON.stringify(metadata), embeddingValue, relevanceScore];
+    } else if (embeddingValue) {
+      // Store embedding as TEXT/JSON if vector extension not available but we have embedding
+      // The column type will be TEXT if vector extension is not available
+      query = `INSERT INTO user_memory (user_id, memory_type, content, metadata, vector_embedding, relevance_score)
+               VALUES ($1, $2, $3, $4::jsonb, $5, $6)
+               RETURNING *`;
+      params = [userId, memoryType, content, JSON.stringify(metadata), embeddingValue, relevanceScore];
+    } else {
+      // No embedding - store without vector_embedding
+      query = `INSERT INTO user_memory (user_id, memory_type, content, metadata, relevance_score)
+               VALUES ($1, $2, $3, $4::jsonb, $5)
+               RETURNING *`;
+      params = [userId, memoryType, content, JSON.stringify(metadata), relevanceScore];
+    }
+    
+    const result = await pool.query(query, params);
     return result.rows[0];
   } catch (error: any) {
     console.error('[UserMemory] ❌ Error storing memory:', error.message);
