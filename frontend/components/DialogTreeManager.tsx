@@ -528,7 +528,7 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
                       {selectedSkinId ? (
                         <>The embed code will include <code className="text-primary-600 font-mono">skinId: {selectedSkinId}</code> for direct skin selection.</>
                       ) : (
-                        <>Leave unselected to use the website's default active skin (via websiteId/domain).</>
+                        <>Leave unselected to use the website&apos;s default active skin (via websiteId/domain).</>
                       )}
                     </p>
                   </div>

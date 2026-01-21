@@ -59,7 +59,6 @@
     buttonText: 'Chat',
     title: 'Chat Assistant'
   };
-  console.log('defaults', defaults);
 
   // Widget class
   class ConversaTreeWidget {

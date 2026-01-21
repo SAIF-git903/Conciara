@@ -137,7 +137,7 @@ export default function TreeVisualization({
       name: '',
       children: rootNodes,
     }
-  }, [nodes, selectedTree, editingNode, editingExistingNode])
+  }, [nodes, editingNode, editingExistingNode])
 
   const handleNodeClick = (nodeData: any) => {
     const nodeId = nodeData.attributes?.nodeId || nodeData.nodeId
