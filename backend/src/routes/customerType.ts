@@ -80,10 +80,13 @@ router.delete('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     await deleteCustomerType(id);
-    res.json({ message: 'Customer type deleted successfully' });
-  } catch (error) {
+    res.json({ message: 'Customer type and all associated data deleted successfully' });
+  } catch (error: any) {
     console.error('Error deleting customer type:', error);
-    res.status(500).json({ error: 'Failed to delete customer type' });
+    if (error.message === 'Customer type not found') {
+      return res.status(404).json({ error: 'Customer type not found' });
+    }
+    res.status(500).json({ error: 'Failed to delete customer type', details: error?.message || 'Unknown error' });
   }
 });
 

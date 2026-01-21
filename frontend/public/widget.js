@@ -166,41 +166,95 @@
           
           // Force style update after config loads (if widget already initialized)
           if (this.container) {
+            // Re-inject styles with new colors - this is critical for dark themes
             this.injectStyles();
             
-            const color = this.config.primaryColor;
+            const primaryColor = this.config.primaryColor;
+            const backgroundColor = this.config.backgroundColor;
+            const textColor = this.config.textColor;
+            const borderColor = this.config.borderColor || '#e5e7eb';
+            const secondaryColor = this.config.secondaryColor || '#f3f4f6';
             
             // Update button
             const button = this.container.querySelector('.ct-button');
             if (button) {
-              button.style.setProperty('background-color', color, 'important');
+              button.style.setProperty('background-color', primaryColor, 'important');
+            }
+            
+            // Update window background (critical for dark themes)
+            const window = this.container.querySelector('.ct-window');
+            if (window) {
+              window.style.setProperty('background-color', backgroundColor, 'important');
             }
             
             // Update header
             const header = this.container.querySelector('.ct-header');
             if (header) {
-              header.style.setProperty('background-color', color, 'important');
+              header.style.setProperty('background-color', primaryColor, 'important');
+            }
+            
+            // Update messages container (critical for dark themes)
+            const messages = this.container.querySelector('.ct-messages');
+            if (messages) {
+              messages.style.setProperty('background-color', backgroundColor, 'important');
+              messages.style.setProperty('color', textColor, 'important');
+            }
+            
+            // Update input container
+            const inputContainer = this.container.querySelector('.ct-input-container');
+            if (inputContainer) {
+              inputContainer.style.setProperty('background-color', backgroundColor, 'important');
+              inputContainer.style.setProperty('border-top-color', borderColor, 'important');
+            }
+            
+            // Update input field
+            const input = this.container.querySelector('.ct-input');
+            if (input) {
+              const inputBg = backgroundColor === '#ffffff' || !backgroundColor ? 'white' : backgroundColor;
+              input.style.setProperty('background-color', inputBg, 'important');
+              input.style.setProperty('color', textColor, 'important');
+              input.style.setProperty('border-color', borderColor, 'important');
             }
             
             // Update send button
             const sendButton = this.container.querySelector('.ct-send-button');
             if (sendButton) {
-              sendButton.style.setProperty('background-color', color, 'important');
+              sendButton.style.setProperty('background-color', primaryColor, 'important');
             }
+            
+            // Update bot message bubbles
+            const botMessages = this.container.querySelectorAll('.ct-message.bot .ct-message-content');
+            botMessages.forEach(msg => {
+              msg.style.setProperty('background-color', primaryColor, 'important');
+            });
+            
+            // Update user message bubbles (critical for dark themes)
+            const userMessages = this.container.querySelectorAll('.ct-message.user .ct-message-content');
+            userMessages.forEach(msg => {
+              msg.style.setProperty('background-color', secondaryColor, 'important');
+              msg.style.setProperty('color', textColor, 'important');
+            });
             
             // Update quick reply buttons
             const quickReplies = this.container.querySelectorAll('.ct-quick-reply');
             quickReplies.forEach(btn => {
-              btn.style.setProperty('border-color', color, 'important');
-              btn.style.setProperty('color', color, 'important');
+              btn.style.setProperty('border-color', primaryColor, 'important');
+              btn.style.setProperty('color', primaryColor, 'important');
             });
+            
+            // Update quick replies container
+            const quickRepliesContainer = this.container.querySelector('.ct-quick-replies');
+            if (quickRepliesContainer) {
+              quickRepliesContainer.style.setProperty('background-color', backgroundColor, 'important');
+              quickRepliesContainer.style.setProperty('border-top-color', borderColor, 'important');
+            }
             
             // Re-render if window is closed to apply all inline styles
             if (!this.isOpen) {
               this.container.innerHTML = this.renderButton();
               this.attachEventListeners();
             } else {
-              // Re-render window to apply header and send button colors
+              // Re-render window to apply all theme changes
               this.updateView();
             }
           }
@@ -215,18 +269,22 @@
         }
       }
 
-      // DOMAIN-BASED LOOKUP (Fallback if no skinId)
+      // WEBSITE-ID OR DOMAIN-BASED LOOKUP (Fallback if no skinId)
       // Selection logic:
-      // 1. Find website by domain
+      // 1. Find website by websiteId or domain
       // 2. Get active skin for website (is_active = true, or first created)
       // 3. Get active A/B variation for skin (is_active = true, or first created)
       // 4. Get dialog tree for variation (first created)
       // 5. Merge skin config with variation overrides
       
-      if (this.rawConfig.domain) {
+      if (this.rawConfig.websiteId || this.rawConfig.domain) {
         try {
           const params = new URLSearchParams();
-          params.append('domain', this.rawConfig.domain);
+          if (this.rawConfig.websiteId) {
+            params.append('websiteId', this.rawConfig.websiteId.toString());
+          } else {
+            params.append('domain', this.rawConfig.domain);
+          }
 
           const response = await fetch(`${this.rawConfig.apiUrl}/widget/config?${params.toString()}`);
           
@@ -285,16 +343,96 @@
           
           // Force style update after config loads (if widget already initialized)
           if (this.container) {
+            // Re-inject styles with new colors - this is critical for dark themes
             this.injectStyles();
-            // Update button directly
+            
+            const primaryColor = this.config.primaryColor;
+            const backgroundColor = this.config.backgroundColor;
+            const textColor = this.config.textColor;
+            const borderColor = this.config.borderColor || '#e5e7eb';
+            const secondaryColor = this.config.secondaryColor || '#f3f4f6';
+            
+            // Update button
             const button = this.container.querySelector('.ct-button');
             if (button) {
-              button.style.setProperty('background-color', this.config.primaryColor, 'important');
+              button.style.setProperty('background-color', primaryColor, 'important');
             }
-            // Re-render button to apply inline style
+            
+            // Update window background (critical for dark themes)
+            const window = this.container.querySelector('.ct-window');
+            if (window) {
+              window.style.setProperty('background-color', backgroundColor, 'important');
+            }
+            
+            // Update header
+            const header = this.container.querySelector('.ct-header');
+            if (header) {
+              header.style.setProperty('background-color', primaryColor, 'important');
+            }
+            
+            // Update messages container (critical for dark themes)
+            const messages = this.container.querySelector('.ct-messages');
+            if (messages) {
+              messages.style.setProperty('background-color', backgroundColor, 'important');
+              messages.style.setProperty('color', textColor, 'important');
+            }
+            
+            // Update input container
+            const inputContainer = this.container.querySelector('.ct-input-container');
+            if (inputContainer) {
+              inputContainer.style.setProperty('background-color', backgroundColor, 'important');
+              inputContainer.style.setProperty('border-top-color', borderColor, 'important');
+            }
+            
+            // Update input field
+            const input = this.container.querySelector('.ct-input');
+            if (input) {
+              const inputBg = backgroundColor === '#ffffff' || !backgroundColor ? 'white' : backgroundColor;
+              input.style.setProperty('background-color', inputBg, 'important');
+              input.style.setProperty('color', textColor, 'important');
+              input.style.setProperty('border-color', borderColor, 'important');
+            }
+            
+            // Update send button
+            const sendButton = this.container.querySelector('.ct-send-button');
+            if (sendButton) {
+              sendButton.style.setProperty('background-color', primaryColor, 'important');
+            }
+            
+            // Update bot message bubbles
+            const botMessages = this.container.querySelectorAll('.ct-message.bot .ct-message-content');
+            botMessages.forEach(msg => {
+              msg.style.setProperty('background-color', primaryColor, 'important');
+            });
+            
+            // Update user message bubbles (critical for dark themes)
+            const userMessages = this.container.querySelectorAll('.ct-message.user .ct-message-content');
+            userMessages.forEach(msg => {
+              msg.style.setProperty('background-color', secondaryColor, 'important');
+              msg.style.setProperty('color', textColor, 'important');
+            });
+            
+            // Update quick reply buttons
+            const quickReplies = this.container.querySelectorAll('.ct-quick-reply');
+            quickReplies.forEach(btn => {
+              btn.style.setProperty('border-color', primaryColor, 'important');
+              btn.style.setProperty('color', primaryColor, 'important');
+            });
+            
+            // Update quick replies container
+            const quickRepliesContainer = this.container.querySelector('.ct-quick-replies');
+            if (quickRepliesContainer) {
+              quickRepliesContainer.style.setProperty('background-color', backgroundColor, 'important');
+              quickRepliesContainer.style.setProperty('border-top-color', borderColor, 'important');
+            }
+            
+            // Re-render if window is closed to apply all inline styles
             if (!this.isOpen) {
               this.container.innerHTML = this.renderButton();
               this.attachEventListeners();
+            } else {
+              // Re-render window to apply all theme changes
+              this.updateView();
             }
           }
         } catch (error) {
@@ -312,19 +450,145 @@
             
             if (response.ok) {
               const widgetConfig = await response.json();
+              
+              // Extract colors from full skin config or legacy theme
+              let primaryColor = defaults.primaryColor;
+              let backgroundColor = defaults.backgroundColor;
+              let textColor = defaults.textColor;
+              let position = defaults.position;
+              let title = defaults.title;
+
+              if (widgetConfig.skin?.config) {
+                // Use full skin config (data-driven from database)
+                const skinConfig = widgetConfig.skin.config;
+                primaryColor = skinConfig.theme?.primaryColor || defaults.primaryColor;
+                backgroundColor = skinConfig.theme?.backgroundColor || defaults.backgroundColor;
+                textColor = skinConfig.theme?.textColor || defaults.textColor;
+                position = skinConfig.components?.button?.position || defaults.position;
+                title = skinConfig.components?.header?.title || defaults.title;
+              } else if (widgetConfig.theme) {
+                // Use legacy theme (backward compatibility)
+                primaryColor = widgetConfig.theme.primaryColor || defaults.primaryColor;
+                backgroundColor = widgetConfig.theme.backgroundColor || defaults.backgroundColor;
+                textColor = widgetConfig.theme.textColor || defaults.textColor;
+              }
+              
+              // Merge API config with manual overrides
+              const wasPrimaryColorProvided = this.rawConfig.hasOwnProperty('primaryColor');
+              const wasPositionProvided = this.rawConfig.hasOwnProperty('position');
+              const wasTitleProvided = this.rawConfig.hasOwnProperty('title');
+              const wasBackgroundColorProvided = this.rawConfig.hasOwnProperty('backgroundColor');
+              const wasTextColorProvided = this.rawConfig.hasOwnProperty('textColor');
+              
               this.config = {
                 ...defaults,
-                ...this.rawConfig,
-                treeId: widgetConfig.treeId,
+                apiUrl: this.rawConfig.apiUrl || defaults.apiUrl,
+                treeId: widgetConfig.treeId || this.rawConfig.treeId || null,
                 // Preserve userId and useMemory from rawConfig
                 userId: this.rawConfig.userId || defaults.userId,
                 useMemory: this.rawConfig.hasOwnProperty('useMemory') ? this.rawConfig.useMemory : defaults.useMemory,
-                primaryColor: this.rawConfig.primaryColor || widgetConfig.theme?.primaryColor || defaults.primaryColor,
-                backgroundColor: this.rawConfig.backgroundColor || widgetConfig.theme?.backgroundColor || defaults.backgroundColor,
-                textColor: this.rawConfig.textColor || widgetConfig.theme?.textColor || defaults.textColor,
-                position: this.rawConfig.position || widgetConfig.position || defaults.position,
-                title: this.rawConfig.title || widgetConfig.title || defaults.title
+                // Use API colors unless user explicitly provided them
+                primaryColor: wasPrimaryColorProvided ? this.rawConfig.primaryColor : primaryColor,
+                backgroundColor: wasBackgroundColorProvided ? this.rawConfig.backgroundColor : backgroundColor,
+                textColor: wasTextColorProvided ? this.rawConfig.textColor : textColor,
+                position: wasPositionProvided ? this.rawConfig.position : position,
+                title: wasTitleProvided ? this.rawConfig.title : title
               };
+              
+              // Force style update after config loads (if widget already initialized)
+              if (this.container) {
+                // Re-inject styles with new colors - this is critical for dark themes
+                this.injectStyles();
+                
+                const primaryColor = this.config.primaryColor;
+                const backgroundColor = this.config.backgroundColor;
+                const textColor = this.config.textColor;
+                const borderColor = this.config.borderColor || '#e5e7eb';
+                const secondaryColor = this.config.secondaryColor || '#f3f4f6';
+                
+                // Update button
+                const button = this.container.querySelector('.ct-button');
+                if (button) {
+                  button.style.setProperty('background-color', primaryColor, 'important');
+                }
+                
+                // Update window background (critical for dark themes)
+                const window = this.container.querySelector('.ct-window');
+                if (window) {
+                  window.style.setProperty('background-color', backgroundColor, 'important');
+                }
+                
+                // Update header
+                const header = this.container.querySelector('.ct-header');
+                if (header) {
+                  header.style.setProperty('background-color', primaryColor, 'important');
+                }
+                
+                // Update messages container (critical for dark themes)
+                const messages = this.container.querySelector('.ct-messages');
+                if (messages) {
+                  messages.style.setProperty('background-color', backgroundColor, 'important');
+                  messages.style.setProperty('color', textColor, 'important');
+                }
+                
+                // Update input container
+                const inputContainer = this.container.querySelector('.ct-input-container');
+                if (inputContainer) {
+                  inputContainer.style.setProperty('background-color', backgroundColor, 'important');
+                  inputContainer.style.setProperty('border-top-color', borderColor, 'important');
+                }
+                
+                // Update input field
+                const input = this.container.querySelector('.ct-input');
+                if (input) {
+                  const inputBg = backgroundColor === '#ffffff' || !backgroundColor ? 'white' : backgroundColor;
+                  input.style.setProperty('background-color', inputBg, 'important');
+                  input.style.setProperty('color', textColor, 'important');
+                  input.style.setProperty('border-color', borderColor, 'important');
+                }
+                
+                // Update send button
+                const sendButton = this.container.querySelector('.ct-send-button');
+                if (sendButton) {
+                  sendButton.style.setProperty('background-color', primaryColor, 'important');
+                }
+                
+                // Update bot message bubbles
+                const botMessages = this.container.querySelectorAll('.ct-message.bot .ct-message-content');
+                botMessages.forEach(msg => {
+                  msg.style.setProperty('background-color', primaryColor, 'important');
+                });
+                
+                // Update user message bubbles (critical for dark themes)
+                const userMessages = this.container.querySelectorAll('.ct-message.user .ct-message-content');
+                userMessages.forEach(msg => {
+                  msg.style.setProperty('background-color', secondaryColor, 'important');
+                  msg.style.setProperty('color', textColor, 'important');
+                });
+                
+                // Update quick reply buttons
+                const quickReplies = this.container.querySelectorAll('.ct-quick-reply');
+                quickReplies.forEach(btn => {
+                  btn.style.setProperty('border-color', primaryColor, 'important');
+                  btn.style.setProperty('color', primaryColor, 'important');
+                });
+                
+                // Update quick replies container
+                const quickRepliesContainer = this.container.querySelector('.ct-quick-replies');
+                if (quickRepliesContainer) {
+                  quickRepliesContainer.style.setProperty('background-color', backgroundColor, 'important');
+                  quickRepliesContainer.style.setProperty('border-top-color', borderColor, 'important');
+                }
+                
+                // Re-render if window is closed to apply all inline styles
+                if (!this.isOpen) {
+                  this.container.innerHTML = this.renderButton();
+                  this.attachEventListeners();
+                } else {
+                  // Re-render window to apply all theme changes
+                  this.updateView();
+                }
+              }
             } else {
               // Domain not found, use defaults
               this.config = { ...defaults, ...this.rawConfig };
@@ -499,7 +763,8 @@
           display: flex;
           flex-direction: column;
           gap: 12px;
-          background: ${this.config.backgroundColor};
+          background: ${this.config.backgroundColor} !important;
+          color: ${this.config.textColor} !important;
         }
 
         .ct-message {
@@ -547,8 +812,8 @@
         }
 
         .ct-message.user .ct-message-content {
-          background-color: #f3f4f6;
-          color: #111827;
+          background-color: ${this.config.secondaryColor || '#f3f4f6'} !important;
+          color: ${this.config.textColor || '#111827'} !important;
         }
 
         .ct-message.bot .ct-message-content {
@@ -592,8 +857,8 @@
           display: flex;
           flex-wrap: wrap;
           gap: 8px;
-          border-top: 1px solid #e5e7eb;
-          background: ${this.config.backgroundColor};
+          border-top: 1px solid ${this.config.borderColor || '#e5e7eb'} !important;
+          background: ${this.config.backgroundColor} !important;
         }
 
         .ct-quick-reply {
@@ -614,8 +879,8 @@
 
         .ct-input-container {
           padding: 16px;
-          border-top: 1px solid #e5e7eb;
-          background: ${this.config.backgroundColor};
+          border-top: 1px solid ${this.config.borderColor || '#e5e7eb'} !important;
+          background: ${this.config.backgroundColor} !important;
         }
 
         .ct-input-form {
@@ -626,15 +891,17 @@
         .ct-input {
           flex: 1;
           padding: 10px 14px;
-          border: 1px solid #d1d5db;
+          border: 1px solid ${this.config.borderColor || '#d1d5db'} !important;
           border-radius: 8px;
           font-size: 14px;
           outline: none;
           transition: border-color 0.2s;
+          background: ${this.config.backgroundColor === '#ffffff' || !this.config.backgroundColor ? 'white' : this.config.backgroundColor} !important;
+          color: ${this.config.textColor || '#1f2937'} !important;
         }
 
         .ct-input:focus {
-          border-color: ${primaryColor};
+          border-color: ${primaryColor} !important;
         }
 
         .ct-send-button {

@@ -77,6 +77,18 @@ export async function updateCustomerType(
 }
 
 export async function deleteCustomerType(id: number): Promise<void> {
+  // Check if customer type exists
+  const customerType = await getCustomerTypeById(id);
+  if (!customerType) {
+    throw new Error('Customer type not found');
+  }
+  
+  // Delete customer type - CASCADE will automatically delete:
+  // - All websites under this customer type
+  // - All skins under those websites
+  // - All A/B variations under those skins
+  // - All dialog trees under those variations
+  // - All dialog nodes under those trees
   await pool.query('DELETE FROM customer_types WHERE id = $1', [id]);
 }
 

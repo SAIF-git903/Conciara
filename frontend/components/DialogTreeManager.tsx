@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Save, Trash2, Edit2, X, MessageSquare, Sparkles, Layers, Zap, Menu, ChevronRight, Settings, Code, Copy, Check } from 'lucide-react'
-import { dialogTreeApi, dialogNodeApi, prepromptApi, DialogTree, DialogNode, Preprompt, Website } from '@/lib/api'
+import { Plus, Save, Trash2, Edit2, X, MessageSquare, Sparkles, Layers, Zap, Menu, ChevronRight, Settings, Code, Copy, Check, Palette } from 'lucide-react'
+import { dialogTreeApi, dialogNodeApi, prepromptApi, skinApi, DialogTree, DialogNode, Preprompt, Website, Skin } from '@/lib/api'
 import TreeSelector from './TreeSelector'
 import PrepromptEditor from './PrepromptEditor'
 import NodeEditor from './NodeEditor'
@@ -41,6 +41,8 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
   const [activeTab, setActiveTab] = useState<'editor' | 'visualization'>('editor')
   const [showEmbedCode, setShowEmbedCode] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [allSkins, setAllSkins] = useState<Skin[]>([])
+  const [selectedSkinId, setSelectedSkinId] = useState<number | null>(null)
 
   const generateEmbedScript = () => {
     if (!website) return ''
@@ -53,26 +55,25 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
       `apiUrl: '${apiUrl}'`
     ]
     
-    // Add tree-id if available (highest priority)
+    // Add skinId only if explicitly selected by user
+    if (selectedSkinId) {
+      configParts.push(`skinId: ${selectedSkinId}`)
+    }
+    
+    // Add tree-id if available (for direct tree selection)
     if (selectedTree?.id) {
       configParts.push(`treeId: ${selectedTree.id}`)
     }
     
-    // Add website-id if no tree-id
-    if (!selectedTree?.id && website.id) {
+    // Add website-id if no tree-id and no skinId (fallback)
+    if (!selectedTree?.id && !selectedSkinId && website.id) {
       configParts.push(`websiteId: ${website.id}`)
     }
     
-    // Add domain if available
-    if (website.domain) {
+    // Add domain if available (as additional fallback)
+    if (website.domain && !selectedSkinId) {
       configParts.push(`domain: '${website.domain}'`)
     }
-    
-    // Add skin-id if available (from website's active skin)
-    // Note: This would need to be fetched if you want to include it
-    
-    // Add theming options (if you want to show examples)
-    // These are optional, so we'll leave them out for now
     
     return `<!-- ConversaTree Intelligent Chatbot Widget -->
 <!-- Memory-enabled: Remembers user preferences across sessions -->
@@ -83,6 +84,35 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
   });
 </script>`
   }
+
+  // Load skins for website
+  useEffect(() => {
+    const loadSkins = async () => {
+      if (!website?.id) {
+        setAllSkins([])
+        setSelectedSkinId(null)
+        return
+      }
+      
+      try {
+        const skins = await skinApi.getByWebsite(website.id)
+        setAllSkins(skins)
+        // Don't auto-select any skin - user must explicitly choose
+        setSelectedSkinId(null)
+      } catch (err) {
+        console.error('Failed to load skins:', err)
+        setAllSkins([])
+        setSelectedSkinId(null)
+      }
+    }
+    
+    if (showEmbedCode && website) {
+      loadSkins()
+    } else {
+      setAllSkins([])
+      setSelectedSkinId(null)
+    }
+  }, [website, showEmbedCode])
 
   const copyToClipboard = async () => {
     const script = generateEmbedScript()
@@ -98,6 +128,13 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
   useEffect(() => {
     if (initialTree) {
       setSelectedTree(initialTree)
+    } else {
+      // Reset tree page when initialTree becomes null (e.g., customer type changed)
+      setSelectedTree(null)
+      setPreprompt(null)
+      setNodes([])
+      setSelectedNodeId(null)
+      setError(null)
     }
   }, [initialTree])
 
@@ -107,6 +144,11 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
   useEffect(() => {
     if (selectedTree) {
       loadTreeData(selectedTree.id)
+    } else {
+      // Clear tree data when selected tree is cleared
+      setPreprompt(null)
+      setNodes([])
+      setSelectedNodeId(null)
     }
   }, [selectedTree])
 
@@ -463,6 +505,35 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
                   </div>
                 </div>
                 
+                {/* Skin Selector */}
+                {allSkins.length > 0 && (
+                  <div className="bg-white px-4 py-3 border-b border-gray-100">
+                    <label className="block text-xs font-medium text-gray-700 mb-2 flex items-center gap-2">
+                      <Palette className="w-3.5 h-3.5 text-primary-600" />
+                      Select Skin (optional)
+                    </label>
+                    <select
+                      value={selectedSkinId || ''}
+                      onChange={(e) => setSelectedSkinId(e.target.value ? parseInt(e.target.value) : null)}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+                    >
+                      <option value="">-- No specific skin (use website default) --</option>
+                      {allSkins.map((skin) => (
+                        <option key={skin.id} value={skin.id}>
+                          {skin.name} {skin.is_active ? '(Active)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1.5">
+                      {selectedSkinId ? (
+                        <>The embed code will include <code className="text-primary-600 font-mono">skinId: {selectedSkinId}</code> for direct skin selection.</>
+                      ) : (
+                        <>Leave unselected to use the website's default active skin (via websiteId/domain).</>
+                      )}
+                    </p>
+                  </div>
+                )}
+
                 {/* Code Block */}
                 <div className="bg-gray-900 p-4">
                   <pre className="text-gray-100 text-sm overflow-x-auto font-mono leading-relaxed whitespace-pre-wrap">

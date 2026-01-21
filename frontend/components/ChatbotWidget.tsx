@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { MergedSkinConfig } from '../types/skinConfig'
 import SkinRenderer from './SkinRenderer'
+import SkinDebugPanel from './SkinDebugPanel'
 
 // Get API URL - use proxy in production to avoid mixed content issues
 const getDefaultApiUrl = () => {
@@ -90,17 +91,41 @@ export default function ChatbotWidget({
             params.append('domain', domain)
           }
 
-          const response = await fetch(`${apiUrl}/widget/config?${params.toString()}`)
+          const url = `${apiUrl}/widget/config?${params.toString()}`
+          console.log('[ChatbotWidget] 🔍 Fetching config from:', url)
+          
+          const response = await fetch(url)
           
           if (response.ok) {
             const widgetConfig = await response.json()
+            
+            console.log('[ChatbotWidget] ✅ Config loaded:', {
+              skinId,
+              websiteId,
+              domain,
+              url,
+              responseStatus: response.status,
+              hasSkinConfig: !!widgetConfig.skin?.config,
+              hasTheme: !!widgetConfig.theme,
+              skinConfigTheme: widgetConfig.skin?.config?.theme,
+              legacyTheme: widgetConfig.theme,
+              fullResponse: widgetConfig
+            })
             
             setResolvedTreeId(widgetConfig.treeId)
             
             // Use full skin config if available, otherwise create from legacy theme
             if (widgetConfig.skin?.config) {
+              console.log('[ChatbotWidget] ✅ Using full skin config:', {
+                theme: widgetConfig.skin.config.theme,
+                primaryColor: widgetConfig.skin.config.theme?.primaryColor,
+                backgroundColor: widgetConfig.skin.config.theme?.backgroundColor,
+                textColor: widgetConfig.skin.config.theme?.textColor,
+                meta: widgetConfig.skin.config._meta
+              })
               setSkinConfig(widgetConfig.skin.config)
             } else if (widgetConfig.theme) {
+              console.log('[ChatbotWidget] ⚠️ Using legacy theme config (no full skin config found)')
               // Legacy: create config from theme
               const legacyConfig: MergedSkinConfig = {
                 theme: {
@@ -151,8 +176,16 @@ export default function ChatbotWidget({
             setSkinConfig(errorConfig)
             setConfigLoaded(true)
           }
-        } catch (error) {
-          console.error('Error loading widget config:', error)
+        } catch (error: any) {
+          console.error('[ChatbotWidget] ❌ Error loading widget config:', {
+            error,
+            message: error?.message,
+            stack: error?.stack,
+            skinId,
+            websiteId,
+            domain,
+            apiUrl
+          })
           // Still create a basic config so widget can show error
           const errorConfig: MergedSkinConfig = {
             theme: {
@@ -216,16 +249,44 @@ export default function ChatbotWidget({
 
   // Use SkinRenderer for data-driven UI
   // Note: treeId can be null - SkinRenderer will handle it gracefully
-  // Key forces re-render when config changes (for testing)
+  // Key forces re-render when config changes - includes skinId and theme colors to detect changes
+  const renderKey = `skin-${skinId || skinConfig._meta?.skinId || 'default'}-${skinConfig.theme?.primaryColor || 'no-color'}-${skinConfig.theme?.backgroundColor || 'no-bg'}`
+  
+  console.log('[ChatbotWidget] 🎨 Rendering with config:', {
+    renderKey,
+    skinId,
+    theme: skinConfig.theme,
+    primaryColor: skinConfig.theme?.primaryColor,
+    backgroundColor: skinConfig.theme?.backgroundColor,
+    meta: skinConfig._meta
+  })
+
   return (
-    <SkinRenderer
-      key={`skin-${skinConfig._meta?.skinId || 'default'}-${Date.now()}`}
-      config={skinConfig}
-      apiUrl={apiUrl}
-      treeId={resolvedTreeId}
-      userId={userId}
-      useMemory={useMemory}
-    />
+    <>
+      <SkinRenderer
+        key={renderKey}
+        config={skinConfig}
+        apiUrl={apiUrl}
+        treeId={resolvedTreeId}
+        userId={userId}
+        useMemory={useMemory}
+      />
+      {/* Debug Panel - Always show for debugging */}
+      <SkinDebugPanel
+        config={skinConfig}
+        skinId={skinId || undefined}
+        apiUrl={apiUrl}
+        onRefresh={() => {
+          // Force reload by clearing config and reloading
+          setSkinConfig(null)
+          setConfigLoaded(false)
+          // Trigger useEffect to reload
+          setTimeout(() => {
+            setConfigLoaded(true)
+          }, 100)
+        }}
+      />
+    </>
   )
 }
 

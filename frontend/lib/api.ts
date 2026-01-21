@@ -60,6 +60,7 @@ export interface Skin {
   name: string;
   description: string | null;
   theme_config: any;
+  is_active?: boolean;
   created_at: string;
   updated_at: string;
 }
