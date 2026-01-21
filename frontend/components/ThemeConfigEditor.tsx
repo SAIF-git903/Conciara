@@ -4,6 +4,14 @@ import { useState } from 'react'
 import { ChevronDown, ChevronUp, Palette, Layout, Zap, Settings2 } from 'lucide-react'
 import { SkinConfig, ThemeColors, ComponentsConfig, StatesConfig } from '@/types/skinConfig'
 
+// Default values matching backend DEFAULT_SKIN_CONFIG
+const DEFAULT_WINDOW_WIDTH = 384
+const DEFAULT_WINDOW_HEIGHT = 600
+const DEFAULT_WINDOW_MIN_WIDTH = 320
+const DEFAULT_WINDOW_MIN_HEIGHT = 400
+const DEFAULT_WINDOW_BORDER_RADIUS = 8
+const DEFAULT_HEADER_HEIGHT = 48
+
 interface ThemeConfigEditorProps {
   value: SkinConfig | null
   onChange: (config: SkinConfig) => void
@@ -24,12 +32,17 @@ export default function ThemeConfigEditor({ value, onChange }: ThemeConfigEditor
     empty: false,
     error: false,
   })
+  const [validationErrors, setValidationErrors] = useState<{
+    width?: string
+    height?: string
+  }>({})
 
   const config = value || {
     theme: {},
     components: {},
     states: {},
   }
+
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => ({
@@ -46,13 +59,53 @@ export default function ThemeConfigEditor({ value, onChange }: ThemeConfigEditor
   }
 
   const updateComponents = (component: keyof ComponentsConfig, updates: any) => {
-    onChange({
+    const newConfig = {
       ...config,
       components: {
         ...config.components,
         [component]: { ...config.components?.[component], ...updates },
       },
-    })
+    }
+    
+    // Validate window dimensions if updating window config
+    if (component === 'window') {
+      const windowConfig = newConfig.components?.window || {}
+      
+      // Always ensure minWidth and minHeight are set (use defaults if not present)
+      // These are required for validation but not shown as editable fields
+      if (!windowConfig.minWidth) {
+        newConfig.components!.window = {
+          ...windowConfig,
+          minWidth: DEFAULT_WINDOW_MIN_WIDTH
+        }
+      }
+      if (!windowConfig.minHeight) {
+        newConfig.components!.window = {
+          ...newConfig.components!.window!,
+          minHeight: DEFAULT_WINDOW_MIN_HEIGHT
+        }
+      }
+      
+      // Validate dimensions if width or height are being updated
+      if (updates.width !== undefined || updates.height !== undefined) {
+        const finalWindowConfig = newConfig.components!.window!
+        const width = finalWindowConfig.width ?? DEFAULT_WINDOW_WIDTH
+        const height = finalWindowConfig.height ?? DEFAULT_WINDOW_HEIGHT
+        const minWidth = finalWindowConfig.minWidth ?? DEFAULT_WINDOW_MIN_WIDTH
+        const minHeight = finalWindowConfig.minHeight ?? DEFAULT_WINDOW_MIN_HEIGHT
+        
+        const errors: { width?: string; height?: string } = {}
+        if (width < minWidth) {
+          errors.width = `Width must be at least ${minWidth}px`
+        }
+        if (height < minHeight) {
+          errors.height = `Height must be at least ${minHeight}px`
+        }
+        setValidationErrors(errors)
+      }
+    }
+    
+    onChange(newConfig)
   }
 
   const updateStates = (state: keyof StatesConfig, updates: any) => {
@@ -210,29 +263,35 @@ export default function ThemeConfigEditor({ value, onChange }: ThemeConfigEditor
               onToggle={() => toggleSection('window')}
             >
               <div className="grid grid-cols-2 gap-4">
-                <NumberInput
-                  label="Width"
-                  value={config.components?.window?.width || 384}
-                  onChange={(val) => updateComponents('window', { width: val })}
-                />
-                <NumberInput
-                  label="Height"
-                  value={config.components?.window?.height || 600}
-                  onChange={(val) => updateComponents('window', { height: val })}
-                />
-                <NumberInput
-                  label="Min Width"
-                  value={config.components?.window?.minWidth || 320}
-                  onChange={(val) => updateComponents('window', { minWidth: val })}
-                />
-                <NumberInput
-                  label="Min Height"
-                  value={config.components?.window?.minHeight || 400}
-                  onChange={(val) => updateComponents('window', { minHeight: val })}
-                />
+                <div>
+                  <NumberInput
+                    label="Width"
+                    value={config.components?.window?.width ?? DEFAULT_WINDOW_WIDTH}
+                    onChange={(val) => updateComponents('window', { width: val })}
+                  />
+                  {validationErrors.width && (
+                    <p className="text-xs text-red-600 mt-1">{validationErrors.width}</p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    Minimum: {config.components?.window?.minWidth ?? DEFAULT_WINDOW_MIN_WIDTH}px
+                  </p>
+                </div>
+                <div>
+                  <NumberInput
+                    label="Height"
+                    value={config.components?.window?.height ?? DEFAULT_WINDOW_HEIGHT}
+                    onChange={(val) => updateComponents('window', { height: val })}
+                  />
+                  {validationErrors.height && (
+                    <p className="text-xs text-red-600 mt-1">{validationErrors.height}</p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    Minimum: {config.components?.window?.minHeight ?? DEFAULT_WINDOW_MIN_HEIGHT}px
+                  </p>
+                </div>
                 <NumberInput
                   label="Border Radius"
-                  value={config.components?.window?.borderRadius || 8}
+                  value={config.components?.window?.borderRadius ?? DEFAULT_WINDOW_BORDER_RADIUS}
                   onChange={(val) => updateComponents('window', { borderRadius: val })}
                 />
                 <SelectInput
@@ -268,7 +327,7 @@ export default function ThemeConfigEditor({ value, onChange }: ThemeConfigEditor
                   <div className="grid grid-cols-2 gap-4 pl-6 border-l-2 border-gray-200">
                     <NumberInput
                       label="Height"
-                      value={config.components?.header?.height || 48}
+                      value={config.components?.header?.height ?? DEFAULT_HEADER_HEIGHT}
                       onChange={(val) => updateComponents('header', { height: val })}
                     />
                     <div className="col-span-2">

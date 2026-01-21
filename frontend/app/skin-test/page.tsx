@@ -38,7 +38,7 @@ export default function SkinTestPage() {
         <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">🧪 Skin Debug Test Page</h1>
           <p className="text-gray-600 mb-6">
-            Test the chatbot widget with different skins. The debug panel will appear automatically!
+            Test the chatbot widget with different skins.
           </p>
 
           <div className="space-y-4">
@@ -124,33 +124,11 @@ export default function SkinTestPage() {
               </div>
             )}
 
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h3 className="font-semibold text-blue-900 mb-2">How to Use Debug Panel:</h3>
-              <ol className="list-decimal list-inside space-y-1 text-sm text-blue-800">
-                <li>Look for the <strong>🐛 Debug Skin</strong> button in the bottom-left corner</li>
-                <li>Click it to open the debug panel</li>
-                <li>Check the "Theme Colors" section to see what colors are loaded</li>
-                <li>Click "Refresh" to reload config from API</li>
-                <li>Check browser console for detailed logs (look for <code className="bg-blue-100 px-1 rounded">[ChatbotWidget]</code>)</li>
-                <li>Use "Copy" button to copy all debug info</li>
-              </ol>
-            </div>
-
-            <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
-              <h3 className="font-semibold text-purple-900 mb-2">What to Check:</h3>
-              <ul className="list-disc list-inside space-y-1 text-sm text-purple-800">
-                <li><strong>Skin ID:</strong> Is it correct?</li>
-                <li><strong>Theme Colors:</strong> Are they showing? Do they match your dark theme?</li>
-                <li><strong>API Response:</strong> Does it include <code className="bg-purple-100 px-1 rounded">skin.config</code>?</li>
-                <li><strong>Console Logs:</strong> Check for errors or warnings</li>
-                <li><strong>Widget Appearance:</strong> Does the chatbot actually use the dark theme colors?</li>
-              </ul>
-            </div>
           </div>
         </div>
       </div>
 
-      {/* Chatbot Widget with Debug Panel */}
+      {/* Chatbot Widget */}
       {(skinId || websiteId) && (
         <ChatbotWidget
           apiUrl={apiUrl}

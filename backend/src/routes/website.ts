@@ -51,6 +51,10 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Customer type ID is required' });
     }
     
+    if (!domain || typeof domain !== 'string' || !domain.trim()) {
+      return res.status(400).json({ error: 'Domain is required' });
+    }
+    
     const website = await createWebsite(customer_type_id, name, description, domain);
     res.status(201).json(website);
   } catch (error) {

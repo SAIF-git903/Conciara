@@ -13,9 +13,7 @@ const router = express.Router();
 router.get('/', async (req, res) => {
   try {
     const abVariationId = req.query.ab_variation_id ? parseInt(req.query.ab_variation_id as string) : undefined;
-    console.log(`[GET /dialog-tree] ab_variation_id query param: ${req.query.ab_variation_id}, parsed: ${abVariationId}`);
     const trees = await getAllDialogTrees(abVariationId);
-    console.log(`[GET /dialog-tree] Returning ${trees.length} trees`);
     res.json(trees);
   } catch (error: any) {
     console.error('Error fetching dialog trees:', error);

@@ -29,6 +29,7 @@ router.get('/config', async (req, res) => {
         });
       }
 
+
       // Get merged config for this specific skin
       const variation = await pool.query(
         'SELECT * FROM ab_variations WHERE skin_id = $1 AND is_active = true ORDER BY created_at ASC LIMIT 1',
@@ -38,6 +39,7 @@ router.get('/config', async (req, res) => {
       const baseConfig = parseSkinConfig(skin);
       const overrides = parseVariationConfig(variation.rows[0] || null);
       const mergedSkinConfig = mergeSkinConfig(baseConfig, overrides);
+      
       
       mergedSkinConfig._meta = {
         skinId: skin.id,
@@ -63,7 +65,7 @@ router.get('/config', async (req, res) => {
         textColor: mergedSkinConfig?.theme?.textColor || '#1f2937'
       };
 
-      return res.json({
+      const responseData = {
         websiteId: skin.website_id,
         websiteName: null,
         treeId: tree?.id || null,
@@ -82,7 +84,10 @@ router.get('/config', async (req, res) => {
         hasTree: !!tree,
         hasSkin: !!mergedSkinConfig,
         hasVariation: !!variation.rows[0]
-      });
+      };
+
+
+      return res.json(responseData);
     }
 
     // Otherwise, use websiteId or domain

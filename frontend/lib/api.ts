@@ -103,9 +103,7 @@ export const dialogTreeApi = {
     if (abVariationId !== undefined && abVariationId !== null) {
       params.ab_variation_id = abVariationId;
     }
-    console.log('[dialogTreeApi.getAll] Calling with abVariationId:', abVariationId, 'params:', params);
     const response = await api.get('/dialog-tree', { params });
-    console.log('[dialogTreeApi.getAll] Received', response.data?.length || 0, 'trees:', response.data?.map((t: any) => t.name));
     return response.data || [];
   },
   getById: async (id: number): Promise<DialogTree> => {

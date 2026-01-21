@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { MergedSkinConfig } from '../types/skinConfig'
 import SkinRenderer from './SkinRenderer'
-import SkinDebugPanel from './SkinDebugPanel'
 
 // Get API URL - use proxy in production to avoid mixed content issues
 const getDefaultApiUrl = () => {
@@ -92,25 +91,12 @@ export default function ChatbotWidget({
           }
 
           const url = `${apiUrl}/widget/config?${params.toString()}`
-          console.log('[ChatbotWidget] 🔍 Fetching config from:', url)
           
           const response = await fetch(url)
           
           if (response.ok) {
             const widgetConfig = await response.json()
             
-            console.log('[ChatbotWidget] ✅ Config loaded:', {
-              skinId,
-              websiteId,
-              domain,
-              url,
-              responseStatus: response.status,
-              hasSkinConfig: !!widgetConfig.skin?.config,
-              hasTheme: !!widgetConfig.theme,
-              skinConfigTheme: widgetConfig.skin?.config?.theme,
-              legacyTheme: widgetConfig.theme,
-              fullResponse: widgetConfig
-            })
             
             setResolvedTreeId(widgetConfig.treeId)
             
@@ -125,7 +111,6 @@ export default function ChatbotWidget({
               })
               setSkinConfig(widgetConfig.skin.config)
             } else if (widgetConfig.theme) {
-              console.log('[ChatbotWidget] ⚠️ Using legacy theme config (no full skin config found)')
               // Legacy: create config from theme
               const legacyConfig: MergedSkinConfig = {
                 theme: {
@@ -231,7 +216,6 @@ export default function ChatbotWidget({
               }
             }
           } catch (error) {
-            console.warn('Auto-detection failed:', error)
           }
         }
         setConfigLoaded(true)
@@ -252,14 +236,6 @@ export default function ChatbotWidget({
   // Key forces re-render when config changes - includes skinId and theme colors to detect changes
   const renderKey = `skin-${skinId || skinConfig._meta?.skinId || 'default'}-${skinConfig.theme?.primaryColor || 'no-color'}-${skinConfig.theme?.backgroundColor || 'no-bg'}`
   
-  console.log('[ChatbotWidget] 🎨 Rendering with config:', {
-    renderKey,
-    skinId,
-    theme: skinConfig.theme,
-    primaryColor: skinConfig.theme?.primaryColor,
-    backgroundColor: skinConfig.theme?.backgroundColor,
-    meta: skinConfig._meta
-  })
 
   return (
     <>
@@ -270,21 +246,6 @@ export default function ChatbotWidget({
         treeId={resolvedTreeId}
         userId={userId}
         useMemory={useMemory}
-      />
-      {/* Debug Panel - Always show for debugging */}
-      <SkinDebugPanel
-        config={skinConfig}
-        skinId={skinId || undefined}
-        apiUrl={apiUrl}
-        onRefresh={() => {
-          // Force reload by clearing config and reloading
-          setSkinConfig(null)
-          setConfigLoaded(false)
-          // Trigger useEffect to reload
-          setTimeout(() => {
-            setConfigLoaded(true)
-          }, 100)
-        }}
       />
     </>
   )

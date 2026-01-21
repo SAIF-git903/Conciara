@@ -111,14 +111,14 @@ NEXT_PUBLIC_API_URL=http://localhost:3001/api
 npm run dev
 ```
 
-The application will be available at `http://localhost:3000`
+The application will be available at `http://localhost:3002`
 
 ## Widget Integration
 
 ### Basic Usage
 
 ```html
-<script src="http://localhost:3000/widget.js"></script>
+<script src="http://localhost:3002/widget.js"></script>
 <script>
   ConversaTree.init({
     apiUrl: 'http://localhost:3001/api',
@@ -132,7 +132,7 @@ The application will be available at `http://localhost:3000`
 ### Domain-Based Auto-Configuration
 
 ```html
-<script src="http://localhost:3000/widget.js"></script>
+<script src="http://localhost:3002/widget.js"></script>
 <script>
   ConversaTree.init({
     apiUrl: 'http://localhost:3001/api',
@@ -141,7 +141,7 @@ The application will be available at `http://localhost:3000`
 </script>
 ```
 
-For complete widget documentation, see [FINAL_WIDGET_USAGE.md](./FINAL_WIDGET_USAGE.md)
+For complete widget integration guide, see [CLIENT_INTEGRATION_GUIDE.md](./CLIENT_INTEGRATION_GUIDE.md)
 
 ## Database Schema
 
@@ -203,7 +203,9 @@ For complete widget documentation, see [FINAL_WIDGET_USAGE.md](./FINAL_WIDGET_US
 - `POST /api/chat/message` - Process chat message
 
 ### Widget Configuration
-- `GET /api/widget/config` - Get widget configuration (auto-detects by domain)
+- `GET /api/widget/config?skinId=X` - Get widget configuration by skin ID
+- `GET /api/widget/config?websiteId=X` - Get widget configuration by website ID
+- `GET /api/widget/config?domain=example.com` - Get widget configuration by domain
 
 ### Preprompts
 - `GET /api/preprompt/tree/:treeId` - Get preprompt for a tree
@@ -211,13 +213,33 @@ For complete widget documentation, see [FINAL_WIDGET_USAGE.md](./FINAL_WIDGET_US
 - `DELETE /api/preprompt/:id` - Delete preprompt
 
 ### Skins & Variations
-- `GET /api/skin` - Get all skins
+- `GET /api/skin/website/:websiteId` - Get skins for a website
 - `GET /api/skin/:id` - Get skin by ID
 - `POST /api/skin` - Create skin
 - `PUT /api/skin/:id` - Update skin
 - `DELETE /api/skin/:id` - Delete skin
-- `GET /api/ab-variation` - Get variations
+- `GET /api/ab-variation/skin/:skinId` - Get variations for a skin
+- `GET /api/ab-variation/:id` - Get variation by ID
 - `POST /api/ab-variation` - Create variation
+- `PUT /api/ab-variation/:id` - Update variation
+- `DELETE /api/ab-variation/:id` - Delete variation
+
+### Websites & Customer Types
+- `GET /api/website` - Get all websites
+- `GET /api/website/:id` - Get website by ID
+- `GET /api/website/customer-type/:customerTypeId` - Get websites by customer type
+- `POST /api/website` - Create website
+- `PUT /api/website/:id` - Update website
+- `DELETE /api/website/:id` - Delete website
+- `GET /api/customer-type` - Get all customer types
+- `GET /api/customer-type/:id` - Get customer type by ID
+- `POST /api/customer-type` - Create customer type
+- `PUT /api/customer-type/:id` - Update customer type
+- `DELETE /api/customer-type/:id` - Delete customer type
+
+### Chat & Sessions
+- `GET /api/chat/history/:sessionId` - Get conversation history
+- `POST /api/chat/reset` - Reset conversation session
 
 ## Tech Stack
 
@@ -240,11 +262,9 @@ For complete widget documentation, see [FINAL_WIDGET_USAGE.md](./FINAL_WIDGET_US
 
 ## Key Documentation
 
-- [FINAL_WIDGET_USAGE.md](./FINAL_WIDGET_USAGE.md) - Complete widget integration guide
-- [CLIENT_INTEGRATION_GUIDE.md](./CLIENT_INTEGRATION_GUIDE.md) - Client integration instructions
-- [CLIENT_EXPLANATION_MEMORY_FEATURE.md](./CLIENT_EXPLANATION_MEMORY_FEATURE.md) - User memory feature explanation
-- [USER_MEMORY_SYSTEM.md](./USER_MEMORY_SYSTEM.md) - Technical documentation for user memory
+- [CLIENT_INTEGRATION_GUIDE.md](./CLIENT_INTEGRATION_GUIDE.md) - Complete widget integration guide with user memory
 - [DATABASE_CONNECTION_GUIDE.md](./DATABASE_CONNECTION_GUIDE.md) - Database setup and connection guide
+- [backend/PGADMIN_SETUP_GUIDE.md](./backend/PGADMIN_SETUP_GUIDE.md) - pgAdmin setup guide for creating database and users
 
 ## Development
 

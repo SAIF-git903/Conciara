@@ -66,7 +66,6 @@ export default function MemoryTestPage() {
   const sendMessage = async (message: string) => {
     const trimmedMessage = message.trim()
     if (!trimmedMessage || isLoading) {
-      console.log('Send blocked:', { trimmedMessage, isLoading })
       return
     }
 
@@ -84,7 +83,6 @@ export default function MemoryTestPage() {
         use_memory: true
       }
       
-      console.log('Request body:', requestBody)
 
       const response = await fetch(`${apiUrl}/chat/message`, {
         method: 'POST',
@@ -296,7 +294,6 @@ export default function MemoryTestPage() {
               type="text"
               value={input}
               onChange={(e) => {
-                console.log('Input changed:', e.target.value)
                 setInput(e.target.value)
               }}
               placeholder="Type your message..."

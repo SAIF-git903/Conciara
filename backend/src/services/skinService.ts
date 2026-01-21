@@ -18,9 +18,30 @@ export function parseSkinConfig(skin: Skin | null): SkinConfig {
   }
 
   try {
-    const config = typeof skin.theme_config === 'string'
-      ? JSON.parse(skin.theme_config)
-      : skin.theme_config;
+    let config: any;
+    
+    // Handle different data types from PostgreSQL
+    if (typeof skin.theme_config === 'string') {
+      // Try parsing as JSON string
+      try {
+        config = JSON.parse(skin.theme_config);
+      } catch (parseError) {
+        // If first parse fails, might be double-encoded, try again
+        try {
+          const firstParse = JSON.parse(skin.theme_config);
+          if (typeof firstParse === 'string') {
+            config = JSON.parse(firstParse);
+          } else {
+            config = firstParse;
+          }
+        } catch (secondParseError) {
+          return DEFAULT_SKIN_CONFIG;
+        }
+      }
+    } else {
+      // Already an object (JSONB from PostgreSQL)
+      config = skin.theme_config;
+    }
 
     // If it's just colors (legacy format), convert to new format
     if (config.primaryColor && !config.theme && !config.components) {
@@ -36,9 +57,11 @@ export function parseSkinConfig(skin: Skin | null): SkinConfig {
     }
 
     // Merge with defaults to ensure all properties exist
-    return deepMerge(DEFAULT_SKIN_CONFIG, config);
+    const merged = deepMerge(DEFAULT_SKIN_CONFIG, config);
+    
+    
+    return merged;
   } catch (error) {
-    console.warn('Error parsing skin config, using defaults:', error);
     return DEFAULT_SKIN_CONFIG;
   }
 }
@@ -58,7 +81,6 @@ export function parseVariationConfig(variation: ABVariation | null): VariationOv
 
     return config;
   } catch (error) {
-    console.warn('Error parsing variation config:', error);
     return {};
   }
 }

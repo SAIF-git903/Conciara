@@ -97,14 +97,16 @@ export default function NodeEditor({
   }
 
   const handleCreate = async () => {
-    if (!newUserInput.trim() && !newBotResponse.trim()) {
-      setValidationError('At least one field (user input or bot response) must be filled')
+    if (!newBotResponse.trim()) {
+      setValidationError('Bot response is required')
       setTimeout(() => setValidationError(null), 3000)
       return
     }
 
+    // For child nodes, user input is optional but can be provided
+    // For root nodes, user input is not shown, so it will be empty
     setValidationError(null)
-    await onCreate(parentId, newUserInput, newBotResponse)
+    await onCreate(parentId, newUserInput.trim(), newBotResponse)
     setNewUserInput('')
     setNewBotResponse('')
     setParentId(null)
@@ -347,26 +349,28 @@ export default function NodeEditor({
             </div>
             
             <div className="space-y-4">
-              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <label className="flex items-center gap-2 text-xs font-bold text-blue-700 mb-2 uppercase tracking-wide">
-                  <User className="w-4 h-4" />
-                  User Input
-                </label>
-                <input
-                  type="text"
-                  value={newUserInput}
-                  onChange={(e) => setNewUserInput(e.target.value)}
-                  className="w-full p-2.5 border-2 border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder:text-gray-400 text-sm transition-all"
-                  placeholder="What will the user say? (e.g., 'Hello', 'I need help', 'Tell me about...')"
-                  autoFocus
-                />
-                <p className="text-xs text-blue-600 mt-1.5">This is what triggers this conversation path</p>
-              </div>
+              {parentId && (
+                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <label className="flex items-center gap-2 text-xs font-bold text-blue-700 mb-2 uppercase tracking-wide">
+                    <User className="w-4 h-4" />
+                    User Input
+                  </label>
+                  <input
+                    type="text"
+                    value={newUserInput}
+                    onChange={(e) => setNewUserInput(e.target.value)}
+                    className="w-full p-2.5 border-2 border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder:text-gray-400 text-sm transition-all"
+                    placeholder="What will the user say? (e.g., 'Hello', 'I need help', 'Tell me about...')"
+                    autoFocus
+                  />
+                  <p className="text-xs text-blue-600 mt-1.5">This is what triggers this conversation path</p>
+                </div>
+              )}
               
               <div className="p-3 bg-green-50 rounded-lg border border-green-200">
                 <label className="flex items-center gap-2 text-xs font-bold text-green-700 mb-2 uppercase tracking-wide">
                   <Bot className="w-4 h-4" />
-                  Bot Response
+                  Chatbot Response
                 </label>
                 <textarea
                   value={newBotResponse}
@@ -374,8 +378,9 @@ export default function NodeEditor({
                   className="w-full p-2.5 border-2 border-green-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 placeholder:text-gray-400 resize-none text-sm transition-all"
                   rows={4}
                   placeholder="How should the bot respond? (e.g., &apos;Hello! How can I help you today?&apos;, &apos;I understand you need assistance...&apos;)"
+                  autoFocus={!parentId}
                 />
-                <p className="text-xs text-green-600 mt-1.5">The bot&apos;s response to the user&apos;s input</p>
+                <p className="text-xs text-green-600 mt-1.5">The bot&apos;s response message</p>
               </div>
             </div>
             
@@ -393,7 +398,7 @@ export default function NodeEditor({
               </button>
               <button
                 onClick={handleCreate}
-                disabled={loading || (!newUserInput.trim() && !newBotResponse.trim())}
+                disabled={loading || !newBotResponse.trim()}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 text-sm font-semibold shadow-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-green-600 disabled:hover:to-green-700"
               >
                 <Save className="w-4 h-4" />

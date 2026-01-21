@@ -234,6 +234,10 @@ export default function MultiTenantNavigator({ onSelectTree, selectedTreeId, onW
             showToast('Please select a customer type first', 'error')
             return
           }
+          if (!formData.domain || !formData.domain.trim()) {
+            showToast('Domain is required', 'error')
+            return
+          }
           if (showCreateModal.isEdit && showCreateModal.data) {
             // Edit mode
             newItem = await websiteApi.update(
@@ -253,7 +257,7 @@ export default function MultiTenantNavigator({ onSelectTree, selectedTreeId, onW
               selectedCustomerType.id, 
               formData.name, 
               formData.description || undefined,
-              formData.domain || undefined
+              formData.domain
             )
             setWebsites([...websites, newItem])
             showToast('Website created successfully!', 'success')
@@ -264,6 +268,27 @@ export default function MultiTenantNavigator({ onSelectTree, selectedTreeId, onW
             showToast('Please select a website first', 'error')
             return
           }
+          
+          // Validate window dimensions before saving
+          if (formData.theme_config?.components?.window) {
+            const windowConfig = formData.theme_config.components.window
+            const DEFAULT_MIN_WIDTH = 320
+            const DEFAULT_MIN_HEIGHT = 400
+            const minWidth = windowConfig.minWidth ?? DEFAULT_MIN_WIDTH
+            const minHeight = windowConfig.minHeight ?? DEFAULT_MIN_HEIGHT
+            const width = windowConfig.width ?? 384
+            const height = windowConfig.height ?? 600
+            
+            if (width < minWidth) {
+              showToast(`Width must be at least ${minWidth}px (minimum required)`, 'error')
+              return
+            }
+            if (height < minHeight) {
+              showToast(`Height must be at least ${minHeight}px (minimum required)`, 'error')
+              return
+            }
+          }
+          
           const themeConfig = formData.theme_config || undefined
           if (showCreateModal.isEdit && showCreateModal.data) {
             // Edit mode
@@ -834,7 +859,7 @@ This is a destructive operation that cannot be reversed.`,
                 {showCreateModal.type === 'website' && (
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                      Domain <span className="text-gray-400 text-xs font-normal">(optional)</span>
+                      Domain <span className="text-red-500">*</span>
                       <span className="block text-xs text-gray-500 font-normal mt-1">
                         e.g., techstore.com (used for auto-detection in widget)
                       </span>
@@ -845,6 +870,7 @@ This is a destructive operation that cannot be reversed.`,
                       onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
                       className="w-full p-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                       placeholder="techstore.com"
+                      required
                     />
                   </div>
                 )}
@@ -863,7 +889,7 @@ This is a destructive operation that cannot be reversed.`,
               </button>
               <button
                 onClick={handleCreate}
-                disabled={!formData.name.trim() || loading}
+                disabled={!formData.name.trim() || (showCreateModal.type === 'website' && !formData.domain.trim()) || loading}
                 className="flex-1 px-4 py-2 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-lg hover:from-primary-700 hover:to-primary-800 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {showCreateModal.isEdit ? 'Update' : 'Create'}

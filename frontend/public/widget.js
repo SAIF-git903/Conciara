@@ -68,6 +68,7 @@
       // Store defaults separately to detect if user explicitly provided values
       this.defaults = { ...defaults };
       this.config = { ...defaults };
+      this.skinConfig = null; // Full skin config from API (includes components, states, etc.)
       this.sessionId = null;
       this.isOpen = false;
       this.isMinimized = false;
@@ -76,6 +77,8 @@
       this.isLoading = false;
       this.container = null;
       this.configLoaded = false;
+      this.isSendingMessage = false;
+      this.eventListenersAttached = false;
       
       // Load config asynchronously if websiteId or domain is provided
       this.loadConfig().then(() => {
@@ -89,21 +92,8 @@
     }
 
     async loadConfig() {
-      // If treeId is provided directly, use it (manual mode - bypasses all lookups)
-      if (this.rawConfig.treeId) {
-        // Merge with defaults to ensure all required properties are set
-        this.config = {
-          ...defaults,
-          ...this.rawConfig
-        };
-        this.configLoaded = true;
-        
-        // Return resolved promise to ensure init() is called
-        return Promise.resolve();
-      }
-
-      // PRIORITY: skinId > websiteId > domain
-      // If skinId is provided, use it directly (bypasses website/domain lookup)
+      // PRIORITY: skinId > treeId > websiteId > domain
+      // If skinId is provided, use it directly (bypasses all other lookups including treeId)
       if (this.rawConfig.skinId) {
         try {
           const params = new URLSearchParams();
@@ -127,9 +117,18 @@
           if (widgetConfig.skin?.config) {
             // Use full skin config (data-driven from database)
             const skinConfig = widgetConfig.skin.config;
-            primaryColor = skinConfig.theme?.primaryColor || defaults.primaryColor;
-            backgroundColor = skinConfig.theme?.backgroundColor || defaults.backgroundColor;
-            textColor = skinConfig.theme?.textColor || defaults.textColor;
+            
+            // Store full skin config for use in rendering
+            this.skinConfig = skinConfig;
+            
+            // Extract theme values - ensure we're reading from the correct path
+            if (skinConfig.theme) {
+              primaryColor = skinConfig.theme.primaryColor || defaults.primaryColor;
+              backgroundColor = skinConfig.theme.backgroundColor || defaults.backgroundColor;
+              textColor = skinConfig.theme.textColor || defaults.textColor;
+            }
+            
+            // Extract component configs
             position = skinConfig.components?.button?.position || defaults.position;
             title = skinConfig.components?.header?.title || defaults.title;
           } else if (widgetConfig.theme) {
@@ -207,13 +206,23 @@
               inputContainer.style.setProperty('border-top-color', borderColor, 'important');
             }
             
-            // Update input field
+            // Update input field - use adaptive text color based on background
             const input = this.container.querySelector('.ct-input');
             if (input) {
               const inputBg = backgroundColor === '#ffffff' || !backgroundColor ? 'white' : backgroundColor;
               input.style.setProperty('background-color', inputBg, 'important');
-              input.style.setProperty('color', textColor, 'important');
+              // Use adaptive text color - light on dark backgrounds, dark on light backgrounds
+              const inputTextColor = this.getContrastTextColor(inputBg);
+              const placeholderColor = this.isLightColor(inputBg) ? 'rgba(31, 41, 55, 0.6)' : 'rgba(255, 255, 255, 0.6)';
+              input.style.setProperty('color', inputTextColor, 'important');
+              input.style.setProperty('font-weight', '500', 'important');
               input.style.setProperty('border-color', borderColor, 'important');
+              // Also update textarea if it exists
+              const textarea = this.container.querySelector('.ct-textarea');
+              if (textarea) {
+                textarea.style.setProperty('color', inputTextColor, 'important');
+                textarea.style.setProperty('font-weight', '500', 'important');
+              }
             }
             
             // Update send button
@@ -269,7 +278,20 @@
         }
       }
 
-      // WEBSITE-ID OR DOMAIN-BASED LOOKUP (Fallback if no skinId)
+      // If treeId is provided directly (without skinId), use it (manual mode - bypasses lookups)
+      if (this.rawConfig.treeId) {
+        // Merge with defaults to ensure all required properties are set
+        this.config = {
+          ...defaults,
+          ...this.rawConfig
+        };
+        this.configLoaded = true;
+        
+        // Return resolved promise to ensure init() is called
+        return Promise.resolve();
+      }
+
+      // WEBSITE-ID OR DOMAIN-BASED LOOKUP (Fallback if no skinId or treeId)
       // Selection logic:
       // 1. Find website by websiteId or domain
       // 2. Get active skin for website (is_active = true, or first created)
@@ -304,6 +326,10 @@
           if (widgetConfig.skin?.config) {
             // Use full skin config (data-driven from database)
             const skinConfig = widgetConfig.skin.config;
+            
+            // Store full skin config for use in rendering
+            this.skinConfig = skinConfig;
+            
             primaryColor = skinConfig.theme?.primaryColor || defaults.primaryColor;
             backgroundColor = skinConfig.theme?.backgroundColor || defaults.backgroundColor;
             textColor = skinConfig.theme?.textColor || defaults.textColor;
@@ -384,13 +410,23 @@
               inputContainer.style.setProperty('border-top-color', borderColor, 'important');
             }
             
-            // Update input field
+            // Update input field - use adaptive text color based on background
             const input = this.container.querySelector('.ct-input');
             if (input) {
               const inputBg = backgroundColor === '#ffffff' || !backgroundColor ? 'white' : backgroundColor;
               input.style.setProperty('background-color', inputBg, 'important');
-              input.style.setProperty('color', textColor, 'important');
+              // Use adaptive text color - light on dark backgrounds, dark on light backgrounds
+              const inputTextColor = this.getContrastTextColor(inputBg);
+              const placeholderColor = this.isLightColor(inputBg) ? 'rgba(31, 41, 55, 0.6)' : 'rgba(255, 255, 255, 0.6)';
+              input.style.setProperty('color', inputTextColor, 'important');
+              input.style.setProperty('font-weight', '500', 'important');
               input.style.setProperty('border-color', borderColor, 'important');
+              // Also update textarea if it exists
+              const textarea = this.container.querySelector('.ct-textarea');
+              if (textarea) {
+                textarea.style.setProperty('color', inputTextColor, 'important');
+                textarea.style.setProperty('font-weight', '500', 'important');
+              }
             }
             
             // Update send button
@@ -461,6 +497,10 @@
               if (widgetConfig.skin?.config) {
                 // Use full skin config (data-driven from database)
                 const skinConfig = widgetConfig.skin.config;
+                
+                // Store full skin config for use in rendering
+                this.skinConfig = skinConfig;
+                
                 primaryColor = skinConfig.theme?.primaryColor || defaults.primaryColor;
                 backgroundColor = skinConfig.theme?.backgroundColor || defaults.backgroundColor;
                 textColor = skinConfig.theme?.textColor || defaults.textColor;
@@ -543,7 +583,11 @@
                 if (input) {
                   const inputBg = backgroundColor === '#ffffff' || !backgroundColor ? 'white' : backgroundColor;
                   input.style.setProperty('background-color', inputBg, 'important');
-                  input.style.setProperty('color', textColor, 'important');
+                  // Ensure text color has good contrast - use darker color if textColor is too light
+              const inputTextColor = textColor || '#1f2937';
+              input.style.setProperty('color', inputTextColor, 'important');
+              // Ensure placeholder has good contrast
+              input.style.setProperty('--placeholder-color', inputTextColor + '80', 'important');
                   input.style.setProperty('border-color', borderColor, 'important');
                 }
                 
@@ -560,10 +604,12 @@
                 });
                 
                 // Update user message bubbles (critical for dark themes)
-                const userMessages = this.container.querySelectorAll('.ct-message.user .ct-message-content');
+                const userMessages = this.container.querySelectorAll('.ct-message.user .ct-message-content, .ct-message-content-list, .ct-message-content-card');
                 userMessages.forEach(msg => {
+                  const bgColor = msg.style.backgroundColor || secondaryColor;
                   msg.style.setProperty('background-color', secondaryColor, 'important');
-                  msg.style.setProperty('color', textColor, 'important');
+                  msg.style.setProperty('color', this.isLightColor(secondaryColor) ? '#1f2937' : '#ffffff', 'important');
+                  msg.style.setProperty('font-weight', '500', 'important');
                 });
                 
                 // Update quick reply buttons
@@ -616,13 +662,11 @@
         // Check if container already exists
         const existingContainer = document.getElementById('conversatree-widget');
         if (existingContainer) {
-          console.warn('[ConversaTree] Widget container already exists, removing old one');
           existingContainer.remove();
         }
 
         // Ensure document.body exists
         if (!document.body) {
-          console.warn('[ConversaTree] document.body not ready, waiting...');
           setTimeout(() => this.init(), 100);
           return;
         }
@@ -664,12 +708,22 @@
         oldStyle.remove();
       }
 
-      // Ensure we have a color (use config or default)
+      // Ensure we have colors (use config or default)
       const primaryColor = this.config.primaryColor || defaults.primaryColor;
+      const backgroundColor = this.config.backgroundColor || defaults.backgroundColor;
+      const textColor = this.config.textColor || defaults.textColor;
+      const secondaryColor = this.config.secondaryColor || '#f3f4f6';
+      const borderColor = this.config.borderColor || '#e5e7eb';
       
       // Update config if it was using default
       if (!this.config.primaryColor || this.config.primaryColor === defaults.primaryColor) {
         this.config.primaryColor = primaryColor;
+      }
+      if (!this.config.backgroundColor || this.config.backgroundColor === defaults.backgroundColor) {
+        this.config.backgroundColor = backgroundColor;
+      }
+      if (!this.config.textColor || this.config.textColor === defaults.textColor) {
+        this.config.textColor = textColor;
       }
 
       const style = document.createElement('style');
@@ -683,9 +737,7 @@
         }
 
         .ct-button {
-          width: 56px;
-          height: 56px;
-          border-radius: 50%;
+          /* Width, height, and border-radius are set inline from config */
           background-color: ${primaryColor} !important;
           color: white !important;
           border: none;
@@ -695,6 +747,7 @@
           align-items: center;
           justify-content: center;
           transition: transform 0.2s, box-shadow 0.2s, background-color 0.3s;
+          padding: 0;
         }
 
         .ct-button:hover {
@@ -703,19 +756,19 @@
         }
 
         .ct-window {
-          width: 384px;
-          height: 600px;
-          background: ${this.config.backgroundColor};
-          border-radius: 8px;
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+          /* Dimensions, border-radius, and shadow are set inline from config */
+          background: ${backgroundColor} !important;
           display: flex;
           flex-direction: column;
           overflow: hidden;
+          transition: height 0.3s ease;
+          box-sizing: border-box;
         }
 
         .ct-window.minimized {
-          height: 48px;
+          /* Height is set inline from config */
         }
+
 
         .ct-header {
           background-color: ${primaryColor} !important;
@@ -725,6 +778,7 @@
           align-items: center;
           justify-content: space-between;
           flex-shrink: 0;
+          /* Height is set inline from config */
         }
 
         .ct-header-title {
@@ -762,9 +816,20 @@
           padding: 16px;
           display: flex;
           flex-direction: column;
+          background: ${backgroundColor} !important;
+          color: ${textColor} !important;
+        }
+
+        .ct-messages[data-layout="bubbles"] {
           gap: 12px;
-          background: ${this.config.backgroundColor} !important;
-          color: ${this.config.textColor} !important;
+        }
+
+        .ct-messages[data-layout="list"] {
+          gap: 8px;
+        }
+
+        .ct-messages[data-layout="cards"] {
+          gap: 16px;
         }
 
         .ct-message {
@@ -799,7 +864,7 @@
         }
 
         .ct-message.bot .ct-message-avatar {
-          background-color: ${this.config.primaryColor};
+          background-color: ${primaryColor};
           color: white;
         }
 
@@ -812,13 +877,21 @@
         }
 
         .ct-message.user .ct-message-content {
-          background-color: ${this.config.secondaryColor || '#f3f4f6'} !important;
-          color: ${this.config.textColor || '#111827'} !important;
+          background-color: ${secondaryColor} !important;
+          color: ${this.isLightColor(secondaryColor) ? '#1f2937' : '#ffffff'} !important;
+          font-weight: 500;
         }
 
         .ct-message.bot .ct-message-content {
-          background-color: ${this.config.primaryColor};
+          background-color: ${primaryColor};
           color: white;
+        }
+
+        .ct-message-timestamp {
+          font-size: 10px;
+          color: #9ca3af;
+          margin-top: 4px;
+          opacity: 0.7;
         }
 
         .ct-loading {
@@ -852,13 +925,75 @@
           }
         }
 
+        .ct-loading-spinner-container {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .ct-loading-spinner {
+          width: 24px;
+          height: 24px;
+          border: 3px solid;
+          border-radius: 50%;
+          animation: ct-spin 1s linear infinite;
+        }
+
+        @keyframes ct-spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        .ct-loading-skeleton-container {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          width: 200px;
+        }
+
+        .ct-loading-skeleton-line {
+          height: 12px;
+          border-radius: 4px;
+          background-size: 200% 100%;
+          animation: ct-skeleton-loading 1.5s ease-in-out infinite;
+        }
+
+        @keyframes ct-skeleton-loading {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+
+        .ct-loading-pulse-container {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .ct-loading-pulse {
+          width: 40px;
+          height: 20px;
+          border-radius: 10px;
+          animation: ct-pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes ct-pulse {
+          0%, 100% {
+            opacity: 1;
+            transform: scale(1);
+          }
+          50% {
+            opacity: 0.5;
+            transform: scale(0.95);
+          }
+        }
+
         .ct-quick-replies {
           padding: 8px 16px;
           display: flex;
           flex-wrap: wrap;
           gap: 8px;
-          border-top: 1px solid ${this.config.borderColor || '#e5e7eb'} !important;
-          background: ${this.config.backgroundColor} !important;
+          border-top: 1px solid ${borderColor} !important;
+          background: ${backgroundColor} !important;
         }
 
         .ct-quick-reply {
@@ -866,42 +1001,109 @@
           border: 1px solid ${primaryColor} !important;
           border-radius: 16px;
           background: transparent;
-          color: ${primaryColor} !important;
           font-size: 12px;
           cursor: pointer;
-          transition: all 0.2s;
+          transition: all 0.2s ease;
+          white-space: nowrap;
+          font-weight: 500;
         }
 
         .ct-quick-reply:hover {
+          opacity: 1 !important;
+          transform: translateY(-1px);
+        }
+
+        .ct-quick-reply-chips {
+          background-color: ${primaryColor}20 !important;
+          border: 1px solid ${primaryColor} !important;
+          color: ${primaryColor} !important;
+        }
+
+        .ct-quick-reply-chips:hover {
           background-color: ${primaryColor} !important;
           color: white !important;
+          border-color: ${primaryColor} !important;
+        }
+
+        .ct-quick-reply-links {
+          background: transparent !important;
+          border: none !important;
+          color: ${primaryColor} !important;
+          text-decoration: underline !important;
+        }
+
+        .ct-quick-reply-links:hover {
+          background: ${primaryColor}15 !important;
+          color: ${primaryColor} !important;
+          text-decoration: underline !important;
+        }
+
+        .ct-quick-reply:not(.ct-quick-reply-chips):not(.ct-quick-reply-links):hover {
+          background-color: ${primaryColor} !important;
+          color: white !important;
+          border-color: ${primaryColor} !important;
         }
 
         .ct-input-container {
           padding: 16px;
-          border-top: 1px solid ${this.config.borderColor || '#e5e7eb'} !important;
-          background: ${this.config.backgroundColor} !important;
+          border-top: 1px solid ${borderColor} !important;
+          background: ${backgroundColor} !important;
         }
 
         .ct-input-form {
           display: flex;
+          flex-direction: column;
           gap: 8px;
+        }
+
+        .ct-input-form-row {
+          display: flex;
+          gap: 8px;
+          align-items: flex-end;
         }
 
         .ct-input {
           flex: 1;
           padding: 10px 14px;
-          border: 1px solid ${this.config.borderColor || '#d1d5db'} !important;
+          border: 1px solid ${borderColor} !important;
           border-radius: 8px;
           font-size: 14px;
           outline: none;
           transition: border-color 0.2s;
-          background: ${this.config.backgroundColor === '#ffffff' || !this.config.backgroundColor ? 'white' : this.config.backgroundColor} !important;
-          color: ${this.config.textColor || '#1f2937'} !important;
+          background: ${backgroundColor === '#ffffff' || !backgroundColor ? 'white' : backgroundColor} !important;
+          font-weight: 500;
         }
 
-        .ct-input:focus {
+        .ct-input::placeholder {
+          opacity: 0.7;
+          font-weight: 400;
+        }
+
+        .ct-textarea {
+          font-weight: 500;
+        }
+
+        .ct-textarea::placeholder {
+          opacity: 0.7;
+          font-weight: 400;
+        }
+
+        .ct-textarea {
+          resize: vertical;
+          min-height: 60px;
+          max-height: 200px;
+          font-family: inherit;
+        }
+
+        .ct-input:focus, .ct-textarea:focus {
           border-color: ${primaryColor} !important;
+        }
+
+        .ct-character-count {
+          font-size: 11px;
+          color: #9ca3af;
+          text-align: right;
+          padding: 4px 8px 0 0;
         }
 
         .ct-send-button {
@@ -940,72 +1142,215 @@
         'top-right': 'top: 20px; right: 20px;',
         'top-left': 'top: 20px; left: 20px;'
       };
-      return positions[this.config.position] || positions['bottom-right'];
+      const position = this.skinConfig?.components?.button?.position || this.config.position;
+      return positions[position] || positions['bottom-right'];
+    }
+
+    // Helper to get config values with defaults
+    getConfigValue(path, defaultValue) {
+      if (!this.skinConfig) return defaultValue;
+      const keys = path.split('.');
+      let value = this.skinConfig;
+      for (const key of keys) {
+        if (value && typeof value === 'object' && key in value) {
+          value = value[key];
+        } else {
+          return defaultValue;
+        }
+      }
+      return value !== undefined && value !== null ? value : defaultValue;
+    }
+
+    // Helper to determine if a color is light or dark
+    isLightColor(color) {
+      if (!color) return true; // Default to light
+      // Remove # if present
+      const hex = color.replace('#', '');
+      // Convert to RGB
+      const r = parseInt(hex.substr(0, 2), 16);
+      const g = parseInt(hex.substr(2, 2), 16);
+      const b = parseInt(hex.substr(4, 2), 16);
+      // Calculate luminance (perceived brightness)
+      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      return luminance > 0.5;
+    }
+
+    // Get appropriate text color based on background
+    getContrastTextColor(backgroundColor) {
+      return this.isLightColor(backgroundColor) ? '#1f2937' : '#ffffff';
     }
 
     renderButton() {
-      // Use inline style to ensure color is always applied
+      const buttonConfig = this.skinConfig?.components?.button || {};
       const color = this.config.primaryColor || '#6366f1';
+      const buttonType = buttonConfig.type || 'circular';
+      const buttonSize = buttonConfig.size || 'large';
+      const buttonIcon = buttonConfig.icon || 'bot';
+      const showLabel = buttonConfig.showLabel || false;
+      const label = buttonConfig.label || 'Chat';
+      
+      // Size mapping
+      const sizes = {
+        small: '40px',
+        medium: '48px',
+        large: '56px'
+      };
+      const size = sizes[buttonSize] || sizes.large;
+      
+      // Border radius based on type
+      const borderRadius = {
+        circular: '50%',
+        rounded: '12px',
+        square: '8px'
+      }[buttonType] || '50%';
+      
+      // Icon SVG paths
+      const iconPaths = {
+        bot: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />',
+        chat: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />',
+        message: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />',
+        custom: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />'
+      };
+      const iconPath = iconPaths[buttonIcon] || iconPaths.bot;
+      
+      const buttonStyle = `background-color: ${color} !important; width: ${size}; height: ${size}; border-radius: ${borderRadius};`;
+      
       return `
-        <button class="ct-button" aria-label="Open chat" style="background-color: ${color} !important;">
+        <button class="ct-button" aria-label="Open chat" style="${buttonStyle}">
+          ${buttonIcon !== null ? `
           <svg class="ct-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            ${iconPath}
           </svg>
+          ` : ''}
+          ${showLabel ? `<span style="margin-left: 8px; font-size: 14px;">${label}</span>` : ''}
         </button>
       `;
     }
 
     renderWindow() {
-      // Use inline styles to ensure colors are always applied
+      const windowConfig = this.skinConfig?.components?.window || {};
+      const headerConfig = this.skinConfig?.components?.header || {};
       const primaryColor = this.config.primaryColor || '#6366f1';
+      const backgroundColor = this.config.backgroundColor || '#ffffff';
+      
+      // Window dimensions with min constraints
+      const minWidth = windowConfig.minWidth || 320;
+      const minHeight = windowConfig.minHeight || 400;
+      const maxWidth = windowConfig.maxWidth || null;
+      const maxHeight = windowConfig.maxHeight || null;
+      
+      let width = windowConfig.width || 384;
+      let height = windowConfig.height || 600;
+      
+      // Enforce minimum constraints
+      width = Math.max(width, minWidth);
+      height = Math.max(height, minHeight);
+      
+      // Enforce maximum constraints if set
+      if (maxWidth) width = Math.min(width, maxWidth);
+      if (maxHeight) height = Math.min(height, maxHeight);
+      
+      const borderRadius = windowConfig.borderRadius || 8;
+      const shadow = windowConfig.shadow || 'large';
+      
+      // Shadow mapping
+      const shadows = {
+        none: 'none',
+        small: '0 2px 8px rgba(0, 0, 0, 0.1)',
+        medium: '0 4px 16px rgba(0, 0, 0, 0.15)',
+        large: '0 20px 60px rgba(0, 0, 0, 0.3)'
+      };
+      const boxShadow = shadows[shadow] || shadows.large;
+      
+      // Header config
+      const showHeader = headerConfig.show !== false;
+      const headerHeight = headerConfig.height || 48;
+      const showTitle = headerConfig.showTitle !== false;
+      const showMinimize = headerConfig.showMinimize !== false;
+      const showClose = headerConfig.showClose !== false;
+      const title = headerConfig.title || this.config.title || 'Chat Assistant';
+      
+      const windowStyle = `width: ${width}px; min-width: ${minWidth}px; max-width: ${maxWidth ? maxWidth + 'px' : 'none'}; height: ${this.isMinimized ? headerHeight : height}px; min-height: ${this.isMinimized ? headerHeight : minHeight}px; max-height: ${maxHeight && !this.isMinimized ? maxHeight + 'px' : 'none'}; border-radius: ${borderRadius}px; box-shadow: ${boxShadow}; background: ${backgroundColor} !important;`;
       
       return `
-        <div class="ct-window ${this.isMinimized ? 'minimized' : ''}">
-          <div class="ct-header" style="background-color: ${primaryColor} !important;">
+        <div class="ct-window ${this.isMinimized ? 'minimized' : ''}" style="${windowStyle}">
+          ${showHeader ? `
+          <div class="ct-header" style="background-color: ${primaryColor} !important; height: ${headerHeight}px;">
             <div class="ct-header-title">
-              <svg class="ct-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-              <span>${this.config.title}</span>
+              ${showTitle ? `
+                <svg class="ct-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                <span>${title}</span>
+              ` : ''}
             </div>
             <div class="ct-header-actions">
+              ${showMinimize ? `
               <button class="ct-header-button ct-minimize" aria-label="Minimize">
                 <svg class="ct-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" />
                 </svg>
               </button>
+              ` : ''}
+              ${showClose ? `
               <button class="ct-header-button ct-close" aria-label="Close">
                 <svg class="ct-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
+              ` : ''}
             </div>
           </div>
+          ` : ''}
           ${!this.isMinimized ? `
-            <div class="ct-messages" id="ct-messages">
+            <div class="ct-messages" id="ct-messages" data-layout="${this.getConfigValue('components.messages.layout', 'bubbles')}">
               ${this.messages.length === 0 && !this.isLoading ? `
                 <div style="text-align: center; color: #6b7280; padding: 20px; font-size: 14px;">
-                  Starting conversation...
+                  ${this.getConfigValue('states.empty.message', 'Starting conversation...')}
                 </div>
               ` : ''}
               ${this.messages.map(msg => this.renderMessage(msg)).join('')}
               ${this.isLoading ? this.renderLoading() : ''}
             </div>
-            ${this.quickReplies.length > 0 ? this.renderQuickReplies() : ''}
+            ${this.quickReplies.length > 0 && this.getConfigValue('components.quickReplies.show', true) ? this.renderQuickReplies() : ''}
             <div class="ct-input-container">
               <form class="ct-input-form" id="ct-form">
-                <input 
-                  type="text" 
-                  class="ct-input" 
-                  id="ct-input" 
-                  placeholder="Type your message..."
-                  autocomplete="off"
-                />
-                <button type="submit" class="ct-send-button" id="ct-send" style="background-color: ${primaryColor} !important;" ${this.isLoading ? 'disabled' : ''}>
-                  <svg class="ct-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                  </svg>
-                </button>
+                <div class="ct-input-form-row">
+                  ${this.getConfigValue('components.input.allowMultiline', false) ? `
+                  <textarea 
+                    class="ct-input ct-textarea" 
+                    id="ct-input" 
+                    placeholder="${this.getConfigValue('components.input.placeholder', 'Type your message...')}"
+                    autocomplete="off"
+                    rows="3"
+                    ${this.getConfigValue('components.input.autoFocus', true) ? 'autofocus' : ''}
+                    ${this.getConfigValue('components.input.maxLength', null) ? `maxlength="${this.getConfigValue('components.input.maxLength', null)}"` : ''}
+                  ></textarea>
+                  ` : `
+                  <input 
+                    type="text" 
+                    class="ct-input" 
+                    id="ct-input" 
+                    placeholder="${this.getConfigValue('components.input.placeholder', 'Type your message...')}"
+                    autocomplete="off"
+                    ${this.getConfigValue('components.input.autoFocus', true) ? 'autofocus' : ''}
+                    ${this.getConfigValue('components.input.maxLength', null) ? `maxlength="${this.getConfigValue('components.input.maxLength', null)}"` : ''}
+                    value=""
+                  />
+                  `}
+                  ${this.getConfigValue('components.input.showSendButton', true) ? `
+                  <button type="submit" class="ct-send-button" id="ct-send" style="background-color: ${primaryColor} !important;" ${this.isLoading ? 'disabled' : ''}>
+                    <svg class="ct-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                  </button>
+                  ` : ''}
+                </div>
+                ${this.getConfigValue('components.input.showCharacterCount', false) && this.getConfigValue('components.input.maxLength', null) ? `
+                <div class="ct-character-count">
+                  <span id="ct-char-count">0</span> / ${this.getConfigValue('components.input.maxLength', null)}
+                </div>
+                ` : ''}
               </form>
             </div>
           ` : ''}
@@ -1014,41 +1359,250 @@
     }
 
     renderMessage(message) {
+      const messagesConfig = this.skinConfig?.components?.messages || {};
+      const layout = messagesConfig.layout || 'bubbles';
       const isUser = message.type === 'user';
-      return `
-        <div class="ct-message ${message.type}">
-          <div class="ct-message-avatar">
-            ${isUser ? '👤' : '🤖'}
+      const showAvatars = messagesConfig.showAvatars !== false;
+      const bubbleStyle = messagesConfig.bubbleStyle || 'rounded';
+      const userAlignment = messagesConfig.userAlignment || 'right';
+      const botAlignment = messagesConfig.botAlignment || 'left';
+      const showTimestamps = messagesConfig.showTimestamps || false;
+      const timestampFormat = messagesConfig.timestampFormat || 'relative';
+      const primaryColor = this.config.primaryColor || '#6366f1';
+      const secondaryColor = this.config.secondaryColor || '#f3f4f6';
+      const textColor = this.config.textColor || '#1f2937';
+      const borderColor = this.config.borderColor || '#e5e7eb';
+      
+      // Bubble border radius
+      const borderRadius = {
+        rounded: '12px',
+        square: '4px',
+        minimal: '2px'
+      }[bubbleStyle] || '12px';
+      
+      // Timestamp formatting with proper contrast
+      let timestampHtml = '';
+      if (showTimestamps && message.timestamp) {
+        const date = new Date(message.timestamp);
+        let formattedTime = '';
+        if (timestampFormat === 'relative') {
+          const now = new Date();
+          const diffMs = now - date;
+          const diffMins = Math.floor(diffMs / 60000);
+          if (diffMins < 1) formattedTime = 'Just now';
+          else if (diffMins < 60) formattedTime = `${diffMins}m ago`;
+          else if (diffMins < 1440) formattedTime = `${Math.floor(diffMins / 60)}h ago`;
+          else formattedTime = date.toLocaleDateString();
+        } else {
+          formattedTime = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+        // Use adaptive color for timestamps based on message background
+        let timestampColor;
+        if (isUser) {
+          // User messages - use dark text on light backgrounds, light text on dark backgrounds
+          timestampColor = this.isLightColor(secondaryColor) ? 'rgba(0, 0, 0, 0.7)' : 'rgba(255, 255, 255, 0.8)';
+        } else {
+          // Bot messages - always white/light on colored background
+          timestampColor = 'rgba(255, 255, 255, 0.9)';
+        }
+        timestampHtml = `<div class="ct-message-timestamp" style="font-size: 10px; color: ${timestampColor}; margin-top: 4px; font-weight: 500;">${formattedTime}</div>`;
+      }
+      
+      // Render based on layout type
+      if (layout === 'list') {
+        // List layout: compact, minimal spacing, left-aligned
+        const alignment = isUser ? userAlignment : botAlignment;
+        const alignStyle = alignment === 'right' ? 'justify-content: flex-end;' : 'justify-content: flex-start;';
+        
+        return `
+          <div class="ct-message ct-message-list ${message.type}" style="display: flex; gap: 8px; margin-bottom: 8px; ${alignStyle}">
+            ${showAvatars && alignment === 'left' ? `
+            <div class="ct-message-avatar" style="width: 24px; height: 24px; font-size: 12px;">
+              ${isUser ? '👤' : '🤖'}
+            </div>
+            ` : ''}
+            <div class="ct-message-content-list" style="
+              padding: 8px 12px;
+              border-radius: ${borderRadius};
+              background-color: ${isUser ? secondaryColor : primaryColor};
+              color: ${isUser ? textColor : 'white'};
+              max-width: 85%;
+              font-size: 14px;
+            ">
+              ${this.escapeHtml(message.content)}
+              ${timestampHtml}
+            </div>
+            ${showAvatars && alignment === 'right' ? `
+            <div class="ct-message-avatar" style="width: 24px; height: 24px; font-size: 12px;">
+              ${isUser ? '👤' : '🤖'}
+            </div>
+            ` : ''}
           </div>
-          <div class="ct-message-content">
-            ${this.escapeHtml(message.content)}
+        `;
+      } else if (layout === 'cards') {
+        // Cards layout: card-like appearance with borders and shadows
+        const alignment = isUser ? userAlignment : botAlignment;
+        const alignStyle = alignment === 'right' ? 'justify-content: flex-end;' : 'justify-content: flex-start;';
+        
+        return `
+          <div class="ct-message ct-message-card ${message.type}" style="display: flex; gap: 12px; margin-bottom: 16px; ${alignStyle}">
+            ${showAvatars && alignment === 'left' ? `
+            <div class="ct-message-avatar" style="width: 36px; height: 36px; font-size: 16px;">
+              ${isUser ? '👤' : '🤖'}
+            </div>
+            ` : ''}
+            <div class="ct-message-content-card" style="
+              padding: 12px 16px;
+              border-radius: ${borderRadius};
+              background-color: ${isUser ? secondaryColor : primaryColor};
+              color: ${isUser ? (this.isLightColor(secondaryColor) ? '#1f2937' : '#ffffff') : 'white'};
+              border: 1px solid ${isUser ? borderColor : 'transparent'};
+              box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+              max-width: 80%;
+              font-size: 14px;
+              font-weight: 500;
+            ">
+              ${this.escapeHtml(message.content)}
+              ${timestampHtml}
+            </div>
+            ${showAvatars && alignment === 'right' ? `
+            <div class="ct-message-avatar" style="width: 36px; height: 36px; font-size: 16px;">
+              ${isUser ? '👤' : '🤖'}
+            </div>
+            ` : ''}
           </div>
-        </div>
-      `;
+        `;
+      } else {
+        // Bubbles layout (default): current implementation
+        const alignment = isUser ? userAlignment : botAlignment;
+        const alignClass = alignment === 'right' ? 'align-self: flex-end; flex-direction: row-reverse;' : 'align-self: flex-start;';
+        
+        return `
+          <div class="ct-message ${message.type}" style="${alignClass}">
+            ${showAvatars ? `
+            <div class="ct-message-avatar">
+              ${isUser ? '👤' : '🤖'}
+            </div>
+            ` : ''}
+            <div class="ct-message-content" style="border-radius: ${borderRadius};">
+              ${this.escapeHtml(message.content)}
+              ${timestampHtml}
+            </div>
+          </div>
+        `;
+      }
     }
 
     renderLoading() {
-      return `
-        <div class="ct-message bot">
-          <div class="ct-message-avatar">🤖</div>
-          <div class="ct-loading">
-            <div class="ct-loading-dot"></div>
-            <div class="ct-loading-dot"></div>
-            <div class="ct-loading-dot"></div>
+      const loadingConfig = this.skinConfig?.states?.loading || {};
+      const loadingType = loadingConfig.type || 'dots';
+      const loadingColor = loadingConfig.color || 'primary';
+      const customColor = loadingConfig.customColor || null;
+      const loadingMessage = loadingConfig.message || '';
+      const messagesConfig = this.skinConfig?.components?.messages || {};
+      const showAvatars = messagesConfig.showAvatars !== false;
+      const primaryColor = this.config.primaryColor || '#6366f1';
+      const secondaryColor = this.config.secondaryColor || '#f3f4f6';
+      
+      // Determine color
+      let color = primaryColor;
+      if (loadingColor === 'secondary') {
+        color = secondaryColor;
+      } else if (loadingColor === 'custom' && customColor) {
+        color = customColor;
+      }
+      
+      const avatarHtml = showAvatars ? '<div class="ct-message-avatar">🤖</div>' : '';
+      
+      if (loadingType === 'spinner') {
+        return `
+          <div class="ct-message bot">
+            ${avatarHtml}
+            <div class="ct-loading-spinner-container">
+              <div class="ct-loading-spinner" style="border-color: ${color}20; border-top-color: ${color};"></div>
+              ${loadingMessage ? `<div style="margin-top: 8px; font-size: 12px; color: #6b7280;">${this.escapeHtml(loadingMessage)}</div>` : ''}
+            </div>
           </div>
-        </div>
-      `;
+        `;
+      } else if (loadingType === 'skeleton') {
+        return `
+          <div class="ct-message bot">
+            ${avatarHtml}
+            <div class="ct-loading-skeleton-container">
+              <div class="ct-loading-skeleton-line" style="background: linear-gradient(90deg, ${color}20 25%, ${color}40 50%, ${color}20 75%);"></div>
+              <div class="ct-loading-skeleton-line" style="background: linear-gradient(90deg, ${color}20 25%, ${color}40 50%, ${color}20 75%); width: 70%;"></div>
+              ${loadingMessage ? `<div style="margin-top: 8px; font-size: 12px; color: #6b7280;">${this.escapeHtml(loadingMessage)}</div>` : ''}
+            </div>
+          </div>
+        `;
+      } else if (loadingType === 'pulse') {
+        return `
+          <div class="ct-message bot">
+            ${avatarHtml}
+            <div class="ct-loading-pulse-container">
+              <div class="ct-loading-pulse" style="background-color: ${color};"></div>
+              ${loadingMessage ? `<div style="margin-top: 8px; font-size: 12px; color: #6b7280;">${this.escapeHtml(loadingMessage)}</div>` : ''}
+            </div>
+          </div>
+        `;
+      } else {
+        // Dots (default)
+        return `
+          <div class="ct-message bot">
+            ${avatarHtml}
+            <div class="ct-loading">
+              <div class="ct-loading-dot" style="background-color: ${color};"></div>
+              <div class="ct-loading-dot" style="background-color: ${color};"></div>
+              <div class="ct-loading-dot" style="background-color: ${color};"></div>
+            </div>
+            ${loadingMessage ? `<div style="margin-left: 8px; font-size: 12px; color: #6b7280;">${this.escapeHtml(loadingMessage)}</div>` : ''}
+          </div>
+        `;
+      }
     }
 
     renderQuickReplies() {
       if (this.quickReplies.length === 0) return '';
       
+      const quickRepliesConfig = this.skinConfig?.components?.quickReplies || {};
       const primaryColor = this.config.primaryColor || '#6366f1';
+      const backgroundColor = this.config.backgroundColor || '#ffffff';
+      const layout = quickRepliesConfig.layout || 'horizontal';
+      const style = quickRepliesConfig.style || 'buttons';
+      const maxVisible = quickRepliesConfig.maxVisible || null;
+      
+      const replies = maxVisible ? this.quickReplies.slice(0, maxVisible) : this.quickReplies;
+      
+      // Layout styles
+      const layoutStyles = {
+        horizontal: 'flex-direction: row; flex-wrap: wrap;',
+        vertical: 'flex-direction: column;',
+        grid: 'display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));'
+      };
+      const containerStyle = layoutStyles[layout] || layoutStyles.horizontal;
+      
+      // Determine text color based on background - ensure visibility
+      const isDarkBg = !this.isLightColor(backgroundColor);
+      const replyTextColor = isDarkBg ? '#ffffff' : primaryColor;
+      
+      // Style-specific styling - classes handle hover, inline styles handle base
+      let replyStyle = '';
+      let replyClass = 'ct-quick-reply';
+      if (style === 'chips') {
+        replyClass = 'ct-quick-reply ct-quick-reply-chips';
+        replyStyle = `border-radius: 20px; padding: 6px 14px; color: ${replyTextColor} !important;`;
+      } else if (style === 'links') {
+        replyClass = 'ct-quick-reply ct-quick-reply-links';
+        replyStyle = `padding: 4px 8px; color: ${replyTextColor} !important;`;
+      } else {
+        replyClass = 'ct-quick-reply';
+        replyStyle = `border-radius: 16px; padding: 6px 12px; color: ${replyTextColor} !important;`;
+      }
       
       return `
-        <div class="ct-quick-replies">
-          ${this.quickReplies.map(reply => `
-            <button class="ct-quick-reply" data-reply="${this.escapeHtml(reply)}" style="border-color: ${primaryColor} !important;">
+        <div class="ct-quick-replies" style="${containerStyle}">
+          ${replies.map(reply => `
+            <button class="${replyClass}" data-reply="${this.escapeHtml(reply)}" style="${replyStyle}">
               ${this.escapeHtml(reply)}
             </button>
           `).join('')}
@@ -1063,6 +1617,12 @@
     }
 
     attachEventListeners() {
+      // Prevent duplicate event listeners
+      if (this.eventListenersAttached) {
+        return;
+      }
+      this.eventListenersAttached = true;
+
       // Use event delegation since content changes
       this.container.addEventListener('click', (e) => {
         if (e.target.closest('.ct-button')) {
@@ -1072,18 +1632,101 @@
         } else if (e.target.closest('.ct-minimize')) {
           this.toggleMinimize();
         } else if (e.target.closest('.ct-quick-reply')) {
-          const reply = e.target.closest('.ct-quick-reply').dataset.reply;
+          e.preventDefault();
+          e.stopPropagation();
+          
+          // Prevent multiple clicks
+          if (this.isSendingMessage || this.isLoading) {
+            return;
+          }
+          
+          const replyButton = e.target.closest('.ct-quick-reply');
+          const reply = replyButton.dataset.reply;
+          
+          if (!reply) {
+            return;
+          }
+          
+          // Disable all quick reply buttons immediately
+          const allQuickReplies = this.container.querySelectorAll('.ct-quick-reply');
+          allQuickReplies.forEach(btn => {
+            btn.style.pointerEvents = 'none';
+            btn.style.opacity = '0.5';
+          });
+          
+          // Clear quick replies and send message
+          this.quickReplies = [];
           this.sendMessage(reply);
         }
       });
 
+
       this.container.addEventListener('submit', (e) => {
-        if (e.target.id === 'ct-form') {
+        if (e.target.id === 'ct-form' || e.target.closest('#ct-form')) {
           e.preventDefault();
+          e.stopPropagation();
           const input = this.container.querySelector('#ct-input');
-          if (input && input.value.trim()) {
-            this.sendMessage(input.value.trim());
+          if (input) {
+            const message = input.value.trim();
+            // Always clear the input completely - allow full deletion
             input.value = '';
+            input.setAttribute('value', '');
+            input.removeAttribute('value');
+            // Trigger input event to ensure UI updates
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            if (message) {
+              this.sendMessage(message);
+            }
+          }
+        }
+      });
+      
+      // Handle input events to enforce maxLength but allow deletion
+      this.container.addEventListener('input', (e) => {
+        if (e.target.id === 'ct-input') {
+          const input = e.target;
+          const maxLength = this.getConfigValue('components.input.maxLength', null);
+          
+          // Only enforce maxLength when typing (not when deleting)
+          // maxLength attribute handles this, but we ensure deletion always works
+          if (maxLength && input.value.length > maxLength) {
+            // User typed too much, truncate to maxLength
+            input.value = input.value.substring(0, maxLength);
+          }
+          
+          // Update character count if enabled
+          if (this.getConfigValue('components.input.showCharacterCount', false) && maxLength) {
+            const charCountEl = this.container.querySelector('#ct-char-count');
+            if (charCountEl) {
+              charCountEl.textContent = input.value.length;
+            }
+          }
+          
+          // Allow deletion of any length - no restrictions on clearing
+        }
+      });
+      
+      // Also handle Enter key directly on input
+      this.container.addEventListener('keydown', (e) => {
+        if (e.target.id === 'ct-input') {
+          const allowMultiline = this.getConfigValue('components.input.allowMultiline', false);
+          
+          // For textarea: Shift+Enter = new line, Enter = send
+          // For input: Enter = send
+          if (e.key === 'Enter' && (!allowMultiline || !e.shiftKey)) {
+            e.preventDefault();
+            const input = e.target;
+            const message = input.value.trim();
+            // Always clear the input completely
+            input.value = '';
+            // Force clear by resetting the input
+            input.setAttribute('value', '');
+            input.removeAttribute('value');
+            // Trigger input event to ensure UI updates (including character count)
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            if (message) {
+              this.sendMessage(message);
+            }
           }
         }
       });
@@ -1116,13 +1759,37 @@
       
       if (this.isOpen) {
         this.container.innerHTML = this.renderWindow();
+        // Reset event listeners flag when re-rendering
+        this.eventListenersAttached = false;
+        this.attachEventListeners();
         this.scrollToBottom();
+        
+        // Initialize character count if enabled and update input text color
         const input = this.container.querySelector('#ct-input');
-        if (input && !this.isMinimized) {
-          setTimeout(() => input.focus(), 100);
+        if (input) {
+          // Set adaptive text color based on background
+          const backgroundColor = this.config.backgroundColor || '#ffffff';
+          const inputBg = backgroundColor === '#ffffff' || !backgroundColor ? 'white' : backgroundColor;
+          const inputTextColor = this.getContrastTextColor(inputBg);
+          const placeholderColor = this.isLightColor(inputBg) ? 'rgba(31, 41, 55, 0.6)' : 'rgba(255, 255, 255, 0.6)';
+          input.style.setProperty('color', inputTextColor, 'important');
+          input.style.setProperty('font-weight', '500', 'important');
+          
+          if (this.getConfigValue('components.input.showCharacterCount', false)) {
+            const maxLength = this.getConfigValue('components.input.maxLength', null);
+            const charCountEl = this.container.querySelector('#ct-char-count');
+            if (charCountEl && maxLength) {
+              charCountEl.textContent = input.value.length;
+            }
+          }
+          
+          if (!this.isMinimized) {
+            setTimeout(() => input.focus(), 100);
+          }
         }
       } else {
         this.container.innerHTML = this.renderButton();
+        this.attachEventListeners();
       }
     }
 
@@ -1183,18 +1850,24 @@
         this.addMessage('bot', "Sorry, I'm having trouble connecting. Please try again.");
       } finally {
         this.isLoading = false;
+        this.isSendingMessage = false;
         this.updateView();
       }
     }
 
     async sendMessage(message) {
+      // Prevent multiple simultaneous sends
+      if (this.isSendingMessage) {
+        return;
+      }
+      
       // Don't send if treeId is not set
       if (!this.config.treeId) {
-        console.warn('[ConversaTree] Cannot send message: treeId is not set.');
         this.addMessage('bot', "Sorry, the chatbot is not properly configured. Please contact support.");
         return;
       }
       
+      this.isSendingMessage = true;
       this.addMessage('user', message);
       this.quickReplies = [];
       this.isLoading = true;
@@ -1237,15 +1910,18 @@
         this.addMessage('bot', "Sorry, I'm having trouble. Please try again.");
       } finally {
         this.isLoading = false;
+        this.isSendingMessage = false;
         this.updateView();
       }
     }
 
     addMessage(type, content) {
+      const showTimestamps = this.getConfigValue('components.messages.showTimestamps', false);
       this.messages.push({
         type,
         content,
-        id: Date.now() + Math.random()
+        id: Date.now() + Math.random(),
+        timestamp: showTimestamps ? new Date().toISOString() : undefined
       });
       this.updateView();
     }
@@ -1260,7 +1936,8 @@
       window.ConversaTree.instance = new ConversaTreeWidget(config);
       return window.ConversaTree.instance;
     },
-    instance: null
+    instance: null,
+    
   };
 
   // Auto-initialize if data attributes are present

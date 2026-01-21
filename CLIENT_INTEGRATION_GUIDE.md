@@ -19,10 +19,10 @@
 **Code:**
 ```html
 <!-- Add to your website -->
-<script src="https://cdn.yourcompany.com/widget.js"></script>
+<script src="http://localhost:3002/widget.js"></script>
 <script>
   ConversaTree.init({
-    apiUrl: 'https://api.yourcompany.com/api',
+    apiUrl: 'http://localhost:3001/api',
     treeId: 1,
     userId: '{{USER_ID}}',  // Replace with actual user ID
     useMemory: true
@@ -46,7 +46,7 @@ function ChatbotWidget() {
   useEffect(() => {
     if (user) {
       window.ConversaTree?.init({
-        apiUrl: 'https://api.yourcompany.com/api',
+        apiUrl: 'http://localhost:3001/api',
         treeId: 1,
         userId: user.id,
         useMemory: true
@@ -67,7 +67,7 @@ function ChatbotWidget() {
 **Code:**
 ```javascript
 // Send message with user_id
-const response = await fetch('https://api.yourcompany.com/api/chat/message', {
+const response = await fetch('http://localhost:3001/api/chat/message', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -89,7 +89,7 @@ const data = await response.json();
 **Example (Node.js Backend):**
 ```javascript
 async function handleChatMessage(userId, message, sessionId) {
-  const response = await fetch('https://api.yourcompany.com/api/chat/message', {
+  const response = await fetch('http://localhost:3001/api/chat/message', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -111,14 +111,10 @@ async function handleChatMessage(userId, message, sessionId) {
 
 **For:** React/Next.js applications
 
-**Install:**
-```bash
-npm install @yourcompany/chatbot-widget
-```
+**Use the React component from the frontend:**
 
-**Use:**
 ```jsx
-import { ChatbotWidget } from '@yourcompany/chatbot-widget';
+import ChatbotWidget from '@/components/ChatbotWidget';
 
 function App() {
   const userId = useAuth().user?.id;
@@ -126,7 +122,7 @@ function App() {
   return (
     <div>
       <ChatbotWidget
-        apiUrl="https://api.yourcompany.com/api"
+        apiUrl="http://localhost:3001/api"
         treeId={1}
         userId={userId}
         useMemory={true}
@@ -373,59 +369,12 @@ POST /api/chat/message
 ## Support & Resources
 
 ### Documentation:
-- API Reference: `API_DOCS.md`
-- Widget Guide: `WIDGET_GUIDE.md`
-- Examples: `EXAMPLES/`
+- Main README: [README.md](./README.md)
+- Database Setup: [DATABASE_CONNECTION_GUIDE.md](./DATABASE_CONNECTION_GUIDE.md)
+- pgAdmin Setup: [backend/PGADMIN_SETUP_GUIDE.md](./backend/PGADMIN_SETUP_GUIDE.md)
 
-### Support:
-- Email: support@yourcompany.com
-- Chat: Available in dashboard
-- Docs: docs.yourcompany.com
-
----
-
-## Pricing & Plans
-
-### Starter: $99/month
-- Up to 1,000 users
-- Basic memory features
-- Email support
-
-### Professional: $499/month
-- Up to 10,000 users
-- Advanced features
-- Priority support
-
-### Enterprise: Custom
-- Unlimited users
-- White-label
-- Dedicated support
-
----
-
-## Success Metrics
-
-### Track These:
-- **Conversion Rate** - Sales from chatbot
-- **Response Quality** - User satisfaction
-- **Memory Usage** - How often memory is used
-- **Cost Savings** - Reduced support tickets
-
-### Expected Results:
-- 20-30% higher conversion
-- 40-60% fewer support tickets
-- 4.5+ star ratings
-- Higher customer retention
-
----
-
-## Ready to Start?
-
-1. **Get API Key** - Sign up for account
-2. **Choose Integration** - Widget or API
-3. **Add User ID** - Connect to your auth system
-4. **Test** - Verify memory works
-5. **Launch** - Go live!
-
-**Questions?** Contact support@yourcompany.com
+### API Endpoints:
+- `POST /api/chat/message` - Process chat messages with memory
+- `GET /api/widget/config` - Get widget configuration
+- See [README.md](./README.md) for complete API documentation
 

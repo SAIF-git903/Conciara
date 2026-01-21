@@ -204,15 +204,17 @@ psql -h localhost -p 5432 -U postgres -d conversatree -c "SELECT version();"
 
 ### 9. Useful SQL Scripts
 
-I've created `check_user_data.sql` for you. Run it like:
+You can create custom SQL scripts to check user data. Example:
 
-```bash
-psql -U postgres -d conversatree -f check_user_data.sql
-```
-
-Or in psql:
 ```sql
-\i check_user_data.sql
+-- Check user profiles
+SELECT * FROM user_profiles WHERE user_id = 'your_user_id';
+
+-- Check user memories
+SELECT * FROM user_memory WHERE user_id = 'your_user_id' ORDER BY created_at DESC;
+
+-- Check conversation sessions
+SELECT * FROM conversation_sessions WHERE user_id = 'your_user_id';
 ```
 
 ## Quick Start
