@@ -143,7 +143,11 @@ Example bad response: "I'm here to help you. Could you tell me more about what y
     let userPrompt = `User message: "${userMessage}"\n\n`;
 
     if (userContext && userContext.trim()) {
-      userPrompt += `User Context:\n${userContext}\n\n`;
+      userPrompt += `User Context (from history):\n${userContext}\n\n`;
+      userPrompt += `IMPORTANT: Use the user's history to interpret their message. For example:\n`;
+      userPrompt += `- If they said "I need a laptop" and have gaming history, they likely want a gaming laptop.\n`;
+      userPrompt += `- If they mentioned preferences before, incorporate those into your response.\n`;
+      userPrompt += `- Personalize your answer based on their past interactions.\n\n`;
     }
 
     if (productCatalog) {
@@ -152,7 +156,7 @@ Example bad response: "I'm here to help you. Could you tell me more about what y
 
     // Adjust prompt based on whether user context is available
     if (userContext && userContext.trim()) {
-      userPrompt += `Based on the user's message and context, provide a concise, personalized recommendation in 1-2 sentences.`;
+      userPrompt += `Based on the user's message AND their history/context, provide a personalized, relevant response in 1-2 sentences. Use their history to understand what they really mean.`;
     } else {
       userPrompt += `Based on the user's message, provide a helpful, intelligent response in 1-2 sentences. Be conversational and address their question directly.`;
     }
@@ -237,7 +241,10 @@ Rules:
     let userPrompt = `User message: "${userMessage}"\n\n`;
 
     if (userContext && userContext.trim()) {
-      userPrompt += `User Context:\n${userContext}\n\n`;
+      userPrompt += `User Context (from history):\n${userContext}\n\n`;
+      userPrompt += `IMPORTANT: Use the user's history to interpret their message. For example:\n`;
+      userPrompt += `- If they said "I need a laptop" and have gaming history, they likely want a gaming laptop.\n`;
+      userPrompt += `- Personalize the dialog tree response based on their past preferences.\n\n`;
     }
 
     if (dialogTreeContext) {
@@ -248,7 +255,11 @@ Rules:
       userPrompt += `Available Products:\n${productCatalog}\n\n`;
     }
 
-    userPrompt += `Generate a personalized, concise response (1-2 sentences) that combines the dialog tree suggestion with user context.`;
+    if (userContext && userContext.trim()) {
+      userPrompt += `Generate a personalized, concise response (1-2 sentences) that combines the dialog tree suggestion with user context. Use their history to understand what they really want.`;
+    } else {
+      userPrompt += `Generate a personalized, concise response (1-2 sentences) that combines the dialog tree suggestion with user context.`;
+    }
 
     const model = 'gpt-4o-mini';
     
