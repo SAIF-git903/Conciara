@@ -309,9 +309,9 @@ export default function TraceViewerPage() {
             <div className="bg-white rounded-lg shadow-sm p-3 mb-3 border border-gray-200">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs text-gray-500 mb-1">User: "{trace.userMessage}"</div>
+                  <div className="text-xs text-gray-500 mb-1">User: &quot;{trace.userMessage}&quot;</div>
                   {trace.finalResponse && (
-                    <div className="text-xs text-gray-500">AI: "{trace.finalResponse.substring(0, 60)}..."</div>
+                    <div className="text-xs text-gray-500">AI: &quot;{trace.finalResponse.substring(0, 60)}...&quot;</div>
                   )}
                 </div>
                 
@@ -488,7 +488,7 @@ export default function TraceViewerPage() {
                         <div className="p-2 bg-indigo-50 rounded border border-indigo-200">
                           <div className="text-xs font-semibold text-indigo-900 mb-1">Match</div>
                           <div className="text-xs text-gray-700 mb-1">
-                            "{selectedEvent.data.topResult.userInput}"
+                            &quot;{selectedEvent.data.topResult.userInput}&quot;
                           </div>
                           <div className="text-xs text-gray-600">
                             {(selectedEvent.data.topResult.similarity * 100).toFixed(0)}% similar
@@ -500,7 +500,7 @@ export default function TraceViewerPage() {
                         <div className="p-2 bg-green-50 rounded border border-green-200">
                           <div className="text-xs font-semibold text-green-900 mb-1">Matched</div>
                           <div className="text-xs text-gray-700">
-                            "{selectedEvent.data.matchedUserInput}"
+                            &quot;{selectedEvent.data.matchedUserInput}&quot;
                           </div>
                         </div>
                       )}
@@ -563,7 +563,7 @@ export default function TraceViewerPage() {
             <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded inline-block">
               <div className="font-semibold mb-1">How to get Trace ID:</div>
               <div>1. Send a chat message</div>
-              <div>2. Copy "trace_id" from response</div>
+              <div>2. Copy &quot;trace_id&quot; from response</div>
               <div>3. Paste it above</div>
             </div>
           </div>
