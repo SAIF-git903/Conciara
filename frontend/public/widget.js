@@ -209,18 +209,19 @@
             // Update input field - use adaptive text color based on background
             const input = this.container.querySelector('.ct-input');
             if (input) {
-              const inputBg = backgroundColor === '#ffffff' || !backgroundColor ? 'white' : backgroundColor;
+              const inputBg = backgroundColor === '#ffffff' || !backgroundColor ? '#ffffff' : backgroundColor;
               input.style.setProperty('background-color', inputBg, 'important');
               // Use adaptive text color - light on dark backgrounds, dark on light backgrounds
               const inputTextColor = this.getContrastTextColor(inputBg);
               const placeholderColor = this.isLightColor(inputBg) ? 'rgba(31, 41, 55, 0.6)' : 'rgba(255, 255, 255, 0.6)';
-              input.style.setProperty('color', inputTextColor, 'important');
+              // Always set a visible text color - default to dark for white backgrounds
+              input.style.setProperty('color', inputTextColor || '#1f2937', 'important');
               input.style.setProperty('font-weight', '500', 'important');
               input.style.setProperty('border-color', borderColor, 'important');
               // Also update textarea if it exists
               const textarea = this.container.querySelector('.ct-textarea');
               if (textarea) {
-                textarea.style.setProperty('color', inputTextColor, 'important');
+                textarea.style.setProperty('color', inputTextColor || '#1f2937', 'important');
                 textarea.style.setProperty('font-weight', '500', 'important');
               }
             }
@@ -413,18 +414,19 @@
             // Update input field - use adaptive text color based on background
             const input = this.container.querySelector('.ct-input');
             if (input) {
-              const inputBg = backgroundColor === '#ffffff' || !backgroundColor ? 'white' : backgroundColor;
+              const inputBg = backgroundColor === '#ffffff' || !backgroundColor ? '#ffffff' : backgroundColor;
               input.style.setProperty('background-color', inputBg, 'important');
               // Use adaptive text color - light on dark backgrounds, dark on light backgrounds
               const inputTextColor = this.getContrastTextColor(inputBg);
               const placeholderColor = this.isLightColor(inputBg) ? 'rgba(31, 41, 55, 0.6)' : 'rgba(255, 255, 255, 0.6)';
-              input.style.setProperty('color', inputTextColor, 'important');
+              // Always set a visible text color - default to dark for white backgrounds
+              input.style.setProperty('color', inputTextColor || '#1f2937', 'important');
               input.style.setProperty('font-weight', '500', 'important');
               input.style.setProperty('border-color', borderColor, 'important');
               // Also update textarea if it exists
               const textarea = this.container.querySelector('.ct-textarea');
               if (textarea) {
-                textarea.style.setProperty('color', inputTextColor, 'important');
+                textarea.style.setProperty('color', inputTextColor || '#1f2937', 'important');
                 textarea.style.setProperty('font-weight', '500', 'important');
               }
             }
@@ -581,7 +583,7 @@
                 // Update input field
                 const input = this.container.querySelector('.ct-input');
                 if (input) {
-                  const inputBg = backgroundColor === '#ffffff' || !backgroundColor ? 'white' : backgroundColor;
+                  const inputBg = backgroundColor === '#ffffff' || !backgroundColor ? '#ffffff' : backgroundColor;
                   input.style.setProperty('background-color', inputBg, 'important');
                   // Ensure text color has good contrast - use darker color if textColor is too light
               const inputTextColor = textColor || '#1f2937';
@@ -1000,7 +1002,8 @@
           padding: 6px 12px;
           border: 1px solid ${primaryColor} !important;
           border-radius: 16px;
-          background: transparent;
+          background: transparent !important;
+          color: ${primaryColor} !important;
           font-size: 12px;
           cursor: pointer;
           transition: all 0.2s ease;
@@ -1038,9 +1041,12 @@
           text-decoration: underline !important;
         }
 
+        /* Default button hover - fill with primary color and show white text */
+        /* Use higher specificity to override any inline styles */
+        button.ct-quick-reply:not(.ct-quick-reply-chips):not(.ct-quick-reply-links):hover,
         .ct-quick-reply:not(.ct-quick-reply-chips):not(.ct-quick-reply-links):hover {
           background-color: ${primaryColor} !important;
-          color: white !important;
+          color: #ffffff !important;
           border-color: ${primaryColor} !important;
         }
 
@@ -1070,7 +1076,8 @@
           font-size: 14px;
           outline: none;
           transition: border-color 0.2s;
-          background: ${backgroundColor === '#ffffff' || !backgroundColor ? 'white' : backgroundColor} !important;
+          background: ${backgroundColor === '#ffffff' || !backgroundColor ? '#ffffff' : backgroundColor} !important;
+          color: ${this.getContrastTextColor(backgroundColor === '#ffffff' || !backgroundColor ? '#ffffff' : backgroundColor)} !important;
           font-weight: 500;
         }
 
@@ -1081,6 +1088,7 @@
 
         .ct-textarea {
           font-weight: 500;
+          color: ${this.getContrastTextColor(backgroundColor === '#ffffff' || !backgroundColor ? '#ffffff' : backgroundColor)} !important;
         }
 
         .ct-textarea::placeholder {
@@ -1164,8 +1172,25 @@
     // Helper to determine if a color is light or dark
     isLightColor(color) {
       if (!color) return true; // Default to light
+      
+      // Handle named colors
+      const colorLower = color.toLowerCase().trim();
+      if (colorLower === 'white' || colorLower === '#ffffff' || colorLower === 'rgb(255, 255, 255)' || colorLower === 'rgba(255, 255, 255, 1)') {
+        return true;
+      }
+      if (colorLower === 'black' || colorLower === '#000000' || colorLower === 'rgb(0, 0, 0)') {
+        return false;
+      }
+      
       // Remove # if present
       const hex = color.replace('#', '');
+      
+      // Check if it's a valid hex color (6 characters)
+      if (hex.length !== 6 || !/^[0-9A-Fa-f]{6}$/.test(hex)) {
+        // If not valid hex, default to light (white background)
+        return true;
+      }
+      
       // Convert to RGB
       const r = parseInt(hex.substr(0, 2), 16);
       const g = parseInt(hex.substr(2, 2), 16);
@@ -1177,7 +1202,10 @@
 
     // Get appropriate text color based on background
     getContrastTextColor(backgroundColor) {
-      return this.isLightColor(backgroundColor) ? '#1f2937' : '#ffffff';
+      // Always ensure we have a visible text color
+      // For white/light backgrounds, use dark text; for dark backgrounds, use light text
+      const isLight = this.isLightColor(backgroundColor);
+      return isLight ? '#1f2937' : '#ffffff';
     }
 
     renderButton() {
@@ -1586,17 +1614,19 @@
       const replyTextColor = isDarkBg ? '#ffffff' : primaryColor;
       
       // Style-specific styling - classes handle hover, inline styles handle base
+      // Don't use !important on color so hover states can override it
       let replyStyle = '';
       let replyClass = 'ct-quick-reply';
       if (style === 'chips') {
         replyClass = 'ct-quick-reply ct-quick-reply-chips';
-        replyStyle = `border-radius: 20px; padding: 6px 14px; color: ${replyTextColor} !important;`;
+        replyStyle = `border-radius: 20px; padding: 6px 14px; color: ${replyTextColor};`;
       } else if (style === 'links') {
         replyClass = 'ct-quick-reply ct-quick-reply-links';
-        replyStyle = `padding: 4px 8px; color: ${replyTextColor} !important;`;
+        replyStyle = `padding: 4px 8px; color: ${replyTextColor};`;
       } else {
         replyClass = 'ct-quick-reply';
-        replyStyle = `border-radius: 16px; padding: 6px 12px; color: ${replyTextColor} !important;`;
+        // For default buttons, let CSS handle the color (it's already set in CSS)
+        replyStyle = `border-radius: 16px; padding: 6px 12px;`;
       }
       
       return `
@@ -1769,10 +1799,10 @@
         if (input) {
           // Set adaptive text color based on background
           const backgroundColor = this.config.backgroundColor || '#ffffff';
-          const inputBg = backgroundColor === '#ffffff' || !backgroundColor ? 'white' : backgroundColor;
+          const inputBg = backgroundColor === '#ffffff' || !backgroundColor ? '#ffffff' : backgroundColor;
           const inputTextColor = this.getContrastTextColor(inputBg);
           const placeholderColor = this.isLightColor(inputBg) ? 'rgba(31, 41, 55, 0.6)' : 'rgba(255, 255, 255, 0.6)';
-          input.style.setProperty('color', inputTextColor, 'important');
+          input.style.setProperty('color', inputTextColor || '#1f2937', 'important');
           input.style.setProperty('font-weight', '500', 'important');
           
           if (this.getConfigValue('components.input.showCharacterCount', false)) {
