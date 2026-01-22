@@ -825,7 +825,7 @@ export async function processChatMessage(
           id: m.id,
           type: m.memory_type,
           content: m.content.substring(0, 100), // First 100 chars
-          similarity: m.similarity,
+          similarity: (m as any).similarity, // similarity is computed from vector search, not in UserMemory type
         })),
       });
     }
@@ -841,7 +841,10 @@ export async function processChatMessage(
       const hasPreferences = relevantMemories.some(m => 
         m.memory_type === 'preference' || m.memory_type === 'constraint' || m.memory_type === 'profile'
       );
-      const hasHighSimilarity = relevantMemories.some(m => m.similarity && m.similarity > 0.8);
+      const hasHighSimilarity = relevantMemories.some(m => {
+        const similarity = (m as any).similarity; // similarity is computed from vector search
+        return similarity && similarity > 0.8;
+      });
       hasStrongMemoryContext = hasPreferences || hasHighSimilarity || relevantMemories.length >= 3;
       
       if (trace && hasStrongMemoryContext) {
