@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, MessageSquare, Search, User } from 'lucide-react';
 
 export interface ConversationSummary {
@@ -33,26 +33,7 @@ export default function ConversationSidebar({
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredConversations, setFilteredConversations] = useState<ConversationSummary[]>([]);
 
-  useEffect(() => {
-    loadConversations();
-  }, []);
-
-  useEffect(() => {
-    if (searchTerm.trim()) {
-      // Filter locally for now (could also use API search)
-      const filtered = conversations.filter(
-        (conv) =>
-          conv.firstMessage?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          conv.lastMessage?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          conv.sessionId.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      setFilteredConversations(filtered);
-    } else {
-      setFilteredConversations(conversations);
-    }
-  }, [searchTerm, conversations]);
-
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async () => {
     try {
       setLoading(true);
       const isLocalhost = typeof window !== 'undefined' && 
@@ -70,7 +51,26 @@ export default function ConversationSidebar({
     } finally {
       setLoading(false);
     }
-  };
+  }, [apiUrl]);
+
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
+
+  useEffect(() => {
+    if (searchTerm.trim()) {
+      // Filter locally for now (could also use API search)
+      const filtered = conversations.filter(
+        (conv) =>
+          conv.firstMessage?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          conv.lastMessage?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          conv.sessionId.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+      setFilteredConversations(filtered);
+    } else {
+      setFilteredConversations(conversations);
+    }
+  }, [searchTerm, conversations]);
 
   const formatDate = (date: Date | string) => {
     const d = typeof date === 'string' ? new Date(date) : date;

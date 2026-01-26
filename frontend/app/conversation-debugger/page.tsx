@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import ConversationSidebar from '@/components/ConversationSidebar';
 import ConversationTreeView, { TreeNode } from '@/components/ConversationTreeView';
 import {
@@ -58,6 +58,7 @@ export default function ConversationDebuggerPage() {
   const stepForwardRef = useRef<() => void>();
   const stepBackwardRef = useRef<() => void>();
   const resetPlaybackRef = useRef<() => void>();
+  const updateActiveNodeRef = useRef<(node: TreeNode) => void>();
 
   useEffect(() => {
     playbackSpeedRef.current = playbackSpeed;
@@ -75,14 +76,31 @@ export default function ConversationDebuggerPage() {
     };
   }, []);
 
-  // Store function refs
-  useEffect(() => {
-    startPlaybackRef.current = startPlayback;
-    pausePlaybackRef.current = pausePlayback;
-    stepForwardRef.current = stepForward;
-    stepBackwardRef.current = stepBackward;
-    resetPlaybackRef.current = resetPlayback;
-  });
+  // Define updateActiveNode first (before it's used in other functions)
+  const updateActiveNode = useCallback((node: TreeNode) => {
+    setActiveNodeIds([node.id]);
+    setSelectedNode(node);
+    
+    // Highlight path to root
+    if (conversationTree) {
+      const pathToRoot: string[] = [];
+      const findPath = (n: TreeNode, targetId: string, path: string[]): boolean => {
+        if (n.id === targetId) {
+          path.push(n.id);
+          return true;
+        }
+        for (const child of n.children) {
+          if (findPath(child, targetId, path)) {
+            path.push(n.id);
+            return true;
+          }
+        }
+        return false;
+      };
+      findPath(conversationTree.rootNode, node.id, pathToRoot);
+      setActiveNodeIds(pathToRoot);
+    }
+  }, [conversationTree]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -122,7 +140,7 @@ export default function ConversationDebuggerPage() {
             playbackIndexRef.current = allNodesRef.current.length - 1;
             setCurrentPlaybackIndex(allNodesRef.current.length - 1);
             const last = allNodesRef.current[allNodesRef.current.length - 1];
-            updateActiveNode(last);
+            updateActiveNodeRef.current?.(last);
           }
           break;
       }
@@ -286,31 +304,6 @@ export default function ConversationDebuggerPage() {
     updateActiveNode(next);
   };
 
-  const updateActiveNode = (node: TreeNode) => {
-    setActiveNodeIds([node.id]);
-    setSelectedNode(node);
-    
-    // Highlight path to root
-    if (conversationTree) {
-      const pathToRoot: string[] = [];
-      const findPath = (n: TreeNode, targetId: string, path: string[]): boolean => {
-        if (n.id === targetId) {
-          path.push(n.id);
-          return true;
-        }
-        for (const child of n.children) {
-          if (findPath(child, targetId, path)) {
-            path.push(n.id);
-            return true;
-          }
-        }
-        return false;
-      };
-      findPath(conversationTree.rootNode, node.id, pathToRoot);
-      setActiveNodeIds(pathToRoot);
-    }
-  };
-
   const handleTimelineChange = (value: number) => {
     const index = Math.min(Math.max(0, Math.floor(value)), allNodesRef.current.length - 1);
     playbackIndexRef.current = index;
@@ -321,6 +314,16 @@ export default function ConversationDebuggerPage() {
       pausePlayback();
     }
   };
+
+  // Store function refs (after all functions are defined)
+  useEffect(() => {
+    startPlaybackRef.current = startPlayback;
+    pausePlaybackRef.current = pausePlayback;
+    stepForwardRef.current = stepForward;
+    stepBackwardRef.current = stepBackward;
+    resetPlaybackRef.current = resetPlayback;
+    updateActiveNodeRef.current = updateActiveNode;
+  }, [startPlayback, pausePlayback, stepForward, stepBackward, resetPlayback, updateActiveNode]);
 
   const formatTime = (ms: number) => {
     if (ms < 1000) return `${ms.toFixed(0)}ms`;
@@ -508,7 +511,7 @@ export default function ConversationDebuggerPage() {
                           <div className="text-xs text-gray-700">
                             <p className="font-medium mb-1">No traces found for this session</p>
                             <p className="text-gray-600">
-                              This conversation doesn't have any trace data. Traces are created when the AI processes messages.
+                              This conversation doesn&apos;t have any trace data. Traces are created when the AI processes messages.
                               Make sure the conversation has been used and tracing is enabled.
                             </p>
                           </div>
