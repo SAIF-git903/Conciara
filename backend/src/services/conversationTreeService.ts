@@ -208,7 +208,6 @@ function eventToTreeNode(
     case 'dialog_tree_search':
       node.content = event.data.matchedUserInput || 'No match';
       break;
-    case 'tool_call':
     case 'api_call':
       node.content = event.data.toolName || event.data.endpoint || '';
       break;
