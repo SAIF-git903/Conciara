@@ -7,7 +7,7 @@ const router = express.Router();
 router.get('/:traceId', async (req, res) => {
   try {
     const { traceId } = req.params;
-    const trace = traceService.getTrace(traceId);
+    const trace = await traceService.getTrace(traceId);
     
     if (!trace) {
       return res.status(404).json({ error: 'Trace not found' });
@@ -27,7 +27,7 @@ router.get('/:traceId', async (req, res) => {
 router.get('/session/:sessionId', async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const traces = traceService.getSessionTraces(sessionId);
+    const traces = await traceService.getSessionTraces(sessionId);
     res.json(traces);
   } catch (error: any) {
     console.error('Error fetching session traces:', error);
@@ -42,7 +42,7 @@ router.get('/session/:sessionId', async (req, res) => {
 router.get('/session/:sessionId/latest', async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const trace = traceService.getLatestTrace(sessionId);
+    const trace = await traceService.getLatestTrace(sessionId);
     
     if (!trace) {
       return res.status(404).json({ error: 'No traces found for session' });
@@ -61,7 +61,8 @@ router.get('/session/:sessionId/latest', async (req, res) => {
 // Get all traces (for admin/debugging)
 router.get('/', async (req, res) => {
   try {
-    const traces = traceService.getAllTraces();
+    const limit = parseInt(req.query.limit as string) || 100;
+    const traces = await traceService.getAllTraces(limit);
     res.json(traces);
   } catch (error: any) {
     console.error('Error fetching all traces:', error);

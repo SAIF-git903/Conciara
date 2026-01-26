@@ -1184,7 +1184,7 @@ export async function processChatMessage(
       nextNodeId: finalNodeId,
       options: options || [],
     });
-    traceService.completeTrace(trace.traceId, botResponse);
+    await traceService.completeTrace(trace.traceId, botResponse);
   }
 
   return {

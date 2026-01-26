@@ -71,7 +71,8 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
     }
     
     // Add domain if available (as additional fallback)
-    if (website.domain && !selectedSkinId) {
+    // Note: domain is included even when skinId is set - widget uses priority: skinId > treeId > websiteId > domain
+    if (website.domain) {
       configParts.push(`domain: '${website.domain}'`)
     }
     
