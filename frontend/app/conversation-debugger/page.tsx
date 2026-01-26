@@ -35,6 +35,12 @@ interface ConversationTree {
 type PlaybackSpeed = 0.25 | 0.5 | 1 | 2 | 'step';
 type PlaybackState = 'idle' | 'playing' | 'paused';
 
+// Enhanced node structure for playback with trace grouping
+interface PlaybackNode extends TreeNode {
+  traceGroupId?: string | null; // ID of the user message this node belongs to
+  isTraceStart?: boolean; // True if this is the start of a new trace (user message)
+}
+
 export default function ConversationDebuggerPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [conversationTree, setConversationTree] = useState<ConversationTree | null>(null);
@@ -52,6 +58,7 @@ export default function ConversationDebuggerPage() {
   const playbackSpeedRef = useRef<PlaybackSpeed>(1);
   const playbackIndexRef = useRef<number>(0);
   const allNodesRef = useRef<TreeNode[]>([]);
+  const playbackNodesRef = useRef<PlaybackNode[]>([]); // Enhanced nodes with trace grouping
   const playbackStateRef = useRef<PlaybackState>('idle');
   const startPlaybackRef = useRef<() => void>();
   const pausePlaybackRef = useRef<() => void>();
@@ -182,15 +189,41 @@ export default function ConversationDebuggerPage() {
       setCurrentPlaybackIndex(0);
       setError(null); // Clear any previous errors
 
-      // Collect all nodes in order for playback
-      const collectNodes = (node: TreeNode): TreeNode[] => {
-        const nodes = [node];
+      // Collect all nodes in order for playback with trace grouping
+      // This groups nodes by user message (trace) so we can skip gaps between messages
+      const collectNodesWithTraceGroups = (
+        node: TreeNode,
+        traceGroupId: string | null = null,
+        isTraceStart: boolean = false
+      ): PlaybackNode[] => {
+        // User messages start a new trace group
+        const currentTraceGroupId = node.type === 'user_message' ? node.id : traceGroupId;
+        const isNewTraceStart = node.type === 'user_message';
+        
+        const playbackNode: PlaybackNode = {
+          ...node,
+          traceGroupId: currentTraceGroupId || null,
+          isTraceStart: isNewTraceStart,
+        };
+        
+        const nodes: PlaybackNode[] = [playbackNode];
+        
+        // Recursively collect children with the same trace group
         node.children.forEach(child => {
-          nodes.push(...collectNodes(child));
+          nodes.push(...collectNodesWithTraceGroups(
+            child,
+            currentTraceGroupId || traceGroupId,
+            false
+          ));
         });
+        
         return nodes;
       };
-      allNodesRef.current = collectNodes(tree.rootNode).sort((a, b) => a.relativeTime - b.relativeTime);
+      
+      // Collect nodes with trace grouping and sort by time
+      const allPlaybackNodes = collectNodesWithTraceGroups(tree.rootNode);
+      playbackNodesRef.current = allPlaybackNodes.sort((a, b) => a.relativeTime - b.relativeTime);
+      allNodesRef.current = playbackNodesRef.current; // Keep for compatibility with existing code
     } catch (err: any) {
       setError(err.message || 'Failed to load conversation tree');
       setConversationTree(null); // Clear tree on error
@@ -233,30 +266,59 @@ export default function ConversationDebuggerPage() {
   };
 
   const scheduleNextNode = () => {
-    if (!isPlayingRef.current || playbackIndexRef.current >= allNodesRef.current.length - 1) {
+    if (!isPlayingRef.current || playbackIndexRef.current >= playbackNodesRef.current.length - 1) {
       isPlayingRef.current = false;
       setPlaybackState('idle');
       return;
     }
 
     const currentIndex = playbackIndexRef.current;
-    const currentNode = allNodesRef.current[currentIndex];
-    const nextNode = allNodesRef.current[currentIndex + 1];
+    const currentNode = playbackNodesRef.current[currentIndex];
+    const nextNode = playbackNodesRef.current[currentIndex + 1];
 
-    // Calculate delay based on time difference and speed
-    const timeDiff = nextNode.relativeTime - currentNode.relativeTime;
     const speed = playbackSpeedRef.current === 'step' ? 1 : playbackSpeedRef.current;
     const baseDelay = speed === 0.25 ? 800 : speed === 0.5 ? 400 : speed === 1 ? 200 : 100;
-    const delay = Math.max(timeDiff / speed, baseDelay);
+    
+    // IDEAL APPROACH: Use trace grouping to skip gaps between user messages
+    // - Within the same trace group: use actual processing time (shows real AI response time)
+    // - Between different trace groups: skip the gap (minimal delay)
+    // - Root and user messages: appear instantly
+    
+    let delay: number;
+    
+    // Check if we're transitioning between different trace groups (different user messages)
+    const isDifferentTraceGroup = 
+      currentNode.traceGroupId && 
+      nextNode.traceGroupId && 
+      currentNode.traceGroupId !== nextNode.traceGroupId;
+    
+    // Check if next node starts a new trace (new user message)
+    const isNewTraceStart = nextNode.isTraceStart || nextNode.type === 'user_message';
+    
+    // Check if current node is root or user message (these should appear instantly)
+    const isTransitionFromRootOrUser = 
+      currentNode.type === 'root' || 
+      currentNode.type === 'user_message';
+    
+    if (isDifferentTraceGroup || isNewTraceStart || isTransitionFromRootOrUser) {
+      // Skip gaps between user messages - they should appear instantly
+      // This prevents long waits when there are gaps between user messages
+      delay = baseDelay;
+    } else {
+      // Within the same trace group, use actual processing time
+      // This shows the real AI response time for this specific message
+      const timeDiff = nextNode.relativeTime - currentNode.relativeTime;
+      delay = Math.max(timeDiff / speed, baseDelay);
+    }
 
         playbackTimeoutRef.current = setTimeout(() => {
-      if (isPlayingRef.current && playbackIndexRef.current < allNodesRef.current.length - 1) {
+      if (isPlayingRef.current && playbackIndexRef.current < playbackNodesRef.current.length - 1) {
         playbackIndexRef.current++;
         setCurrentPlaybackIndex(playbackIndexRef.current);
-        const next = allNodesRef.current[playbackIndexRef.current];
+        const next = playbackNodesRef.current[playbackIndexRef.current];
         updateActiveNode(next);
 
-        if (playbackIndexRef.current < allNodesRef.current.length - 1) {
+        if (playbackIndexRef.current < playbackNodesRef.current.length - 1) {
           scheduleNextNode();
         } else {
           isPlayingRef.current = false;

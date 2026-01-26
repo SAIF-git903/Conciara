@@ -84,13 +84,18 @@ export function buildConversationTree(traces: Trace[]): ConversationTree | null 
 
     // Add final response node
     if (trace.finalResponse) {
+      // Response time is relative to trace start (when user message was sent)
+      const responseTime = trace.endTime 
+        ? trace.endTime - trace.startTime 
+        : 0;
+      
       const responseNode: TreeNode = {
         id: `response_${trace.traceId}`,
         type: 'response',
         label: 'AI Response',
         content: trace.finalResponse,
         timestamp: trace.endTime || trace.startTime,
-        relativeTime: (trace.endTime || trace.startTime) - firstTrace.startTime,
+        relativeTime: responseTime, // Relative to trace start, shows response time
         data: { traceId: trace.traceId },
         children: [],
         parentId: userMessageNode.id,
@@ -129,12 +134,13 @@ function buildEventTree(
   }
 
   // Group events by type and create reasoning paths
+  // Reasoning node starts at 0ms relative to the user message (trace start)
   const reasoningNode: TreeNode = {
     id: `reasoning_${parentId}`,
     type: 'reasoning',
     label: 'AI Reasoning Process',
     timestamp: events[0].timestamp,
-    relativeTime: events[0].relativeTime,
+    relativeTime: 0, // Always 0 relative to trace start
     children: [],
     parentId,
   };
@@ -175,17 +181,16 @@ function eventToTreeNode(
   const nodeType = getNodeTypeForEvent(event.type);
   const label = getLabelForEvent(event.type, event.data);
   
-  // Calculate relative time from conversation start (not trace start)
-  // event.relativeTime is relative to trace start, so add the trace offset
-  const traceOffset = traceStartTime - conversationStartTime;
-  const relativeTimeFromConversation = event.relativeTime + traceOffset;
+  // Use event.relativeTime directly - it's already relative to trace start
+  // This shows how long each step took from when the user message was sent
+  // NOT the absolute time from conversation start
 
   const node: TreeNode = {
     id: event.id,
     type: nodeType,
     label,
     timestamp: event.timestamp,
-    relativeTime: relativeTimeFromConversation,
+    relativeTime: event.relativeTime, // Relative to trace start, not conversation start
     data: event.data,
     metadata: event.metadata,
     children: [],
