@@ -16,6 +16,8 @@ import {
   Keyboard,
   AlertCircle,
   Search,
+  LayoutList,
+  Network,
 } from 'lucide-react';
 
 interface ConversationTree {
@@ -47,6 +49,7 @@ export default function ConversationDebuggerPage() {
   const [selectedNode, setSelectedNode] = useState<TreeNode | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'accordion' | 'tree'>('tree'); // View mode toggle
 
   // Playback state
   const [playbackState, setPlaybackState] = useState<PlaybackState>('idle');
@@ -408,16 +411,16 @@ export default function ConversationDebuggerPage() {
             <div className="flex items-center gap-2">
               <Bug className="w-5 h-5 text-gray-700" />
               <div>
-                <h1 className="text-sm font-semibold text-gray-900">AI Conversation Debugger</h1>
-                <p className="text-[10px] text-gray-500 uppercase tracking-wide">
+                <h1 className="text-lg font-bold text-gray-900">AI Conversation Debugger</h1>
+                <p className="text-xs text-gray-500 uppercase tracking-wide">
                   Visualize and replay AI conversations
                 </p>
               </div>
             </div>
 
             {/* Keyboard Shortcuts Hint */}
-            <div className="flex items-center gap-1 text-[10px] text-gray-400">
-              <Keyboard className="w-3.5 h-3.5" />
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <Keyboard className="w-4 h-4" />
               <span>Space: Play/Pause | ← →: Step | Home/End: Jump</span>
             </div>
           </div>
@@ -435,7 +438,7 @@ export default function ConversationDebuggerPage() {
                       title="Pause (Space)"
                     >
                       <Pause className="w-5 h-5" />
-                      <span className="text-sm">Pause</span>
+                      <span className="text-base">Pause</span>
                     </button>
                   ) : (
                     <button
@@ -445,7 +448,7 @@ export default function ConversationDebuggerPage() {
                       title="Play (Space)"
                     >
                       <Play className="w-5 h-5" />
-                      <span className="text-sm">Play</span>
+                      <span className="text-base">Play</span>
                     </button>
                   )}
                 </div>
@@ -516,14 +519,14 @@ export default function ConversationDebuggerPage() {
                       </div>
                     )}
                   </div>
-                  <div className="text-[10px] text-gray-500 font-mono min-w-[60px] text-right">
+                  <div className="text-sm text-gray-600 font-mono min-w-[80px] text-right font-semibold">
                     {currentPlaybackIndex + 1} / {allNodesRef.current.length}
                   </div>
                 </div>
 
                 {/* Speed Controls */}
-                <div className="flex items-center gap-1 border-l border-gray-300 pl-3">
-                  <span className="text-[10px] text-gray-500 uppercase tracking-wide mr-1">Speed:</span>
+                <div className="flex items-center gap-2 border-l border-gray-300 pl-3">
+                  <span className="text-xs text-gray-600 uppercase tracking-wide mr-1 font-semibold">Speed:</span>
                   {([0.25, 0.5, 1, 2, 'step'] as PlaybackSpeed[]).map((speed) => (
                     <button
                       key={String(speed)}
@@ -536,7 +539,7 @@ export default function ConversationDebuggerPage() {
                           setTimeout(() => startPlayback(), 100);
                         }
                       }}
-                      className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
+                      className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${
                         playbackSpeed === speed
                           ? 'bg-blue-600 text-white shadow-sm'
                           : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
@@ -557,21 +560,21 @@ export default function ConversationDebuggerPage() {
           <div className="flex-1 overflow-y-auto p-3">
             {loading ? (
               <div className="flex items-center justify-center h-full">
-                <div className="text-xs text-gray-500">Loading conversation tree...</div>
+                <div className="text-base text-gray-600">Loading conversation tree...</div>
               </div>
             ) : error ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center max-w-md">
                   <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-                    <AlertCircle className="w-10 h-10 text-red-500 mx-auto mb-3" />
-                    <h3 className="text-sm font-semibold text-red-900 mb-2">Failed to Load Conversation Tree</h3>
-                    <p className="text-xs text-red-700 mb-4">{error}</p>
+                    <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+                    <h3 className="text-lg font-bold text-red-900 mb-2">Failed to Load Conversation Tree</h3>
+                    <p className="text-sm text-red-700 mb-4">{error}</p>
                     {error.toLowerCase().includes('no traces') && (
-                      <div className="bg-white border border-red-100 rounded p-3 mb-3">
-                        <div className="flex items-start gap-2">
-                          <Search className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                          <div className="text-xs text-gray-700">
-                            <p className="font-medium mb-1">No traces found for this session</p>
+                      <div className="bg-white border border-red-100 rounded p-4 mb-4">
+                        <div className="flex items-start gap-3">
+                          <Search className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
+                          <div className="text-sm text-gray-700">
+                            <p className="font-semibold mb-1">No traces found for this session</p>
                             <p className="text-gray-600">
                               This conversation doesn&apos;t have any trace data. Traces are created when the AI processes messages.
                               Make sure the conversation has been used and tracing is enabled.
@@ -582,7 +585,7 @@ export default function ConversationDebuggerPage() {
                     )}
                     <button
                       onClick={() => loadConversationTree(selectedSessionId!)}
-                      className="text-xs px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+                      className="text-sm px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded transition-colors font-medium"
                     >
                       Try Again
                     </button>
@@ -590,12 +593,45 @@ export default function ConversationDebuggerPage() {
                 </div>
               </div>
             ) : conversationTree ? (
-              <ConversationTreeView
-                rootNode={conversationTree.rootNode}
-                onNodeClick={handleNodeClick}
-                selectedNodeId={selectedNode?.id}
-                activeNodeIds={activeNodeIds}
-              />
+              <div className="h-full flex flex-col">
+                {/* View Mode Toggle */}
+                <div className="flex items-center justify-end gap-2 px-3 py-2 bg-gray-50 border-b border-gray-200">
+                  <span className="text-xs text-gray-600 font-medium">View:</span>
+                  <div className="flex gap-1 bg-white border border-gray-300 rounded-lg p-1">
+                    <button
+                      onClick={() => setViewMode('accordion')}
+                      className={`px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                        viewMode === 'accordion'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                      title="Accordion View"
+                    >
+                      <LayoutList className="w-3.5 h-3.5" />
+                      Accordion
+                    </button>
+                    <button
+                      onClick={() => setViewMode('tree')}
+                      className={`px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                        viewMode === 'tree'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                      title="Tree View with Branches"
+                    >
+                      <Network className="w-3.5 h-3.5" />
+                      Tree
+                    </button>
+                  </div>
+                </div>
+                <ConversationTreeView
+                  rootNode={conversationTree.rootNode}
+                  onNodeClick={handleNodeClick}
+                  selectedNodeId={selectedNode?.id}
+                  activeNodeIds={activeNodeIds}
+                  viewMode={viewMode}
+                />
+              </div>
             ) : (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center text-gray-400">
@@ -610,40 +646,40 @@ export default function ConversationDebuggerPage() {
           {/* Details Panel */}
           {selectedNode && (
             <div className="w-80 bg-white border-l border-gray-200 overflow-y-auto">
-              <div className="sticky top-0 bg-white border-b border-gray-200 px-3 py-2">
-                <h3 className="text-xs font-semibold text-gray-900 uppercase tracking-wide">Node Details</h3>
+              <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-3">
+                <h3 className="text-base font-bold text-gray-900 uppercase tracking-wide">Node Details</h3>
               </div>
-              <div className="p-3 space-y-3">
+              <div className="p-4 space-y-4">
                 <div>
-                  <div className="text-[10px] text-gray-400 mb-1 uppercase tracking-wide">Type</div>
-                  <div className="text-xs font-medium text-gray-900">{selectedNode.type}</div>
+                  <div className="text-xs text-gray-500 mb-1.5 uppercase tracking-wide font-semibold">Type</div>
+                  <div className="text-sm font-medium text-gray-900">{selectedNode.type}</div>
                 </div>
 
                 <div>
-                  <div className="text-[10px] text-gray-400 mb-1 uppercase tracking-wide">Label</div>
-                  <div className="text-xs font-medium text-gray-900">{selectedNode.label}</div>
+                  <div className="text-xs text-gray-500 mb-1.5 uppercase tracking-wide font-semibold">Label</div>
+                  <div className="text-sm font-medium text-gray-900">{selectedNode.label}</div>
                 </div>
 
                 {selectedNode.content && (
                   <div>
-                    <div className="text-[10px] text-gray-400 mb-1 uppercase tracking-wide">Content</div>
-                    <div className="text-[11px] text-gray-700 bg-gray-50 p-2 rounded whitespace-pre-wrap border border-gray-200">
+                    <div className="text-xs text-gray-500 mb-1.5 uppercase tracking-wide font-semibold">Content</div>
+                    <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded whitespace-pre-wrap border border-gray-200">
                       {selectedNode.content}
                     </div>
                   </div>
                 )}
 
                 <div>
-                  <div className="text-[10px] text-gray-400 mb-1 uppercase tracking-wide">Time</div>
-                  <div className="text-[11px] text-gray-700 font-mono">
+                  <div className="text-xs text-gray-500 mb-1.5 uppercase tracking-wide font-semibold">Time</div>
+                  <div className="text-sm text-gray-700 font-mono font-semibold">
                     {formatTime(selectedNode.relativeTime)}
                   </div>
                 </div>
 
                 {selectedNode.data && Object.keys(selectedNode.data).length > 0 && (
                   <div>
-                    <div className="text-[10px] text-gray-400 mb-1 uppercase tracking-wide">Data</div>
-                    <div className="text-[10px] bg-gray-50 p-2 rounded overflow-auto max-h-48 border border-gray-200">
+                    <div className="text-xs text-gray-500 mb-1.5 uppercase tracking-wide font-semibold">Data</div>
+                    <div className="text-xs bg-gray-50 p-3 rounded overflow-auto max-h-48 border border-gray-200">
                       <pre className="whitespace-pre-wrap">{JSON.stringify(selectedNode.data, null, 2)}</pre>
                     </div>
                   </div>
@@ -651,8 +687,8 @@ export default function ConversationDebuggerPage() {
 
                 {selectedNode.metadata && Object.keys(selectedNode.metadata).length > 0 && (
                   <div>
-                    <div className="text-[10px] text-gray-400 mb-1 uppercase tracking-wide">Metadata</div>
-                    <div className="text-[10px] bg-gray-50 p-2 rounded overflow-auto max-h-48 border border-gray-200">
+                    <div className="text-xs text-gray-500 mb-1.5 uppercase tracking-wide font-semibold">Metadata</div>
+                    <div className="text-xs bg-gray-50 p-3 rounded overflow-auto max-h-48 border border-gray-200">
                       <pre className="whitespace-pre-wrap">{JSON.stringify(selectedNode.metadata, null, 2)}</pre>
                     </div>
                   </div>
