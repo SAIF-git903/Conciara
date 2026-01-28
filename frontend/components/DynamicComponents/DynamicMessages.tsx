@@ -3,11 +3,21 @@
 import { Bot, User } from 'lucide-react'
 import { MergedSkinConfig } from '../../types/skinConfig'
 
+interface MediaItem {
+  id: number
+  media_type: 'image' | 'video'
+  s3_url: string
+  file_name: string
+  content_type: string
+  file_size: number
+}
+
 interface Message {
   id: string
   type: 'user' | 'bot'
   content: string
   timestamp: Date
+  media?: MediaItem[]
 }
 
 interface DynamicMessagesProps {
@@ -81,6 +91,34 @@ export default function DynamicMessages({
             <p className="text-sm whitespace-pre-wrap" style={{ color: message.type === 'user' ? textColor : 'white' }}>
               {message.content}
             </p>
+            
+            {/* Media Display */}
+            {message.media && message.media.length > 0 && (
+              <div className="mt-2 space-y-2">
+                {message.media.map((item) => (
+                  <div key={item.id} className="rounded-lg overflow-hidden">
+                    {item.media_type === 'image' ? (
+                      <img
+                        src={item.s3_url}
+                        alt={item.file_name}
+                        className="max-w-full h-auto rounded-lg"
+                        style={{ maxHeight: '300px' }}
+                      />
+                    ) : (
+                      <video
+                        src={item.s3_url}
+                        controls
+                        className="max-w-full h-auto rounded-lg"
+                        style={{ maxHeight: '300px' }}
+                      >
+                        Your browser does not support the video tag.
+                      </video>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            
             {messagesConfig.showTimestamps && (
               <span className="text-xs opacity-70 mt-1 block">
                 {messagesConfig.timestampFormat === 'relative'

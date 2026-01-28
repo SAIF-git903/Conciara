@@ -46,17 +46,45 @@ export interface ChatSession {
   updated_at: Date;
 }
 
+export interface MediaItem {
+  id: number;
+  media_type: 'image' | 'video';
+  s3_url: string;
+  file_name: string;
+  content_type: string;
+  file_size: number;
+}
+
 export interface ChatMessage {
   bot_response: string;
   next_node_id: number | null;
   session_id: string;
   options?: string[]; // Quick reply options
   trace_id?: string; // Trace ID for observability
+  media?: MediaItem[]; // Media files (images/videos) associated with the response
 }
 
 // Generate unique session ID
 export function generateSessionId(): string {
   return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Get media files for a dialog node
+export async function getNodeMedia(nodeId: number | null): Promise<MediaItem[]> {
+  if (!nodeId) {
+    return [];
+  }
+
+  try {
+    const result = await pool.query(
+      'SELECT id, media_type, s3_url, file_name, content_type, file_size FROM node_media WHERE node_id = $1 ORDER BY created_at ASC',
+      [nodeId]
+    );
+    return result.rows;
+  } catch (error: any) {
+    console.error('[ChatService] Error fetching node media:', error.message);
+    return [];
+  }
 }
 
 // Get or create session
@@ -772,11 +800,15 @@ export async function processChatMessage(
         .slice(0, 3)
         .map(node => node.user_input!);
 
+      // Get media for root node
+      const media = await getNodeMedia(rootNode.id);
+
       return {
         bot_response: greeting,
         next_node_id: rootNode.id,
         session_id: session.session_id,
         options: options.length > 0 ? options : undefined,
+        media: media.length > 0 ? media : undefined,
       };
     } else {
       return {
@@ -1187,12 +1219,16 @@ export async function processChatMessage(
     await traceService.completeTrace(trace.traceId, botResponse);
   }
 
+  // Get media for the final node
+  const media = await getNodeMedia(finalNodeId);
+
   return {
     bot_response: botResponse,
     next_node_id: finalNodeId,
     session_id: session.session_id,
     options: options && options.length > 0 ? options : undefined,
     trace_id: trace?.traceId, // Include trace ID in response
+    media: media.length > 0 ? media : undefined,
   };
 }
 

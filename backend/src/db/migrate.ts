@@ -291,6 +291,28 @@ export async function migrate() {
       CREATE INDEX IF NOT EXISTS idx_conversation_trees_created_at ON conversation_trees(created_at DESC);
     `);
 
+    // Create node_media table for storing media files (images/videos) associated with dialog nodes
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS node_media (
+        id SERIAL PRIMARY KEY,
+        node_id INT REFERENCES dialog_nodes(id) ON DELETE CASCADE,
+        media_type VARCHAR(20) NOT NULL CHECK (media_type IN ('image', 'video')),
+        s3_key VARCHAR(500) NOT NULL,
+        s3_url TEXT NOT NULL,
+        file_name VARCHAR(255) NOT NULL,
+        content_type VARCHAR(100) NOT NULL,
+        file_size BIGINT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // Create indexes for node_media
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_node_media_node_id ON node_media(node_id);
+      CREATE INDEX IF NOT EXISTS idx_node_media_type ON node_media(media_type);
+    `);
+
     console.log('Migration completed successfully');
   } catch (error) {
     console.error('Migration failed:', error);

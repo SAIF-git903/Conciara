@@ -14,6 +14,7 @@ import chatRoutes from './routes/chat.js';
 import widgetRoutes from './routes/widget.js';
 import traceRoutes from './routes/trace.js';
 import conversationRoutes from './routes/conversations.js';
+import mediaRoutes from './routes/media.js';
 
 dotenv.config();
 
@@ -53,6 +54,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/widget', widgetRoutes);
 app.use('/api/trace', traceRoutes);
 app.use('/api/conversations', conversationRoutes);
+app.use('/api/media', mediaRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
