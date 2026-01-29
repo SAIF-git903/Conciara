@@ -16,6 +16,7 @@ import {
   isLLMAuthError,
   hasLLMCredits
 } from './llmService.js';
+import { getPresignedUrl } from './s3Service.js';
 import { traceService, Trace } from './traceService.js';
 
 // Check if vector extension is available (cached)
@@ -49,7 +50,9 @@ export interface ChatSession {
 export interface MediaItem {
   id: number;
   media_type: 'image' | 'video';
+  s3_key?: string;
   s3_url: string;
+  presigned_url?: string;
   file_name: string;
   content_type: string;
   file_size: number;
@@ -77,10 +80,26 @@ export async function getNodeMedia(nodeId: number | null): Promise<MediaItem[]> 
 
   try {
     const result = await pool.query(
-      'SELECT id, media_type, s3_url, file_name, content_type, file_size FROM node_media WHERE node_id = $1 ORDER BY created_at ASC',
+      'SELECT id, media_type, s3_key, s3_url, file_name, content_type, file_size FROM node_media WHERE node_id = $1 ORDER BY created_at ASC',
       [nodeId]
     );
-    return result.rows;
+
+    const expiresIn = process.env.PRESIGN_EXPIRES ? parseInt(process.env.PRESIGN_EXPIRES, 10) : 3600;
+
+    const rowsWithUrls = await Promise.all(
+      result.rows.map(async (row: any) => {
+        if (!row.s3_key) return row;
+        try {
+          const presigned = await getPresignedUrl(row.s3_key, expiresIn);
+          return { ...row, presigned_url: presigned };
+        } catch (err: any) {
+          console.warn('[ChatService] failed to presign', row.s3_key, err?.message || err);
+          return row;
+        }
+      })
+    );
+
+    return rowsWithUrls;
   } catch (error: any) {
     console.error('[ChatService] Error fetching node media:', error.message);
     return [];

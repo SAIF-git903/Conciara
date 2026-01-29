@@ -93,6 +93,7 @@ export interface MediaItem {
   media_type: 'image' | 'video';
   s3_key: string;
   s3_url: string;
+  presigned_url?: string;
   file_name: string;
   content_type: string;
   file_size: number;
@@ -310,4 +311,3 @@ export const mediaApi = {
     await api.delete(`/media/${id}`);
   },
 };
-

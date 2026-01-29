@@ -307,15 +307,17 @@ export default function NodeEditor({
                               <div key={media.id} className="relative group">
                                 {media.media_type === 'image' ? (
                                   <img
-                                    src={media.s3_url}
+                                    src={(media as any).presigned_url || media.s3_url}
                                     alt={media.file_name}
-                                    className="w-full h-24 object-cover rounded-lg border border-gray-200"
+                                    className="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer"
+                                    onClick={() => window.open((media as any).presigned_url || media.s3_url, '_blank')}
                                   />
                                 ) : (
                                   <video
-                                    src={media.s3_url}
-                                    className="w-full h-24 object-cover rounded-lg border border-gray-200"
+                                    src={(media as any).presigned_url || media.s3_url}
+                                    className="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer"
                                     controls={false}
+                                    onClick={() => window.open((media as any).presigned_url || media.s3_url, '_blank')}
                                   />
                                 )}
                                 <button

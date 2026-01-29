@@ -13,6 +13,7 @@ interface MediaItem {
   id: number
   media_type: 'image' | 'video'
   s3_url: string
+  presigned_url?: string
   file_name: string
   content_type: string
   file_size: number

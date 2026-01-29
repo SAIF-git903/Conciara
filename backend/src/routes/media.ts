@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { pool } from '../db/connection.js';
-import { uploadToS3, deleteFromS3, isValidMediaType, getMediaType } from '../services/s3Service.js';
+import { uploadToS3, deleteFromS3, isValidMediaType, getMediaType, getPresignedUrl } from '../services/s3Service.js';
 
 const router = express.Router();
 
@@ -54,8 +54,20 @@ router.post('/node/:nodeId', upload.single('file'), async (req, res) => {
         uploadResult.size,
       ]
     );
+    // Attach presigned URL to the created record so frontend can use it immediately
+    const created = result.rows[0];
+    try {
+      const expiresIn = process.env.PRESIGN_EXPIRES ? parseInt(process.env.PRESIGN_EXPIRES, 10) : 3600;
+      if (created.s3_key) {
+        const presigned = await getPresignedUrl(created.s3_key, expiresIn);
+        created.presigned_url = presigned;
+      }
+    } catch (err: any) {
+      console.warn('[media] failed to presign new upload:', err?.message || err);
+      created.presigned_url = created.s3_url;
+    }
 
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(created);
   } catch (error: any) {
     console.error('Error uploading media:', error);
     res.status(500).json({
@@ -74,14 +86,47 @@ router.get('/node/:nodeId', async (req, res) => {
       'SELECT * FROM node_media WHERE node_id = $1 ORDER BY created_at DESC',
       [nodeId]
     );
+    // Attach a presigned URL for each media item (falls back to stored s3_url on error)
+    const expiresIn = process.env.PRESIGN_EXPIRES ? parseInt(process.env.PRESIGN_EXPIRES, 10) : 3600;
 
-    res.json(result.rows);
+    const rowsWithUrls = await Promise.all(
+      result.rows.map(async (row: any) => {
+        if (!row.s3_key) return row;
+        try {
+          const presigned = await getPresignedUrl(row.s3_key, expiresIn);
+          return { ...row, presigned_url: presigned };
+        } catch (err: any) {
+          console.warn(`[media] failed to presign ${row.s3_key}:`, err?.message || err);
+          return { ...row, presigned_url: row.s3_url };
+        }
+      })
+    );
+
+    res.json(rowsWithUrls);
   } catch (error: any) {
     console.error('Error fetching media:', error);
     res.status(500).json({
       error: 'Failed to fetch media',
       details: error.message,
     });
+  }
+});
+
+// Get a presigned URL for a stored object (private buckets)
+router.get('/presign', async (req, res) => {
+  try {
+    const { key, expiresIn } = req.query;
+    if (!key || typeof key !== 'string') {
+      return res.status(400).json({ error: 'missing key (query param)' });
+    }
+
+    const expires = expiresIn ? parseInt(String(expiresIn), 10) : 3600;
+    const url = await getPresignedUrl(key, expires);
+
+    res.json({ url, expiresIn: expires });
+  } catch (error: any) {
+    console.error('Error creating presigned url:', error);
+    res.status(500).json({ error: 'Failed to create presigned url', details: error.message });
   }
 });
 
