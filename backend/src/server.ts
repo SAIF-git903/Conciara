@@ -40,9 +40,14 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// Media routes BEFORE express.json() so file uploads (multipart/form-data) are
+// handled by multer only — express.json() must not parse multipart bodies.
+app.use('/api/media', mediaRoutes);
+
 app.use(express.json());
 
-// Routes
+// Routes (JSON body)
 app.use('/api/dialog-tree', dialogTreeRoutes);
 app.use('/api/dialog-node', dialogNodeRoutes);
 app.use('/api/preprompt', prepromptRoutes);
@@ -54,7 +59,6 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/widget', widgetRoutes);
 app.use('/api/trace', traceRoutes);
 app.use('/api/conversations', conversationRoutes);
-app.use('/api/media', mediaRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
