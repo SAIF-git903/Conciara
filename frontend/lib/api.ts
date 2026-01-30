@@ -296,10 +296,11 @@ export const mediaApi = {
   upload: async (nodeId: number, file: File): Promise<MediaItem> => {
     const formData = new FormData();
     formData.append('file', file);
+    // Omit Content-Type so axios sets multipart/form-data with boundary (required for file upload)
     const response = await api.post(`/media/node/${nodeId}`, formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+        'Content-Type': undefined,
+      } as Record<string, string | undefined>,
     });
     return response.data;
   },
