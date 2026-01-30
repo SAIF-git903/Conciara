@@ -87,6 +87,20 @@ export interface DialogNode {
   updated_at: string;
 }
 
+export interface MediaItem {
+  id: number;
+  node_id: number;
+  media_type: 'image' | 'video';
+  s3_key: string;
+  s3_url: string;
+  presigned_url?: string;
+  file_name: string;
+  content_type: string;
+  file_size: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Preprompt {
   id: number;
   tree_id: number;
@@ -277,3 +291,23 @@ export const abVariationApi = {
   },
 };
 
+// Media API
+export const mediaApi = {
+  upload: async (nodeId: number, file: File): Promise<MediaItem> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post(`/media/node/${nodeId}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+  getByNodeId: async (nodeId: number): Promise<MediaItem[]> => {
+    const response = await api.get(`/media/node/${nodeId}`);
+    return response.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/media/${id}`);
+  },
+};

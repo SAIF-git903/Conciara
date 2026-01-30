@@ -1437,6 +1437,20 @@
       }
       
       // Render based on layout type
+      // Build media HTML if present
+      let mediaHtml = '';
+        if (message.media && message.media.length > 0) {
+        const items = message.media.map(m => {
+          const src = (m.presigned_url && m.presigned_url.length) ? m.presigned_url : m.s3_url;
+          if (m.media_type === 'image') {
+            return `<img data-media-src="${src}" data-media-type="image" src="${src}" alt="${this.escapeHtml(m.file_name || '')}" style="max-width:240px; max-height:300px; width:auto; height:auto; border-radius:8px; display:block; cursor:pointer;" />`;
+          } else {
+            return `<video data-media-src="${src}" data-media-type="video" src="${src}" controls style="max-width:240px; max-height:300px; width:auto; height:auto; border-radius:8px; display:block; cursor:pointer;">Your browser does not support the video tag.</video>`;
+          }
+        }).join('');
+        mediaHtml = `<div class="ct-message-media" style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">${items}</div>`;
+      }
+
       if (layout === 'list') {
         // List layout: compact, minimal spacing, left-aligned
         const alignment = isUser ? userAlignment : botAlignment;
@@ -1458,6 +1472,7 @@
               font-size: 14px;
             ">
               ${this.escapeHtml(message.content)}
+              ${mediaHtml}
               ${timestampHtml}
             </div>
             ${showAvatars && alignment === 'right' ? `
@@ -1491,6 +1506,7 @@
               font-weight: 500;
             ">
               ${this.escapeHtml(message.content)}
+              ${mediaHtml}
               ${timestampHtml}
             </div>
             ${showAvatars && alignment === 'right' ? `
@@ -1514,6 +1530,7 @@
             ` : ''}
             <div class="ct-message-content" style="border-radius: ${borderRadius};">
               ${this.escapeHtml(message.content)}
+              ${mediaHtml}
               ${timestampHtml}
             </div>
           </div>
@@ -1690,6 +1707,40 @@
         }
       });
 
+      // Media viewer click handler (delegated) - ONLY open viewer for images
+      this.container.addEventListener('click', (e) => {
+        const target = e.target;
+        if (!target) return;
+        const el = target.closest && target.closest('[data-media-src]');
+        if (el) {
+          const typeAttr = el.getAttribute('data-media-type') || 'image';
+          // Do not open viewer for videos; they play inline instead
+          if (typeAttr === 'video') return;
+          e.preventDefault();
+          const src = el.getAttribute('data-media-src');
+          // Build list of image items in the same message container for navigation
+          const parent = el.closest && el.closest('.ct-message') || el.parentElement;
+          const mediaContainer = parent ? parent.querySelector('.ct-message-media') : null;
+          let items = [];
+          let index = 0;
+          if (mediaContainer) {
+            const children = Array.from(mediaContainer.querySelectorAll('[data-media-src]'));
+            const imageChildren = children.filter(c => (c.getAttribute('data-media-type') || 'image') === 'image');
+            items = imageChildren.map((c) => ({
+              src: c.getAttribute('data-media-src'),
+              type: 'image',
+              file_name: c.getAttribute('alt') || ''
+            }));
+            index = imageChildren.indexOf(el);
+            if (index < 0) index = 0;
+          } else {
+            items = [{ src, type: 'image', file_name: '' }];
+            index = 0;
+          }
+          if (src) this.openMediaViewer(src, 'image', items, index);
+        }
+      });
+
 
       this.container.addEventListener('submit', (e) => {
         if (e.target.id === 'ct-form' || e.target.closest('#ct-form')) {
@@ -1830,6 +1881,155 @@
       }
     }
 
+    openMediaViewer(src, type = 'image', items = null, index = 0) {
+      // items: [{src,type,file_name}, ...]
+      // Remove existing viewer if any
+      const existing = document.getElementById('ct-media-viewer');
+      if (existing) existing.remove();
+
+      const list = Array.isArray(items) && items.length ? items : [{ src, type, file_name: '' }];
+      let current = Math.min(Math.max(index, 0), list.length - 1);
+      let scale = 1;
+
+      const render = () => {
+        if (document.getElementById('ct-media-viewer')) document.getElementById('ct-media-viewer').remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'ct-media-viewer';
+        overlay.style.position = 'fixed';
+        overlay.style.inset = '0';
+        overlay.style.background = 'rgba(0,0,0,0.75)';
+        overlay.style.display = 'flex';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        overlay.style.zIndex = 10000;
+
+        const inner = document.createElement('div');
+        inner.style.maxWidth = '90%';
+        inner.style.maxHeight = '90%';
+        inner.style.borderRadius = '8px';
+        inner.style.overflow = 'hidden';
+        inner.style.position = 'relative';
+        inner.style.display = 'flex';
+        inner.style.alignItems = 'center';
+        inner.style.justifyContent = 'center';
+
+        // Controls
+        const controls = document.createElement('div');
+        controls.style.position = 'absolute';
+        controls.style.top = '12px';
+        controls.style.left = '12px';
+        controls.style.display = 'flex';
+        controls.style.gap = '8px';
+
+        const btn = (text) => {
+          const b = document.createElement('button');
+          b.textContent = text;
+          b.style.background = 'white';
+          b.style.border = 'none';
+          b.style.padding = '6px';
+          b.style.borderRadius = '6px';
+          b.style.cursor = 'pointer';
+          return b;
+        };
+
+        const prevBtn = btn('◀');
+        prevBtn.disabled = current === 0;
+        prevBtn.onclick = () => { current = Math.max(0, current - 1); scale = 1; render(); };
+        const nextBtn = btn('▶');
+        nextBtn.disabled = current === list.length - 1;
+        nextBtn.onclick = () => { current = Math.min(list.length - 1, current + 1); scale = 1; render(); };
+        const downloadBtn = btn('⤓');
+        downloadBtn.onclick = () => {
+          const a = document.createElement('a');
+          a.href = list[current].src;
+          a.download = list[current].file_name || '';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        };
+        const zoomIn = btn('＋'); zoomIn.onclick = () => { scale = Math.min(scale + 0.25, 3); render(); };
+        const zoomOut = btn('−'); zoomOut.onclick = () => { scale = Math.max(scale - 0.25, 0.5); render(); };
+
+        controls.appendChild(prevBtn);
+        controls.appendChild(nextBtn);
+        controls.appendChild(downloadBtn);
+        controls.appendChild(zoomIn);
+        controls.appendChild(zoomOut);
+        inner.appendChild(controls);
+
+        // Counter & caption
+        const counter = document.createElement('div');
+        counter.style.position = 'absolute';
+        counter.style.top = '12px';
+        counter.style.right = '12px';
+        counter.style.color = 'white';
+        counter.style.background = 'rgba(0,0,0,0.4)';
+        counter.style.padding = '6px 8px';
+        counter.style.borderRadius = '6px';
+        counter.textContent = `${current + 1} / ${list.length}`;
+        inner.appendChild(counter);
+
+        const caption = document.createElement('div');
+        caption.style.position = 'absolute';
+        caption.style.bottom = '12px';
+        caption.style.left = '50%';
+        caption.style.transform = 'translateX(-50%)';
+        caption.style.color = 'white';
+        caption.style.background = 'rgba(0,0,0,0.4)';
+        caption.style.padding = '6px 10px';
+        caption.style.borderRadius = '6px';
+        caption.style.maxWidth = '90%';
+        caption.style.textAlign = 'center';
+        caption.textContent = list[current].file_name || '';
+        inner.appendChild(caption);
+
+        // Content
+        if (list[current].type === 'video') {
+          const vid = document.createElement('video');
+          vid.src = list[current].src;
+          vid.controls = true;
+          vid.autoplay = true;
+          vid.style.maxWidth = '100%';
+          vid.style.maxHeight = '100%';
+          vid.style.transform = `scale(${scale})`;
+          inner.appendChild(vid);
+        } else {
+          const img = document.createElement('img');
+          img.src = list[current].src;
+          img.style.maxWidth = '100%';
+          img.style.maxHeight = '100%';
+          img.style.transform = `scale(${scale})`;
+          img.alt = list[current].file_name || '';
+          inner.appendChild(img);
+        }
+
+        overlay.appendChild(inner);
+        document.body.appendChild(overlay);
+
+        const close = () => {
+          const ex = document.getElementById('ct-media-viewer');
+          if (ex) ex.remove();
+          window.removeEventListener('keydown', onKey);
+        };
+
+        overlay.addEventListener('click', (ev) => {
+          if (ev.target === overlay) close();
+        });
+
+        const onKey = (e) => {
+          if (e.key === 'Escape') { close(); }
+          if (e.key === 'ArrowRight') { if (current < list.length - 1) { current++; scale = 1; render(); } }
+          if (e.key === 'ArrowLeft') { if (current > 0) { current--; scale = 1; render(); } }
+          if (e.key === '+') { scale = Math.min(scale + 0.25, 3); render(); }
+          if (e.key === '-') { scale = Math.max(scale - 0.25, 0.5); render(); }
+        };
+        window.addEventListener('keydown', onKey);
+      };
+
+      render();
+    }
+
     async initializeConversation() {
       if (!this.config.treeId) {
         this.addMessage('bot', "Sorry, no chatbot is configured. Please contact support.");
@@ -1870,8 +2070,8 @@
             this.quickReplies = [];
           }
           
-          // Add message (this will call updateView which will include the quick replies)
-          this.addMessage('bot', data.bot_response);
+          // Add message (include media if present)
+          this.addMessage('bot', data.bot_response, data.media);
         } else {
           this.addMessage('bot', "Sorry, I received an empty response. Please try again.");
         }
@@ -1932,8 +2132,8 @@
             this.quickReplies = [];
           }
           
-          // Add message (this will call updateView which will include the quick replies)
-          this.addMessage('bot', data.bot_response);
+          // Add message (include media if present)
+          this.addMessage('bot', data.bot_response, data.media);
         }
       } catch (error) {
         console.error('Error sending message:', error);
@@ -1945,11 +2145,12 @@
       }
     }
 
-    addMessage(type, content) {
+    addMessage(type, content, media) {
       const showTimestamps = this.getConfigValue('components.messages.showTimestamps', false);
       this.messages.push({
         type,
         content,
+        media: media && media.length ? media : undefined,
         id: Date.now() + Math.random(),
         timestamp: showTimestamps ? new Date().toISOString() : undefined
       });

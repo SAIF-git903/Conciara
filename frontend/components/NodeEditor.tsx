@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Edit2, Trash2, Save, X, MessageCircle, Bot, User, GitBranch, ChevronRight, ArrowDown, CornerDownRight } from 'lucide-react'
-import { DialogNode, DialogTree } from '@/lib/api'
+import { Plus, Edit2, Trash2, Save, X, MessageCircle, Bot, User, GitBranch, ChevronRight, ArrowDown, CornerDownRight, Image as ImageIcon, Video, Upload, XCircle } from 'lucide-react'
+import { DialogNode, DialogTree, mediaApi, MediaItem } from '@/lib/api'
 
 interface NodeEditorProps {
   nodes: DialogNode[]
@@ -33,6 +33,8 @@ export default function NodeEditor({
   const [newUserInput, setNewUserInput] = useState('')
   const [newBotResponse, setNewBotResponse] = useState('')
   const [validationError, setValidationError] = useState<string | null>(null)
+  const [nodeMedia, setNodeMedia] = useState<Map<number, MediaItem[]>>(new Map())
+  const [uploadingMedia, setUploadingMedia] = useState<Map<number, boolean>>(new Map())
 
   const rootNodes = nodes.filter(n => n.parent_id === null)
   const getChildNodes = (parentId: number) => nodes.filter(n => n.parent_id === parentId)
@@ -44,6 +46,23 @@ export default function NodeEditor({
       botResponse: node.bot_response || '',
     })
   }
+
+  // Load media for all nodes
+  useEffect(() => {
+    const loadMedia = async () => {
+      const mediaMap = new Map<number, MediaItem[]>()
+      for (const node of nodes) {
+        try {
+          const media = await mediaApi.getByNodeId(node.id)
+          mediaMap.set(node.id, media)
+        } catch (error) {
+          console.error(`Error loading media for node ${node.id}:`, error)
+        }
+      }
+      setNodeMedia(mediaMap)
+    }
+    loadMedia()
+  }, [nodes])
 
   // Listen for events from tree visualization
   useEffect(() => {
@@ -81,6 +100,43 @@ export default function NodeEditor({
       window.removeEventListener('addChildNode', handleAddChildNode as EventListener)
     }
   }, [nodes])
+
+  const handleFileUpload = async (nodeId: number, file: File) => {
+    setUploadingMedia(prev => new Map(prev).set(nodeId, true))
+    try {
+      const media = await mediaApi.upload(nodeId, file)
+      setNodeMedia(prev => {
+        const newMap = new Map(prev)
+        const existing = newMap.get(nodeId) || []
+        newMap.set(nodeId, [...existing, media])
+        return newMap
+      })
+    } catch (error: any) {
+      setValidationError(error.message || 'Failed to upload file')
+      setTimeout(() => setValidationError(null), 5000)
+    } finally {
+      setUploadingMedia(prev => {
+        const newMap = new Map(prev)
+        newMap.delete(nodeId)
+        return newMap
+      })
+    }
+  }
+
+  const handleDeleteMedia = async (nodeId: number, mediaId: number) => {
+    try {
+      await mediaApi.delete(mediaId)
+      setNodeMedia(prev => {
+        const newMap = new Map(prev)
+        const existing = newMap.get(nodeId) || []
+        newMap.set(nodeId, existing.filter(m => m.id !== mediaId))
+        return newMap
+      })
+    } catch (error: any) {
+      setValidationError(error.message || 'Failed to delete file')
+      setTimeout(() => setValidationError(null), 5000)
+    }
+  }
 
   const handleSaveEdit = async () => {
     if (!editingNode) return
@@ -238,6 +294,67 @@ export default function NodeEditor({
                           <p className="text-gray-400 italic text-center text-xs">Empty node - Click edit to add content</p>
                         </div>
                       )}
+                      
+                      {/* Media Display */}
+                      {nodeMedia.get(node.id) && nodeMedia.get(node.id)!.length > 0 && (
+                        <div className="mt-2 space-y-2">
+                          <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
+                            <ImageIcon className="w-3.5 h-3.5" />
+                            <span>Media ({nodeMedia.get(node.id)!.length})</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            {nodeMedia.get(node.id)!.map((media) => (
+                              <div key={media.id} className="relative group">
+                                {media.media_type === 'image' ? (
+                                  <img
+                                    src={(media as any).presigned_url || media.s3_url}
+                                    alt={media.file_name}
+                                    className="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer"
+                                    onClick={() => window.open((media as any).presigned_url || media.s3_url, '_blank')}
+                                  />
+                                ) : (
+                                  <video
+                                    src={(media as any).presigned_url || media.s3_url}
+                                    className="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer"
+                                    controls={false}
+                                    onClick={() => window.open((media as any).presigned_url || media.s3_url, '_blank')}
+                                  />
+                                )}
+                                <button
+                                  onClick={() => handleDeleteMedia(node.id, media.id)}
+                                  className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                  title="Delete media"
+                                >
+                                  <XCircle className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* File Upload */}
+                      <div className="mt-2">
+                        <label className="flex items-center gap-2 px-3 py-2 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-lg border border-dashed border-gray-300 cursor-pointer transition-all">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Upload Image/Video</span>
+                          <input
+                            type="file"
+                            accept="image/*,video/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) {
+                                handleFileUpload(node.id, file)
+                              }
+                            }}
+                            disabled={uploadingMedia.get(node.id) || false}
+                          />
+                        </label>
+                        {uploadingMedia.get(node.id) && (
+                          <p className="text-xs text-gray-500 mt-1">Uploading...</p>
+                        )}
+                      </div>
                     </div>
                     
                     <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">

@@ -9,11 +9,22 @@ import DynamicMessages from './DynamicComponents/DynamicMessages'
 import DynamicInput from './DynamicComponents/DynamicInput'
 import DynamicQuickReplies from './DynamicComponents/DynamicQuickReplies'
 
+interface MediaItem {
+  id: number
+  media_type: 'image' | 'video'
+  s3_url: string
+  presigned_url?: string
+  file_name: string
+  content_type: string
+  file_size: number
+}
+
 interface Message {
   id: string
   type: 'user' | 'bot'
   content: string
   timestamp: Date
+  media?: MediaItem[]
 }
 
 interface SkinRendererProps {
@@ -109,7 +120,7 @@ export default function SkinRenderer({
       setSessionId(data.session_id)
 
       if (data.bot_response) {
-        addMessage('bot', data.bot_response)
+        addMessage('bot', data.bot_response, data.media)
         if (data.options && data.options.length > 0) {
           setQuickReplies(data.options)
         }
@@ -124,12 +135,13 @@ export default function SkinRenderer({
     }
   }
 
-  const addMessage = (type: 'user' | 'bot', content: string) => {
+  const addMessage = (type: 'user' | 'bot', content: string, media?: MediaItem[]) => {
     const newMessage: Message = {
       id: `${Date.now()}_${Math.random()}`,
       type,
       content,
-      timestamp: new Date()
+      timestamp: new Date(),
+      media
     }
     setMessages(prev => [...prev, newMessage])
   }
@@ -166,7 +178,7 @@ export default function SkinRenderer({
         }
 
         if (data.bot_response) {
-          addMessage('bot', data.bot_response)
+          addMessage('bot', data.bot_response, data.media)
           
           if (data.options && data.options.length > 0) {
             setQuickReplies(data.options)
