@@ -42,22 +42,48 @@ export async function POST(
   const url = `${BACKEND_URL}/api/${path}`;
 
   try {
+    const contentType = request.headers.get('content-type') || '';
+
+    // Forward multipart/form-data (file uploads) as-is so the backend receives raw multipart body
+    if (contentType.toLowerCase().includes('multipart/form-data')) {
+      const body = await request.arrayBuffer();
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': contentType,
+        },
+        body: body,
+      });
+
+      const data = await response.text();
+      const responseContentType = response.headers.get('content-type') || 'application/json';
+
+      return new NextResponse(data, {
+        status: response.status,
+        headers: {
+          'Content-Type': responseContentType,
+        },
+      });
+    }
+
+    // JSON or other body
     const body = await request.text();
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': contentType || 'application/json',
       },
       body: body,
     });
 
     const data = await response.text();
-    
+    const responseContentType = response.headers.get('content-type') || 'application/json';
+
     return new NextResponse(data, {
       status: response.status,
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': responseContentType,
       },
     });
   } catch (error) {
