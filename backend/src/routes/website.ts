@@ -4,6 +4,7 @@ import {
   getWebsiteById,
   createWebsite,
   updateWebsite,
+  setWebsiteActive,
   deleteWebsite,
 } from '../services/multiTenantService.js';
 
@@ -66,13 +67,19 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name, description, domain } = req.body;
+    const { name, description, domain, is_active } = req.body;
     
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'Name is required' });
     }
     
-    const website = await updateWebsite(id, name, description, domain);
+    const website = await updateWebsite(
+      id,
+      name,
+      description,
+      domain,
+      typeof is_active === 'boolean' ? is_active : undefined
+    );
     
     if (!website) {
       return res.status(404).json({ error: 'Website not found' });
@@ -81,6 +88,28 @@ router.put('/:id', async (req, res) => {
     res.json(website);
   } catch (error) {
     console.error('Error updating website:', error);
+    res.status(500).json({ error: 'Failed to update website' });
+  }
+});
+
+router.patch('/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { is_active } = req.body;
+    
+    if (typeof is_active !== 'boolean') {
+      return res.status(400).json({ error: 'is_active must be a boolean' });
+    }
+    
+    const website = await setWebsiteActive(id, is_active);
+    
+    if (!website) {
+      return res.status(404).json({ error: 'Website not found' });
+    }
+    
+    res.json(website);
+  } catch (error) {
+    console.error('Error toggling website active:', error);
     res.status(500).json({ error: 'Failed to update website' });
   }
 });

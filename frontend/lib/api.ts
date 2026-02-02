@@ -50,6 +50,7 @@ export interface Website {
   name: string;
   description: string | null;
   domain: string | null;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -236,8 +237,12 @@ export const websiteApi = {
     const response = await api.post('/website', { customer_type_id: customerTypeId, name, description, domain });
     return response.data;
   },
-  update: async (id: number, name: string, description?: string, domain?: string): Promise<Website> => {
-    const response = await api.put(`/website/${id}`, { name, description, domain });
+  update: async (id: number, name: string, description?: string, domain?: string, is_active?: boolean): Promise<Website> => {
+    const response = await api.put(`/website/${id}`, { name, description, domain, is_active });
+    return response.data;
+  },
+  setActive: async (id: number, is_active: boolean): Promise<Website> => {
+    const response = await api.patch(`/website/${id}`, { is_active });
     return response.data;
   },
   delete: async (id: number): Promise<void> => {

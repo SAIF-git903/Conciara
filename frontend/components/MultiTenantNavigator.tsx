@@ -51,7 +51,7 @@ export default function MultiTenantNavigator({ onSelectTree, selectedTreeId, onW
     data?: any
     isEdit?: boolean
   }>({ type: null })
-  const [formData, setFormData] = useState<{ name: string; description: string; domain: string; theme_config: SkinConfig | null }>({ name: '', description: '', domain: '', theme_config: null })
+  const [formData, setFormData] = useState<{ name: string; description: string; domain: string; theme_config: SkinConfig | null; is_active?: boolean }>({ name: '', description: '', domain: '', theme_config: null })
 
   useEffect(() => {
     loadCustomerTypes()
@@ -244,7 +244,8 @@ export default function MultiTenantNavigator({ onSelectTree, selectedTreeId, onW
               showCreateModal.data.id,
               formData.name,
               formData.description || undefined,
-              formData.domain || undefined
+              formData.domain || undefined,
+              formData.is_active
             )
             setWebsites(websites.map(w => w.id === newItem.id ? newItem : w))
             if (selectedWebsite?.id === newItem.id) {
@@ -395,7 +396,8 @@ This is a destructive operation that cannot be reversed.`,
       name: website.name,
       description: website.description || '',
       domain: website.domain || '',
-      theme_config: null
+      theme_config: null,
+      is_active: website.is_active !== false
     })
     setShowCreateModal({ type: 'website', data: website, isEdit: true })
   }
@@ -563,40 +565,50 @@ This is a destructive operation that cannot be reversed.`,
               </button>
             </div>
             <div className="space-y-1 ml-4">
-              {websites.map((website) => (
-                <div
-                  key={website.id}
-                  onClick={() => setSelectedWebsite(website)}
-                  className={`p-2 rounded-lg cursor-pointer transition-all group ${
-                    selectedWebsite?.id === website.id
-                      ? 'bg-primary-50 border border-primary-200'
-                      : 'hover:bg-gray-50 border border-transparent'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 flex-1">
-                      <Globe className="w-4 h-4 text-gray-500" />
-                      <span className="text-sm font-medium text-gray-900">{website.name}</span>
-                    </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={(e) => handleEditWebsite(website, e)}
-                        className="p-1 hover:bg-primary-100 rounded text-gray-600 hover:text-primary-600"
-                        title="Edit Website"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={(e) => handleDeleteWebsite(website, e)}
-                        className="p-1 hover:bg-red-100 rounded text-gray-600 hover:text-red-600"
-                        title="Delete Website"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+              {websites.map((website) => {
+                const isActive = website.is_active !== false
+                return (
+                  <div
+                    key={website.id}
+                    onClick={() => setSelectedWebsite(website)}
+                    className={`p-2 rounded-lg cursor-pointer transition-all group ${
+                      selectedWebsite?.id === website.id
+                        ? 'bg-primary-50 border border-primary-200'
+                        : 'hover:bg-gray-50 border border-transparent'
+                    } ${!isActive ? 'opacity-75' : ''}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <Globe className="w-4 h-4 text-gray-500 shrink-0" />
+                        <span className="text-sm font-medium text-gray-900 truncate">{website.name}</span>
+                        <span
+                          className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                            isActive ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'
+                          }`}
+                        >
+                          {isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => handleEditWebsite(website, e)}
+                          className="p-1 hover:bg-primary-100 rounded text-gray-600 hover:text-primary-600"
+                          title="Edit Website"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => handleDeleteWebsite(website, e)}
+                          className="p-1 hover:bg-red-100 rounded text-gray-600 hover:text-red-600"
+                          title="Delete Website"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
@@ -755,7 +767,7 @@ This is a destructive operation that cannot be reversed.`,
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-gray-900">
                 {showCreateModal.isEdit ? 'Edit' : 'New'} {showCreateModal.type === 'customerType' ? 'Customer Type' :
-                      showCreateModal.type === 'website' ? 'Website' :
+                      showCreateModal.type === 'website' ? (showCreateModal.isEdit ? 'Domain' : 'Website') :
                       showCreateModal.type === 'skin' ? 'Skin' :
                       showCreateModal.type === 'variation' ? 'A/B Variation' : 'Dialog Tree'}
               </h2>
@@ -857,22 +869,38 @@ This is a destructive operation that cannot be reversed.`,
 
                 {/* Domain field - only for websites */}
                 {showCreateModal.type === 'website' && (
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                      Domain <span className="text-red-500">*</span>
-                      <span className="block text-xs text-gray-500 font-normal mt-1">
-                        e.g., techstore.com (used for auto-detection in widget)
-                      </span>
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.domain}
-                      onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
-                      className="w-full p-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                      placeholder="techstore.com"
-                      required
-                    />
-                  </div>
+                  <>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                        Domain <span className="text-red-500">*</span>
+                        <span className="block text-xs text-gray-500 font-normal mt-1">
+                          e.g., techstore.com (used for auto-detection in widget)
+                        </span>
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.domain}
+                        onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
+                        className="w-full p-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        placeholder="techstore.com"
+                        required
+                      />
+                    </div>
+                    {showCreateModal.isEdit && (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="website-is-active"
+                          checked={formData.is_active !== false}
+                          onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                          className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                        <label htmlFor="website-is-active" className="text-sm font-medium text-gray-700">
+                          Active (widget loads on this domain)
+                        </label>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}

@@ -14,6 +14,8 @@ export interface Website {
   customer_type_id: number;
   name: string;
   description: string | null;
+  domain: string | null;
+  is_active: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -110,11 +112,12 @@ export async function createWebsite(
   customerTypeId: number,
   name: string,
   description?: string,
-  domain?: string
+  domain?: string,
+  isActive: boolean = true
 ): Promise<Website> {
   const result = await pool.query(
-    'INSERT INTO websites (customer_type_id, name, description, domain) VALUES ($1, $2, $3, $4) RETURNING *',
-    [customerTypeId, name, description || null, domain || null]
+    'INSERT INTO websites (customer_type_id, name, description, domain, is_active) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+    [customerTypeId, name, description || null, domain || null, isActive]
   );
   return result.rows[0];
 }
@@ -123,11 +126,27 @@ export async function updateWebsite(
   id: number,
   name: string,
   description?: string,
-  domain?: string
+  domain?: string,
+  isActive?: boolean
 ): Promise<Website | null> {
+  if (isActive !== undefined) {
+    const result = await pool.query(
+      'UPDATE websites SET name = $1, description = $2, domain = $3, is_active = $4, updated_at = NOW() WHERE id = $5 RETURNING *',
+      [name, description || null, domain ?? null, isActive, id]
+    );
+    return result.rows[0] || null;
+  }
   const result = await pool.query(
     'UPDATE websites SET name = $1, description = $2, domain = $3, updated_at = NOW() WHERE id = $4 RETURNING *',
-    [name, description || null, domain || null, id]
+    [name, description || null, domain ?? null, id]
+  );
+  return result.rows[0] || null;
+}
+
+export async function setWebsiteActive(id: number, isActive: boolean): Promise<Website | null> {
+  const result = await pool.query(
+    'UPDATE websites SET is_active = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
+    [isActive, id]
   );
   return result.rows[0] || null;
 }

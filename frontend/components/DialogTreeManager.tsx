@@ -48,42 +48,29 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
     if (!website) return ''
     
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'
-    const widgetUrl = typeof window !== 'undefined' ? `${window.location.origin}/widget.js` : 'http://localhost:3000/widget.js'
+    const loaderUrl = typeof window !== 'undefined' ? `${window.location.origin}/loader.js` : 'http://localhost:3000/loader.js'
     
-    // Build config object
-    const configParts: string[] = [
-      `apiUrl: '${apiUrl}'`
+    // Data attributes for loader: loader validates with backend before fetching widget.js
+    const dataAttrs: string[] = [
+      `data-api-url="${apiUrl}"`
     ]
     
-    // Add skinId only if explicitly selected by user
     if (selectedSkinId) {
-      configParts.push(`skinId: ${selectedSkinId}`)
+      dataAttrs.push(`data-skin-id="${selectedSkinId}"`)
     }
-    
-    // Add tree-id if available (for direct tree selection)
     if (selectedTree?.id) {
-      configParts.push(`treeId: ${selectedTree.id}`)
+      dataAttrs.push(`data-tree-id="${selectedTree.id}"`)
     }
-    
-    // Add website-id if no tree-id and no skinId (fallback)
     if (!selectedTree?.id && !selectedSkinId && website.id) {
-      configParts.push(`websiteId: ${website.id}`)
+      dataAttrs.push(`data-website-id="${website.id}"`)
     }
-    
-    // Add domain if available (as additional fallback)
-    // Note: domain is included even when skinId is set - widget uses priority: skinId > treeId > websiteId > domain
     if (website.domain) {
-      configParts.push(`domain: '${website.domain}'`)
+      dataAttrs.push(`data-domain="${website.domain.replace(/"/g, '&quot;')}"`)
     }
     
     return `<!-- ConversaTree Intelligent Chatbot Widget -->
-<!-- Memory-enabled: Remembers user preferences across sessions -->
-<script src="${widgetUrl}"></script>
-<script>
-  ConversaTree.init({
-    ${configParts.join(',\n    ')}
-  });
-</script>`
+<!-- Loader validates config with backend first; widget only loads if allowed -->
+<script src="${loaderUrl}" ${dataAttrs.join(' ')}></script>`
   }
 
   // Load skins for website

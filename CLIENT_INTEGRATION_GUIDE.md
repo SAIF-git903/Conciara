@@ -12,9 +12,47 @@
 
 ## Integration Methods
 
-### Method 1: JavaScript Widget (Easiest)
+### Method 1: Loader Script (Recommended – validates before loading)
 
 **For:** Websites, landing pages, e-commerce stores
+
+The **loader** checks with our backend that your website/skin/tree configuration exists and is allowed. Only then does it fetch and run the full chatbot widget. If the configuration is missing or invalid, the widget code is never loaded.
+
+**Code (data attributes – recommended):**
+```html
+<!-- Add to your website – widget loads only if config is valid -->
+<script 
+  src="https://your-app.com/loader.js" 
+  data-api-url="https://api.your-app.com/api"
+  data-website-id="1"
+  data-domain="example.com"
+  data-skin-id="2"
+  data-tree-id="35"
+  data-user-id="{{USER_ID}}"
+  data-use-memory="true">
+</script>
+```
+
+Use at least one of: `data-website-id`, `data-domain`, `data-skin-id`, or `data-tree-id`. The loader validates with the API and only then loads the widget.
+
+**Alternative (programmatic config):**
+```html
+<script>
+  window.ConversaTreeConfig = {
+    apiUrl: 'https://api.your-app.com/api',
+    websiteId: 1,
+    domain: 'example.com',
+    treeId: 35,
+    userId: '{{USER_ID}}',
+    useMemory: true
+  };
+</script>
+<script src="https://your-app.com/loader.js"></script>
+```
+
+### Method 2: Direct Widget Script (legacy – no validation)
+
+**For:** When you need to load the widget without the validation step (e.g. trusted internal pages).
 
 **Code:**
 ```html
@@ -60,7 +98,7 @@ function ChatbotWidget() {
 
 ---
 
-### Method 2: API Integration
+### Method 3: API Integration
 
 **For:** Mobile apps, custom platforms, backend services
 
@@ -107,7 +145,7 @@ async function handleChatMessage(userId, message, sessionId) {
 
 ---
 
-### Method 3: React Component
+### Method 4: React Component
 
 **For:** React/Next.js applications
 

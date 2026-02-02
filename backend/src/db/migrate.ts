@@ -79,6 +79,11 @@ export async function migrate() {
       CREATE INDEX IF NOT EXISTS idx_websites_domain ON websites(domain) WHERE domain IS NOT NULL;
     `);
 
+    // Add is_active for enabling/disabling widget per domain (default true for existing rows)
+    await pool.query(`
+      ALTER TABLE websites ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+    `);
+
     // Create skins table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS skins (

@@ -11,6 +11,162 @@ import {
 
 const router = express.Router();
 
+/**
+ * Validate that a website/skin/tree configuration exists and is allowed to load the widget.
+ * Use this before fetching widget.js so the full widget code is never loaded on invalid/unauthorized sites.
+ * Query params: websiteId | domain | skinId | treeId (at least one required).
+ */
+router.get('/validate', async (req, res) => {
+  try {
+    const websiteId = req.query.websiteId ? parseInt(req.query.websiteId as string) : null;
+    const domain = req.query.domain as string | null;
+    const skinId = req.query.skinId ? parseInt(req.query.skinId as string) : null;
+    const treeId = req.query.treeId ? parseInt(req.query.treeId as string) : null;
+
+    if (skinId != null) {
+      const skin = await getSkinById(skinId);
+      if (!skin) {
+        return res.status(404).json({ allowed: false, error: 'Skin not found' });
+      }
+      const website = await getWebsiteById(skin.website_id);
+      if (!website || (website as any).is_active !== true) {
+        return res.status(404).json({ allowed: false, error: 'Domain is disabled' });
+      }
+      let variation = await pool.query(
+        'SELECT id FROM ab_variations WHERE skin_id = $1 AND is_active = true ORDER BY created_at ASC LIMIT 1',
+        [skin.id]
+      );
+      if (!variation.rows[0]) {
+        variation = await pool.query(
+          'SELECT id FROM ab_variations WHERE skin_id = $1 ORDER BY created_at ASC LIMIT 1',
+          [skin.id]
+        );
+      }
+      if (!variation.rows[0]) {
+        return res.status(404).json({ allowed: false, error: 'No variation found for skin' });
+      }
+      const treeResult = await pool.query(
+        'SELECT id FROM dialog_trees WHERE ab_variation_id = $1 ORDER BY created_at ASC LIMIT 1',
+        [variation.rows[0].id]
+      );
+      if (!treeResult.rows[0]) {
+        return res.status(404).json({ allowed: false, error: 'No dialog tree linked to skin' });
+      }
+      return res.json({ allowed: true });
+    }
+
+    if (treeId != null) {
+      const treeResult = await pool.query(
+        'SELECT id, ab_variation_id FROM dialog_trees WHERE id = $1',
+        [treeId]
+      );
+      if (!treeResult.rows[0]) {
+        return res.status(404).json({ allowed: false, error: 'Tree not found' });
+      }
+      const tree = treeResult.rows[0];
+      const abVariationId = tree.ab_variation_id;
+      if (abVariationId == null) {
+        return res.status(404).json({ allowed: false, error: 'Tree not linked to a domain' });
+      }
+      const variationResult = await pool.query(
+        'SELECT skin_id FROM ab_variations WHERE id = $1',
+        [abVariationId]
+      );
+      if (!variationResult.rows[0]) {
+        return res.status(404).json({ allowed: false, error: 'Variation not found' });
+      }
+      const skinResult = await pool.query(
+        'SELECT website_id FROM skins WHERE id = $1',
+        [variationResult.rows[0].skin_id]
+      );
+      if (!skinResult.rows[0]) {
+        return res.status(404).json({ allowed: false, error: 'Skin not found' });
+      }
+      const website = await getWebsiteById(skinResult.rows[0].website_id);
+      if (!website) {
+        return res.status(404).json({ allowed: false, error: 'Website not found' });
+      }
+      if ((website as any).is_active !== true) {
+        return res.status(404).json({ allowed: false, error: 'Domain is disabled' });
+      }
+      return res.json({ allowed: true });
+    }
+
+    if (!websiteId && !domain) {
+      return res.status(400).json({
+        allowed: false,
+        error: 'Either websiteId, domain, skinId, or treeId is required'
+      });
+    }
+
+    let website: any = null;
+    if (websiteId) {
+      website = await getWebsiteById(websiteId);
+    } else if (domain) {
+      const result = await pool.query(
+        'SELECT * FROM websites WHERE domain = $1',
+        [domain]
+      );
+      website = result.rows[0] || null;
+    }
+
+    if (!website) {
+      return res.status(404).json({
+        allowed: false,
+        error: websiteId ? 'Website not found' : 'Domain not registered'
+      });
+    }
+
+    if ((website as any).is_active !== true) {
+      return res.status(404).json({
+        allowed: false,
+        error: 'Domain is disabled'
+      });
+    }
+
+    const mergedSkinConfig = await getMergedSkinConfigForWebsite(website.id);
+    if (!mergedSkinConfig?._meta?.skinId) {
+      return res.status(404).json({
+        allowed: false,
+        error: 'Website has no skin configured'
+      });
+    }
+
+    const variationsResult = await pool.query(
+      'SELECT id FROM ab_variations WHERE skin_id = $1 AND is_active = true ORDER BY created_at ASC LIMIT 1',
+      [mergedSkinConfig._meta.skinId]
+    );
+    let variation = variationsResult.rows[0] || null;
+    if (!variation) {
+      const anyVar = await pool.query(
+        'SELECT id FROM ab_variations WHERE skin_id = $1 ORDER BY created_at ASC LIMIT 1',
+        [mergedSkinConfig._meta.skinId]
+      );
+      variation = anyVar.rows[0] || null;
+    }
+    if (!variation) {
+      return res.status(404).json({ allowed: false, error: 'No variation for website skin' });
+    }
+
+    const treesResult = await pool.query(
+      'SELECT id FROM dialog_trees WHERE ab_variation_id = $1 ORDER BY created_at ASC LIMIT 1',
+      [variation.id]
+    );
+    if (!treesResult.rows[0]) {
+      return res.status(404).json({ allowed: false, error: 'No dialog tree linked to website' });
+    }
+
+    return res.json({ allowed: true });
+  } catch (error: any) {
+    console.error('Error validating widget config:', error);
+    res.status(500).json({
+      allowed: false,
+      error: 'Validation failed',
+      details: error.message
+    });
+  }
+});
+
 // Get widget configuration by website ID, domain, or skinId
 router.get('/config', async (req, res) => {
   try {
@@ -29,6 +185,10 @@ router.get('/config', async (req, res) => {
         });
       }
 
+      const skinWebsite = await getWebsiteById(skin.website_id);
+      if (!skinWebsite || (skinWebsite as any).is_active === false) {
+        return res.status(403).json({ error: 'Domain is disabled' });
+      }
 
       // Get merged config for this specific skin
       const variation = await pool.query(
@@ -115,6 +275,10 @@ router.get('/config', async (req, res) => {
         error: 'Website not found',
         hint: websiteId ? `No website found with ID ${websiteId}` : `No website found with domain ${domain}`
       });
+    }
+
+    if ((website as any).is_active === false) {
+      return res.status(403).json({ error: 'Domain is disabled' });
     }
 
     // Get merged skin configuration (includes A/B variation overrides)
