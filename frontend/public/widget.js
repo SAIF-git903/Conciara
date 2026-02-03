@@ -889,6 +889,10 @@
           color: white;
         }
 
+        .ct-formatted b { font-weight: 700; }
+        .ct-formatted i { font-style: italic; }
+        .ct-formatted code { background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+
         .ct-message-timestamp {
           font-size: 10px;
           color: #9ca3af;
@@ -1086,24 +1090,21 @@
           font-weight: 400;
         }
 
-        .ct-textarea {
-          font-weight: 500;
-          color: ${this.getContrastTextColor(backgroundColor === '#ffffff' || !backgroundColor ? '#ffffff' : backgroundColor)} !important;
+        .ct-input-expandable {
+          resize: none;
+          min-height: 40px;
+          max-height: 88px;
+          overflow-y: auto;
+          font-family: inherit;
+          line-height: 1.25;
         }
 
-        .ct-textarea::placeholder {
+        .ct-input-expandable::placeholder {
           opacity: 0.7;
           font-weight: 400;
         }
 
-        .ct-textarea {
-          resize: vertical;
-          min-height: 60px;
-          max-height: 200px;
-          font-family: inherit;
-        }
-
-        .ct-input:focus, .ct-textarea:focus {
+        .ct-input:focus, .ct-input-expandable:focus {
           border-color: ${primaryColor} !important;
         }
 
@@ -1344,28 +1345,15 @@
             <div class="ct-input-container">
               <form class="ct-input-form" id="ct-form">
                 <div class="ct-input-form-row">
-                  ${this.getConfigValue('components.input.allowMultiline', false) ? `
                   <textarea 
-                    class="ct-input ct-textarea" 
+                    class="ct-input ct-input-expandable" 
                     id="ct-input" 
                     placeholder="${this.getConfigValue('components.input.placeholder', 'Type your message...')}"
                     autocomplete="off"
-                    rows="3"
+                    rows="1"
                     ${this.getConfigValue('components.input.autoFocus', true) ? 'autofocus' : ''}
                     ${this.getConfigValue('components.input.maxLength', null) ? `maxlength="${this.getConfigValue('components.input.maxLength', null)}"` : ''}
                   ></textarea>
-                  ` : `
-                  <input 
-                    type="text" 
-                    class="ct-input" 
-                    id="ct-input" 
-                    placeholder="${this.getConfigValue('components.input.placeholder', 'Type your message...')}"
-                    autocomplete="off"
-                    ${this.getConfigValue('components.input.autoFocus', true) ? 'autofocus' : ''}
-                    ${this.getConfigValue('components.input.maxLength', null) ? `maxlength="${this.getConfigValue('components.input.maxLength', null)}"` : ''}
-                    value=""
-                  />
-                  `}
                   ${this.getConfigValue('components.input.showSendButton', true) ? `
                   <button type="submit" class="ct-send-button" id="ct-send" style="background-color: ${primaryColor} !important;" ${this.isLoading ? 'disabled' : ''}>
                     <svg class="ct-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1463,15 +1451,16 @@
               ${isUser ? '👤' : '🤖'}
             </div>
             ` : ''}
-            <div class="ct-message-content-list" style="
+            <div class="ct-message-content-list ${isUser ? '' : 'ct-formatted'}" style="
               padding: 8px 12px;
               border-radius: ${borderRadius};
               background-color: ${isUser ? secondaryColor : primaryColor};
               color: ${isUser ? textColor : 'white'};
               max-width: 85%;
               font-size: 14px;
+              line-height: 1.5;
             ">
-              ${this.escapeHtml(message.content)}
+              ${isUser ? this.escapeHtml(message.content) : this.formatMessageContent(message.content)}
               ${mediaHtml}
               ${timestampHtml}
             </div>
@@ -1494,7 +1483,7 @@
               ${isUser ? '👤' : '🤖'}
             </div>
             ` : ''}
-            <div class="ct-message-content-card" style="
+            <div class="ct-message-content-card ${isUser ? '' : 'ct-formatted'}" style="
               padding: 12px 16px;
               border-radius: ${borderRadius};
               background-color: ${isUser ? secondaryColor : primaryColor};
@@ -1504,8 +1493,9 @@
               max-width: 80%;
               font-size: 14px;
               font-weight: 500;
+              line-height: 1.5;
             ">
-              ${this.escapeHtml(message.content)}
+              ${isUser ? this.escapeHtml(message.content) : this.formatMessageContent(message.content)}
               ${mediaHtml}
               ${timestampHtml}
             </div>
@@ -1528,8 +1518,8 @@
               ${isUser ? '👤' : '🤖'}
             </div>
             ` : ''}
-            <div class="ct-message-content" style="border-radius: ${borderRadius};">
-              ${this.escapeHtml(message.content)}
+            <div class="ct-message-content ${isUser ? '' : 'ct-formatted'}" style="border-radius: ${borderRadius}; line-height: 1.5;">
+              ${isUser ? this.escapeHtml(message.content) : this.formatMessageContent(message.content)}
               ${mediaHtml}
               ${timestampHtml}
             </div>
@@ -1658,9 +1648,30 @@
     }
 
     escapeHtml(text) {
+      if (text == null || text === '') return '';
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    /**
+     * Format bot message content as HTML (markdown-style: bold, italic, code, line breaks).
+     * Escapes HTML first, then applies safe formatting.
+     */
+    formatMessageContent(text) {
+      if (text == null || text === '') return '';
+      var escaped = this.escapeHtml(text);
+      // Newlines -> <br>
+      escaped = escaped.replace(/\n/g, '<br>');
+      // **bold** -> <b>bold</b>
+      escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+      // `code` -> <code>code</code>
+      escaped = escaped.replace(/`([^`]+)`/g, '<code style="background:rgba(0,0,0,0.15);padding:1px 4px;border-radius:4px;font-size:0.9em;">$1</code>');
+      // *italic* (single asterisk, not part of **)
+      escaped = escaped.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<i>$1</i>');
+      // - or * at start of line -> bullet
+      escaped = escaped.replace(/(<br>)\s*[-*] /g, '$1• ');
+      return escaped;
     }
 
     attachEventListeners() {
@@ -1782,29 +1793,30 @@
               charCountEl.textContent = input.value.length;
             }
           }
-          
-          // Allow deletion of any length - no restrictions on clearing
+
+          // Expandable input: grow height up to 3 lines (88px), then scroll
+          if (input.classList && input.classList.contains('ct-input-expandable')) {
+            input.style.height = 'auto';
+            var sh = input.scrollHeight;
+            input.style.height = Math.min(Math.max(sh, 40), 88) + 'px';
+          }
         }
       });
       
-      // Also handle Enter key directly on input
+      // Enter = send, Shift+Enter = new line (input grows up to 3 lines then scrolls)
       this.container.addEventListener('keydown', (e) => {
         if (e.target.id === 'ct-input') {
-          const allowMultiline = this.getConfigValue('components.input.allowMultiline', false);
-          
-          // For textarea: Shift+Enter = new line, Enter = send
-          // For input: Enter = send
-          if (e.key === 'Enter' && (!allowMultiline || !e.shiftKey)) {
+          if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             const input = e.target;
             const message = input.value.trim();
-            // Always clear the input completely
             input.value = '';
-            // Force clear by resetting the input
             input.setAttribute('value', '');
             input.removeAttribute('value');
-            // Trigger input event to ensure UI updates (including character count)
             input.dispatchEvent(new Event('input', { bubbles: true }));
+            if (input.classList.contains('ct-input-expandable')) {
+              input.style.height = 'auto';
+            }
             if (message) {
               this.sendMessage(message);
             }

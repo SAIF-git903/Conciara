@@ -318,6 +318,31 @@ export async function migrate() {
       CREATE INDEX IF NOT EXISTS idx_node_media_type ON node_media(media_type);
     `);
 
+    // Create products table (e.g. for Coke / beverage catalog per website)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS products (
+        id SERIAL PRIMARY KEY,
+        website_id INT NOT NULL REFERENCES websites(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        category VARCHAR(255) NOT NULL,
+        sku VARCHAR(100),
+        price DECIMAL(10, 2) NOT NULL,
+        currency VARCHAR(3) DEFAULT 'USD',
+        unit VARCHAR(50),
+        is_available BOOLEAN DEFAULT true,
+        attributes JSONB DEFAULT '{}'::jsonb,
+        sort_order INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_products_website_id ON products(website_id);
+      CREATE INDEX IF NOT EXISTS idx_products_website_available ON products(website_id, is_available) WHERE is_available = true;
+      CREATE INDEX IF NOT EXISTS idx_products_category ON products(website_id, category);
+    `);
+
     console.log('Migration completed successfully');
   } catch (error) {
     console.error('Migration failed:', error);

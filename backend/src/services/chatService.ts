@@ -18,6 +18,7 @@ import {
 } from './llmService.js';
 import { getPresignedUrl } from './s3Service.js';
 import { traceService, Trace } from './traceService.js';
+import { getProductCatalogForTree } from './productService.js';
 
 // Check if vector extension is available (cached)
 let hasVectorExtension: boolean | null = null;
@@ -776,6 +777,23 @@ export async function processChatMessage(
   const preprompt = await getPrepromptByTreeId(treeId);
   const prepromptContent = preprompt?.content || undefined;
 
+  // Load product catalog for this tree's website (so LLM knows what products exist)
+  const productCatalog = await getProductCatalogForTree(treeId);
+
+  // Load recent conversation so the LLM keeps context (e.g. "yes please" = confirm last offer)
+  const conversationHistory = await getConversationHistory(session.session_id);
+  const RECENT_TURNS = 6; // last 6 exchanges (User + Bot pairs)
+  const recentConversation = conversationHistory
+    .slice(-RECENT_TURNS)
+    .map((row: { user_message?: string | null; bot_response?: string | null }) => {
+      const parts = [];
+      if (row.user_message != null && row.user_message !== '') parts.push(`User: ${row.user_message}`);
+      if (row.bot_response != null && row.bot_response !== '') parts.push(`Bot: ${row.bot_response}`);
+      return parts.join('\n');
+    })
+    .filter(Boolean)
+    .join('\n\n');
+
   // Handle initial start message
   if (userMessage === '__START__' || userMessage.trim() === '') {
     const rootNode = getRootNode(allNodes);
@@ -790,8 +808,9 @@ export async function processChatMessage(
             userMessage,
             userContext,
             greeting,
-            undefined, // productCatalog
-            prepromptContent // preprompt
+            productCatalog,
+            prepromptContent,
+            recentConversation
           );
         } catch (error: any) {
           // LLM failed - use original greeting from dialog tree
@@ -909,11 +928,7 @@ export async function processChatMessage(
       }
     }
     
-    // If we have user context, enhance the user message for better intent detection
-    // This helps the system understand "laptop" as "gaming laptop" if user has gaming history
-    if (userContext && userContext.trim()) {
-      console.log(`[ChatService] ✅ User history loaded - will use for personalization${hasStrongMemoryContext ? ' (strong context - will override dialog tree)' : ''}`);
-    }
+    // User context is used for personalization and intent detection below
   }
 
   // Get current node (or null if starting)
@@ -957,9 +972,7 @@ export async function processChatMessage(
   // Check if LLM/credits are available
   // This checks if API key is configured (credits available)
   const hasCredits = hasLLMCredits();
-  
-  console.log(`[ChatService] Decision point - Credits: ${hasCredits}, userId: ${userId || 'none'}, useMemory: ${useMemory}, userContext: ${userContext ? 'has context' : 'no context'}`);
-  
+
   if (trace) {
     traceService.addEvent(trace.traceId, 'prompt_construction', {
       status: 'started',
@@ -975,7 +988,6 @@ export async function processChatMessage(
   // Priority 1: Use LLM if credits are available (intelligent chatbot) - works with or without userId
   // Priority 2: Fallback to dialog nodes if no credits (simple bot)
   if (hasCredits) {
-    console.log('[ChatService] ✅ Using intelligent LLM-powered chatbot (credits available)');
     // Generate context-aware response using LLM
     const dialogTreeResponse = nextNode?.bot_response || null;
     
@@ -984,8 +996,6 @@ export async function processChatMessage(
         // If we have strong memory context, prioritize personalized response over dialog tree
         // This means: use LLM to generate personalized response, but don't return dialog tree options
         if (hasStrongMemoryContext && userContext) {
-          console.log('[ChatService] 🎯 Strong memory context detected - generating fully personalized response (skipping dialog tree options)');
-          
           if (trace) {
             traceService.addEvent(trace.traceId, 'llm_call', {
               status: 'started',
@@ -1002,9 +1012,10 @@ export async function processChatMessage(
           botResponse = await generateContextualResponse(
             userMessage,
             userContext,
-            undefined, // productCatalog
-            200, // Slightly longer for personalized responses
-            prepromptContent
+            productCatalog,
+            200,
+            prepromptContent,
+            recentConversation
           );
           
           if (trace) {
@@ -1033,10 +1044,11 @@ export async function processChatMessage(
           
           botResponse = await generateHybridResponse(
             userMessage,
-            userContext || '', // Can be empty if no user-id provided
+            userContext || '',
             dialogTreeResponse,
-            undefined, // productCatalog
-            prepromptContent // preprompt
+            productCatalog,
+            prepromptContent,
+            recentConversation
           );
           
           if (trace) {
@@ -1053,8 +1065,6 @@ export async function processChatMessage(
       } else {
         // Pure LLM response (with user context if available, otherwise just LLM)
         // This works even without userId - LLM is intelligent on its own
-        console.log('[ChatService] Generating pure LLM response (no dialog tree match)');
-        
         if (trace) {
           traceService.addEvent(trace.traceId, 'llm_call', {
             status: 'started',
@@ -1066,10 +1076,11 @@ export async function processChatMessage(
         
         botResponse = await generateContextualResponse(
           userMessage,
-          userContext || '', // Can be empty if no user-id provided - LLM still works!
-          undefined, // productCatalog
-          150, // maxLength
-          prepromptContent // preprompt - this makes it intelligent even without user context
+          userContext || '',
+          productCatalog,
+          150,
+          prepromptContent,
+          recentConversation
         );
         
         if (trace) {
@@ -1083,7 +1094,6 @@ export async function processChatMessage(
         // Don't update node if using pure LLM response
         finalNodeId = session.current_node_id;
         useLLMResponse = true; // LLM succeeded, no dialog tree match
-        console.log('[ChatService] ✅ LLM response generated successfully');
       }
     } catch (error: any) {
       // Check error type and handle appropriately
@@ -1153,7 +1163,7 @@ export async function processChatMessage(
     }
   } else if (nextNode) {
     // Fallback to dialog tree if no credits available (simple bot mode)
-    console.log('[ChatService] Using simple dialog tree bot (no credits available)');
+    console.warn('[ChatService] Using dialog tree fallback (no LLM credits)');
     botResponse = nextNode.bot_response || "I'm here to help!";
     finalNodeId = nextNode.id;
     useLLMResponse = false; // Using dialog tree, show options
@@ -1174,7 +1184,6 @@ export async function processChatMessage(
   if (userId && useMemory) {
     try {
       await extractAndStoreUserInfo(userId, userMessage, botResponse);
-      console.log(`[ChatService] Saved user memory for userId: ${userId}`);
     } catch (error: any) {
       console.error('[ChatService] Error storing bot response in memory:', error.message);
       // Don't throw - continue with conversation even if memory storage fails
@@ -1219,7 +1228,6 @@ export async function processChatMessage(
   } else {
     // Strong memory context + LLM response = no dialog tree options
     // The AI response should be complete and personalized
-    console.log('[ChatService] 🎯 Skipping dialog tree options - using personalized LLM response instead');
     if (trace) {
       traceService.addEvent(trace.traceId, 'final_response', {
         skippedDialogTreeOptions: true,

@@ -1,7 +1,12 @@
 import { pool } from './connection.js';
 import dotenv from 'dotenv';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
 dotenv.config();
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 async function seedDatabase() {
   try {
@@ -16,6 +21,7 @@ async function seedDatabase() {
     await pool.query('DELETE FROM dialog_trees');
     await pool.query('DELETE FROM ab_variations');
     await pool.query('DELETE FROM skins');
+    await pool.query('DELETE FROM products');
     await pool.query('DELETE FROM websites');
     await pool.query('DELETE FROM customer_types');
     console.log('✅ All existing data cleared\n');
@@ -54,7 +60,8 @@ async function seedDatabase() {
       { customerType: 1, name: 'TaskMaster', description: 'Project management and productivity SaaS', domain: 'taskmaster.app' },
       { customerType: 2, name: 'HealthCare Plus', description: 'Telemedicine and health consultation platform', domain: 'healthcareplus.com' },
       { customerType: 3, name: 'LearnOnline Academy', description: 'Online courses and educational content', domain: 'learnonline.edu' },
-      { customerType: 4, name: 'PropertyFinder', description: 'Real estate listings and property search', domain: 'propertyfinder.com' }
+      { customerType: 4, name: 'PropertyFinder', description: 'Real estate listings and property search', domain: 'propertyfinder.com' },
+      { customerType: 0, name: 'Coke Store', description: 'Beverage store – Coca-Cola, Sprite, Fanta and more', domain: 'cokestore.com' }
     ];
 
     for (const website of websiteData) {
@@ -67,6 +74,41 @@ async function seedDatabase() {
       console.log(`✅ Created: ${result.rows[0].name} (${website.domain})`);
     }
     console.log('');
+
+    // Step 3b: Seed Coke products for Coke Store website
+    const cokeStoreWebsite = websites[websites.length - 1];
+    if (cokeStoreWebsite && cokeStoreWebsite.name === 'Coke Store') {
+      console.log('🥤 Seeding Coke products for Coke Store...');
+      let productsJson: Array<{ name: string; description?: string; category: string; sku?: string; price: number; currency?: string; unit?: string; is_available?: boolean; attributes?: Record<string, unknown>; sort_order?: number }>;
+      try {
+        productsJson = JSON.parse(
+          readFileSync(join(__dirname, 'seeds', 'example_products.json'), 'utf-8')
+        );
+      } catch (e) {
+        console.warn('⚠️  Could not load seeds/example_products.json, skipping products.');
+        productsJson = [];
+      }
+      for (const p of productsJson) {
+        await pool.query(
+          `INSERT INTO products (website_id, name, description, category, sku, price, currency, unit, is_available, attributes, sort_order)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          [
+            cokeStoreWebsite.id,
+            p.name,
+            p.description || null,
+            p.category,
+            p.sku || null,
+            p.price,
+            p.currency || 'USD',
+            p.unit || null,
+            p.is_available !== false,
+            JSON.stringify(p.attributes || {}),
+            p.sort_order ?? 0
+          ]
+        );
+      }
+      console.log(`✅ Created ${productsJson.length} products for Coke Store\n`);
+    }
 
     // Step 4: Create Multiple Skins with Full Config
     console.log('🎨 Creating skins...');
@@ -249,6 +291,62 @@ async function seedDatabase() {
             }
           }
         }
+      },
+      {
+        website: 7,
+        name: 'Coke Store Theme',
+        description: 'Beverage ordering – Coke, Sprite, Fanta',
+        isActive: true,
+        themeConfig: {
+          theme: {
+            primaryColor: "#F40009",
+            secondaryColor: "#fff5f5",
+            backgroundColor: "#ffffff",
+            textColor: "#1f2937",
+            borderColor: "#e5e7eb",
+            accentColor: "#F40009"
+          },
+          components: {
+            button: {
+              type: "circular",
+              size: "large",
+              icon: "bot",
+              position: "bottom-right",
+              showLabel: false
+            },
+            window: {
+              width: 384,
+              height: 600,
+              borderRadius: 8,
+              shadow: "large"
+            },
+            header: {
+              show: true,
+              height: 48,
+              showTitle: true,
+              title: "Order Drinks",
+              showMinimize: true,
+              showClose: true
+            },
+            messages: {
+              layout: "bubbles",
+              userAlignment: "right",
+              botAlignment: "left",
+              showAvatars: true,
+              bubbleStyle: "rounded"
+            },
+            input: {
+              placeholder: "What would you like to order?",
+              showSendButton: true,
+              allowMultiline: false
+            },
+            quickReplies: {
+              show: true,
+              layout: "horizontal",
+              style: "buttons"
+            }
+          }
+        }
       }
     ];
 
@@ -301,9 +399,10 @@ async function seedDatabase() {
     // Create a dialog tree for each variation
     const treeNames = [
       'Product Inquiry Flow',
-      'Order Support Flow', 
+      'Order Support Flow',
       'Technical Support Flow',
       'Style Consultation Flow',
+      'Coke Ordering Flow',   // index 4 = Coke Store Theme variation
       'General Support Flow'
     ];
     
@@ -332,6 +431,7 @@ async function seedDatabase() {
       'Hi! I can help you with your orders, shipping, and returns. How can I assist you?',
       'Hello! I\'m here to help with technical issues and troubleshooting. What problem are you experiencing?',
       'Hi! Welcome to FashionHub. I\'m your style consultant. What are you looking for today?',
+      'Hi! Welcome to Coke Store. I can help you order Coca-Cola, Sprite, Fanta, and more. What would you like—classic Coke, zero sugar, or something else?',
       'Hello! How can I help you today?'
     ];
     
@@ -401,6 +501,10 @@ Guidelines:
 - Suggest complete outfits, not just individual items
 - Be encouraging and positive
 - Help customers express their personal style`
+      },
+      {
+        tree: 4,
+        content: `You are a friendly ordering concierge for Coke Store, a beverage store. You help customers choose and order Coca-Cola, Diet Coke, Zero Sugar, Sprite, Fanta, Minute Maid, and water products. For sugar-free or diet requests, recommend Zero Sugar or Diet Coke. Only suggest products from the provided list; if something isn't available, say so and suggest the closest alternative.`
       }
     ];
 
@@ -553,18 +657,111 @@ Guidelines:
 
     console.log(`✅ Created 6 nodes for Style Consultation Flow\n`);
 
+    // Step 12: Create Dialog Nodes for Tree 4 (Coke Ordering – Coke Store)
+    console.log('💬 Creating dialog nodes for Coke Ordering Flow...');
+    const cokeRoot = rootNodes[4];
+    const cokeTreeId = trees[4]?.id;
+    if (cokeRoot && cokeTreeId) {
+      // Level 1: main branches from root
+      const wantCoke = (await pool.query(`
+        INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+        VALUES ($1, $2, 'I want Coke', 'Great choice! We have Coca-Cola Classic in 12pk, 24pk, and 2L, plus Cherry and Vanilla. We also have Coca-Cola Zero Sugar and Diet Coke. Which do you prefer?')
+        RETURNING *;
+      `, [cokeTreeId, cokeRoot.id])).rows[0];
+      const sugarFree = (await pool.query(`
+        INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+        VALUES ($1, $2, 'Something sugar-free', 'We have Coca-Cola Zero Sugar and Diet Coke in 12pk and 24pk, plus Sprite Zero. All zero sugar. Which one would you like?')
+        RETURNING *;
+      `, [cokeTreeId, cokeRoot.id])).rows[0];
+      const whatHave = (await pool.query(`
+        INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+        VALUES ($1, $2, 'What do you have?', 'We carry Coca-Cola Classic, Zero Sugar, Diet Coke, Sprite, Fanta Orange and Grape, Minute Maid lemonade and orange juice, plus Smartwater and Dasani. Want details on any of these?')
+        RETURNING *;
+      `, [cokeTreeId, cokeRoot.id])).rows[0];
+      const spriteFanta = (await pool.query(`
+        INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+        VALUES ($1, $2, 'Sprite or Fanta', 'We have Sprite and Sprite Zero in 12pk and 2L, and Fanta Orange and Fanta Grape in 12pk and 2L. Which would you like?')
+        RETURNING *;
+      `, [cokeTreeId, cokeRoot.id])).rows[0];
+      const waterJuice = (await pool.query(`
+        INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+        VALUES ($1, $2, 'Water or juice', 'We have Minute Maid Lemonade and Orange Juice, plus Smartwater (1L 6pk) and Dasani (24pk 16.9oz). Which are you interested in?')
+        RETURNING *;
+      `, [cokeTreeId, cokeRoot.id])).rows[0];
+      const budget = (await pool.query(`
+        INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+        VALUES ($1, $2, 'What''s on sale? / Best value?', 'Our best value is Coca-Cola Classic 24pk at $8.49. Zero Sugar and Diet Coke 24pk are also $8.49. For single serve, 20oz Zero Sugar is $1.99. Want a specific recommendation?')
+        RETURNING *;
+      `, [cokeTreeId, cokeRoot.id])).rows[0];
+
+      // Level 2: under "I want Coke" – Classic, Zero, Diet, Cherry, Vanilla
+      await pool.query(`
+        INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+        VALUES ($1, $2, 'Classic', 'Coca-Cola Classic: 12pk 12oz $5.99, 24pk $8.49, or 2L bottle $2.29. How many would you like?')
+      `, [cokeTreeId, wantCoke.id]);
+      await pool.query(`
+        INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+        VALUES ($1, $2, 'Zero Sugar', 'Coca-Cola Zero Sugar: 12pk $5.99, 24pk $8.49, or 20oz single $1.99. Same great taste, zero sugar. How many?')
+      `, [cokeTreeId, wantCoke.id]);
+      await pool.query(`
+        INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+        VALUES ($1, $2, 'Diet Coke', 'Diet Coke: 12pk or 24pk at $5.99 / $8.49. We also have Caffeine-Free 12pk. Which one?')
+      `, [cokeTreeId, wantCoke.id]);
+      await pool.query(`
+        INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+        VALUES ($1, $2, 'Cherry or Vanilla', 'Coke Cherry or Vanilla: 12pk $6.29 each. Which one, and how many?')
+      `, [cokeTreeId, wantCoke.id]);
+
+      // Level 2: under "Something sugar-free"
+      await pool.query(`
+        INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+        VALUES ($1, $2, 'Coke Zero', 'Coca-Cola Zero Sugar: 12pk $5.99, 24pk $8.49, or 20oz $1.99. How many?')
+      `, [cokeTreeId, sugarFree.id]);
+      await pool.query(`
+        INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+        VALUES ($1, $2, 'Diet Coke', 'Diet Coke 12pk $5.99 or 24pk $8.49. Caffeine-free 12pk also available. Which do you prefer?')
+      `, [cokeTreeId, sugarFree.id]);
+      await pool.query(`
+        INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+        VALUES ($1, $2, 'Sprite Zero', 'Sprite Zero Sugar 12pk $5.99. Lemon-lime, no sugar. How many?')
+      `, [cokeTreeId, sugarFree.id]);
+
+      // Level 2: under "Sprite or Fanta"
+      await pool.query(`
+        INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+        VALUES ($1, $2, 'Sprite', 'Sprite: 12pk $5.99 or 2L $2.29. Sprite Zero 12pk $5.99. Which one?')
+      `, [cokeTreeId, spriteFanta.id]);
+      await pool.query(`
+        INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+        VALUES ($1, $2, 'Fanta', 'Fanta Orange: 12pk or 2L ($5.99 / $2.29). Fanta Grape 12pk $5.99. Which flavor?')
+      `, [cokeTreeId, spriteFanta.id]);
+
+      // Level 2: under "Water or juice"
+      await pool.query(`
+        INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+        VALUES ($1, $2, 'Minute Maid', 'Minute Maid Lemonade 12pk $5.49 or Orange Juice 59oz $4.99. Which one?')
+      `, [cokeTreeId, waterJuice.id]);
+      await pool.query(`
+        INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response)
+        VALUES ($1, $2, 'Water', 'Smartwater 6pk 1L $6.99 or Dasani 24pk 16.9oz $5.99. Which would you like?')
+      `, [cokeTreeId, waterJuice.id]);
+
+      console.log(`✅ Created 1 root + 6 branches + 11 sub-nodes for Coke Ordering Flow (18 nodes total)\n`);
+    }
+
     // Summary
     console.log('\n🎉 Database seeding completed successfully!');
     console.log('\n📊 Summary:');
     console.log(`   • Customer Types: ${customerTypes.length} (E-Commerce, SaaS, Healthcare, Education, Real Estate)`);
-    console.log(`   • Websites: ${websites.length} (TechStore Pro, FashionHub, CloudSync, TaskMaster, HealthCare Plus, LearnOnline Academy, PropertyFinder)`);
-    console.log(`   • Skins: ${skins.length} (Default Theme, Dark Mode, Fashion Theme, Professional Theme)`);
-    console.log(`   • A/B Variations: ${variations.length} (Control, Variant A, Variant B)`);
-    console.log(`   • Dialog Trees: ${trees.length} (Product Inquiry, Order Support, Technical Support, Style Consultation)`);
-    console.log(`   • Dialog Nodes: 24 total nodes created`);
+    console.log(`   • Websites: ${websites.length} (includes Coke Store)`);
+    console.log(`   • Skins: ${skins.length} (includes Coke Store Theme)`);
+    console.log(`   • A/B Variations: ${variations.length}`);
+    console.log(`   • Dialog Trees: ${trees.length} (includes Coke Ordering Flow)`);
+    console.log(`   • Products: Coke Store catalog seeded from seeds/example_products.json`);
     console.log(`   • Preprompts: ${preprompts.length} created`);
     console.log('\n✨ Your database is now ready for demo!');
     console.log('\n💡 Quick Start:');
+    console.log('   • Test Coke Ordering: use tree for Coke Store (Coke Ordering Flow)');
     console.log('   • Test Product Inquiry: Tree ID 1');
     console.log('   • Test Order Support: Tree ID 2');
     console.log('   • Test Technical Support: Tree ID 3');

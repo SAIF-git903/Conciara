@@ -3,6 +3,7 @@
 import { Bot, User } from 'lucide-react'
 import { MergedSkinConfig } from '../../types/skinConfig'
 import { useState, useEffect, useCallback } from 'react'
+import ReactMarkdown from 'react-markdown'
 
 interface MediaItem {
   id: number
@@ -112,9 +113,26 @@ export default function DynamicMessages({
                 : undefined
             }
           >
-            <p className="text-sm whitespace-pre-wrap" style={{ color: message.type === 'user' ? textColor : 'white' }}>
-              {message.content}
-            </p>
+            <div className="text-sm ct-message-body" style={{ color: message.type === 'user' ? textColor : 'white' }}>
+              {message.type === 'bot' ? (
+                <ReactMarkdown
+                  className="ct-markdown"
+                  components={{
+                    p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                    ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-0.5">{children}</ul>,
+                    ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-0.5">{children}</ol>,
+                    li: ({ children }) => <li className="ml-0">{children}</li>,
+                    strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                    code: ({ children }) => <code className="bg-black/20 px-1 py-0.5 rounded text-xs">{children}</code>,
+                    pre: ({ children }) => <pre className="bg-black/20 p-2 rounded text-xs overflow-x-auto mb-2">{children}</pre>,
+                  }}
+                >
+                  {message.content}
+                </ReactMarkdown>
+              ) : (
+                <p className="whitespace-pre-wrap">{message.content}</p>
+              )}
+            </div>
             
             {/* Media Display */}
             {message.media && message.media.length > 0 && (

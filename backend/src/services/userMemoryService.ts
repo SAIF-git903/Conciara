@@ -123,14 +123,13 @@ export async function storeUserMemory(
         // Store as JSON array if vector extension not available
         embeddingValue = JSON.stringify(embedding);
       }
-      console.log(`[UserMemory] ✅ Generated embedding for memory (type: ${memoryType}, hasVector: ${hasVector})`);
     } else {
       console.warn('[UserMemory] ⚠️ Failed to generate embedding (API may be unavailable)');
     }
   } else {
-    console.log('[UserMemory] ⚠️ Skipping embedding generation - LLM not available');
+    console.warn('[UserMemory] Skipping embedding generation - LLM not available');
   }
-  
+
   try {
     // Build query based on whether we have embedding and vector extension
     let query: string;
