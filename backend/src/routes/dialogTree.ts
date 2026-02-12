@@ -5,16 +5,11 @@ import {
   createDialogTree,
   updateDialogTree,
   deleteDialogTree,
-<<<<<<< HEAD
-=======
   getDialogTreesWithDomain,
->>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd
 } from '../services/dialogService.js';
 
 const router = express.Router();
 
-<<<<<<< HEAD
-=======
 /** Base URL for the loader script (frontend origin). Set FRONTEND_URL in .env e.g. http://localhost:3002 */
 const FRONTEND_URL = (process.env.FRONTEND_URL || 'http://localhost:3002').replace(/\/+$/, '');
 /** Public API base URL for data-api-url. Set API_PUBLIC_URL in .env e.g. http://localhost:3001/api */
@@ -29,7 +24,6 @@ function buildEmbedCode(treeId: number, domain: string | null): string {
 <script src="${loaderUrl}" ${attrs.join(' ')}></script>`;
 }
 
->>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd
 /**
  * @swagger
  * /api/dialog-tree:
@@ -67,18 +61,16 @@ router.get('/', async (req, res) => {
   } catch (error: any) {
     console.error('Error fetching dialog trees:', error);
     const errorMessage = error?.message || 'Unknown error';
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to fetch dialog trees',
       details: errorMessage,
-      hint: 'Make sure PostgreSQL is running and migrations have been run (npm run migrate)'
+      hint: 'Make sure PostgreSQL is running and migrations have been run (npm run migrate)',
     });
   }
 });
 
 /**
  * @swagger
-<<<<<<< HEAD
-=======
  * /api/dialog-tree/embed-codes:
  *   get:
  *     summary: Get embed code for every dialog tree
@@ -127,7 +119,6 @@ router.get('/embed-codes', async (req, res) => {
 
 /**
  * @swagger
->>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd
  * /api/dialog-tree/{id}:
  *   get:
  *     summary: Get dialog tree by ID
@@ -160,11 +151,11 @@ router.get('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const tree = await getDialogTreeById(id);
-    
+
     if (!tree) {
       return res.status(404).json({ error: 'Dialog tree not found' });
     }
-    
+
     res.json(tree);
   } catch (error) {
     console.error('Error fetching dialog tree:', error);
@@ -211,11 +202,11 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { name, description, ab_variation_id } = req.body;
-    
+
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'Name is required' });
     }
-    
+
     const tree = await createDialogTree(name, description, ab_variation_id);
     res.status(201).json(tree);
   } catch (error) {
@@ -270,17 +261,17 @@ router.put('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { name, description } = req.body;
-    
+
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'Name is required' });
     }
-    
+
     const tree = await updateDialogTree(id, name, description);
-    
+
     if (!tree) {
       return res.status(404).json({ error: 'Dialog tree not found' });
     }
-    
+
     res.json(tree);
   } catch (error) {
     console.error('Error updating dialog tree:', error);
@@ -328,4 +319,3 @@ router.delete('/:id', async (req, res) => {
 });
 
 export default router;
-

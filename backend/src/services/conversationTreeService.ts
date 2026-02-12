@@ -60,7 +60,7 @@ export function buildConversationTree(traces: Trace[]): ConversationTree | null 
   // Process each trace
   sortedTraces.forEach((trace, traceIndex) => {
     const traceStartOffset = trace.startTime - firstTrace.startTime;
-    
+
     // Add user message node
     const userMessageNode: TreeNode = {
       id: `user_${trace.traceId}`,
@@ -85,10 +85,8 @@ export function buildConversationTree(traces: Trace[]): ConversationTree | null 
     // Add final response node
     if (trace.finalResponse) {
       // Response time is relative to trace start (when user message was sent)
-      const responseTime = trace.endTime 
-        ? trace.endTime - trace.startTime 
-        : 0;
-      
+      const responseTime = trace.endTime ? trace.endTime - trace.startTime : 0;
+
       const responseNode: TreeNode = {
         id: `response_${trace.traceId}`,
         type: 'response',
@@ -123,12 +121,7 @@ export function buildConversationTree(traces: Trace[]): ConversationTree | null 
 /**
  * Build tree structure from trace events
  */
-function buildEventTree(
-  events: TraceEvent[],
-  parentId: string,
-  traceStartTime: number,
-  conversationStartTime: number
-): TreeNode | null {
+function buildEventTree(events: TraceEvent[], parentId: string, traceStartTime: number, conversationStartTime: number): TreeNode | null {
   if (events.length === 0) {
     return null;
   }
@@ -173,14 +166,10 @@ function buildEventTree(
 /**
  * Convert a trace event to a tree node
  */
-function eventToTreeNode(
-  event: TraceEvent,
-  traceStartTime: number,
-  conversationStartTime: number
-): TreeNode {
+function eventToTreeNode(event: TraceEvent, traceStartTime: number, conversationStartTime: number): TreeNode {
   const nodeType = getNodeTypeForEvent(event.type);
   const label = getLabelForEvent(event.type, event.data);
-  
+
   // Use event.relativeTime directly - it's already relative to trace start
   // This shows how long each step took from when the user message was sent
   // NOT the absolute time from conversation start
@@ -206,9 +195,7 @@ function eventToTreeNode(
       node.content = `${event.data.memoriesFound || 0} memories retrieved`;
       break;
     case 'vector_db_search':
-      node.content = event.data.topResult
-        ? `Match: "${event.data.topResult.userInput?.substring(0, 50)}"`
-        : 'No match found';
+      node.content = event.data.topResult ? `Match: "${event.data.topResult.userInput?.substring(0, 50)}"` : 'No match found';
       break;
     case 'dialog_tree_search':
       node.content = event.data.matchedUserInput || 'No match';
@@ -283,7 +270,7 @@ function getLabelForEvent(eventType: string, data: Record<string, any>): string 
     case 'final_response':
       return 'Final Response';
     default:
-      return eventType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      return eventType.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
   }
 }
 
@@ -334,15 +321,13 @@ export async function saveConversationTree(tree: ConversationTree): Promise<void
         tree.userId || null,
         tree.rootNode.id,
         JSON.stringify(tree.rootNode),
-        tree.rootNode.children.length > 0
-          ? tree.rootNode.children[0].content?.substring(0, 200) || ''
-          : '',
+        tree.rootNode.children.length > 0 ? tree.rootNode.children[0].content?.substring(0, 200) || '' : '',
         tree.tags || [],
         tree.modelUsed || null,
         tree.rootNode.children.length,
         tree.totalToolCalls,
         tree.totalMemoryAccesses,
-      ]
+      ],
     );
   } catch (error: any) {
     console.error('[ConversationTreeService] Error saving tree:', error.message);
@@ -355,10 +340,7 @@ export async function saveConversationTree(tree: ConversationTree): Promise<void
  */
 export async function loadConversationTree(sessionId: string): Promise<ConversationTree | null> {
   try {
-    const result = await pool.query(
-      `SELECT * FROM conversation_trees WHERE session_id = $1`,
-      [sessionId]
-    );
+    const result = await pool.query(`SELECT * FROM conversation_trees WHERE session_id = $1`, [sessionId]);
 
     if (result.rows.length === 0) {
       return null;
@@ -385,8 +367,6 @@ export async function loadConversationTree(sessionId: string): Promise<Conversat
     return null;
   }
 }
-<<<<<<< HEAD
-=======
 
 /**
  * Build a minimal conversation tree from conversation_history when no traces exist.
@@ -396,7 +376,7 @@ export async function buildConversationTreeFromHistory(sessionId: string): Promi
   try {
     const sessionResult = await pool.query(
       'SELECT session_id, tree_id, user_id, created_at, updated_at FROM conversation_sessions WHERE session_id = $1',
-      [sessionId]
+      [sessionId],
     );
     if (sessionResult.rows.length === 0) {
       return null;
@@ -405,7 +385,7 @@ export async function buildConversationTreeFromHistory(sessionId: string): Promi
 
     const historyResult = await pool.query(
       'SELECT id, user_message, bot_response, created_at FROM conversation_history WHERE session_id = $1 ORDER BY created_at ASC',
-      [sessionId]
+      [sessionId],
     );
     const history = historyResult.rows;
     if (history.length === 0) {
@@ -455,9 +435,7 @@ export async function buildConversationTreeFromHistory(sessionId: string): Promi
     });
 
     const stats = countTreeStats(rootNode);
-    const lastUpdated = history.length > 0
-      ? new Date(history[history.length - 1].created_at)
-      : new Date(session.updated_at);
+    const lastUpdated = history.length > 0 ? new Date(history[history.length - 1].created_at) : new Date(session.updated_at);
 
     return {
       sessionId: session.session_id,
@@ -475,4 +453,3 @@ export async function buildConversationTreeFromHistory(sessionId: string): Promi
     return null;
   }
 }
->>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd
