@@ -53,21 +53,19 @@ export interface Preprompt {
 export async function getAllDialogTrees(abVariationId?: number): Promise<DialogTree[]> {
   let query = 'SELECT * FROM dialog_trees';
   const params: any[] = [];
-  
+
   if (abVariationId !== undefined && abVariationId !== null) {
     query += ' WHERE ab_variation_id = $1';
     params.push(abVariationId);
   }
   // If abVariationId is undefined, return all trees (for backward compatibility)
-  
+
   query += ' ORDER BY updated_at DESC';
-  
+
   const result = await pool.query(query, params);
   return result.rows;
 }
 
-<<<<<<< HEAD
-=======
 /** Tree with optional website domain (for embed code generation) */
 export interface DialogTreeWithDomain {
   id: number;
@@ -102,7 +100,6 @@ export async function getDialogTreesWithDomain(): Promise<DialogTreeWithDomain[]
   return result.rows;
 }
 
->>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd
 export async function getDialogTreeById(id: number): Promise<DialogTree | null> {
   const result = await pool.query('SELECT * FROM dialog_trees WHERE id = $1', [id]);
   return result.rows[0] || null;
@@ -117,10 +114,7 @@ export async function createDialogTree(
     'INSERT INTO dialog_trees (name, description, ab_variation_id) VALUES ($1, $2, $3) RETURNING *',
     [name, description || null, abVariationId || null]
   );
-<<<<<<< HEAD
-=======
   // console.log(result.rows[0]);
->>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd
   return result.rows[0];
 }
 
@@ -165,7 +159,7 @@ export async function createDialogNode(
   generateEmbeddingForNode: boolean = true
 ): Promise<DialogNode> {
   let embedding: number[] | null = null;
-  
+
   if (generateEmbeddingForNode && (userInput || botResponse)) {
     const textToEmbed = `${userInput || ''} ${botResponse || ''}`.trim();
     if (textToEmbed) {
@@ -175,7 +169,7 @@ export async function createDialogNode(
 
   // Check if vector extension is available
   const hasVector = await checkVectorExtension();
-  
+
   // Format embedding based on whether vector type exists
   let embeddingValue: string | null = null;
   if (embedding) {
@@ -210,7 +204,7 @@ export async function updateDialogNode(
   generateEmbeddingForNode: boolean = true
 ): Promise<DialogNode> {
   let embedding: number[] | null = null;
-  
+
   if (generateEmbeddingForNode && (userInput || botResponse)) {
     const textToEmbed = `${userInput || ''} ${botResponse || ''}`.trim();
     if (textToEmbed) {
@@ -220,7 +214,7 @@ export async function updateDialogNode(
 
   // Check if vector extension is available
   const hasVector = await checkVectorExtension();
-  
+
   // Format embedding based on whether vector type exists
   let embeddingValue: string | null = null;
   if (embedding) {
@@ -233,10 +227,10 @@ export async function updateDialogNode(
 
   // Build query based on vector extension availability
   const query = hasVector
-    ? `UPDATE dialog_nodes 
+    ? `UPDATE dialog_nodes
        SET user_input = $1, bot_response = $2, vector_embedding = $3::vector, updated_at = NOW()
        WHERE id = $4 RETURNING *`
-    : `UPDATE dialog_nodes 
+    : `UPDATE dialog_nodes
        SET user_input = $1, bot_response = $2, vector_embedding = $3, updated_at = NOW()
        WHERE id = $4 RETURNING *`;
 
@@ -246,7 +240,7 @@ export async function updateDialogNode(
     embeddingValue,
     id
   ]);
-  
+
   if (result.rows.length === 0) {
     throw new Error('Dialog node not found');
   }
@@ -276,7 +270,7 @@ export async function createOrUpdatePreprompt(
     [treeId]
   );
   const existing = existingResult.rows[0];
-  
+
   if (existing) {
     const result = await pool.query(
       'UPDATE preprompts SET content = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
