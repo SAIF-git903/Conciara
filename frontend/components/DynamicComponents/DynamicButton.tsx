@@ -1,0 +1,51 @@
+'use client'
+
+import { Bot, MessageCircle } from 'lucide-react'
+import { MergedSkinConfig } from '../../types/skinConfig'
+
+interface DynamicButtonProps {
+  config: MergedSkinConfig
+  onClick: () => void
+}
+
+export default function DynamicButton({ config, onClick }: DynamicButtonProps) {
+  const buttonConfig = config.components?.button || {}
+  const primaryColor = config.theme?.primaryColor || '#6366f1'
+  
+  const size = buttonConfig.size || 'large'
+  const sizeMap = {
+    small: 'w-12 h-12',
+    medium: 'w-14 h-14',
+    large: 'w-16 h-16'
+  }
+
+  const type = buttonConfig.type || 'circular'
+  const borderRadiusMap = {
+    circular: 'rounded-full',
+    rounded: 'rounded-lg',
+    square: 'rounded-none'
+  }
+
+  const iconMap: Record<string, any> = {
+    bot: Bot,
+    chat: MessageCircle,
+    message: MessageCircle,
+  }
+
+  const Icon = buttonConfig.icon ? iconMap[buttonConfig.icon] || Bot : Bot
+
+  return (
+    <button
+      onClick={onClick}
+      className={`${sizeMap[size]} ${borderRadiusMap[type]} shadow-lg flex items-center justify-center text-white transition-all hover:scale-110`}
+      style={{ backgroundColor: primaryColor }}
+      aria-label={buttonConfig.label || 'Open chat'}
+    >
+      <Icon className={`${size === 'large' ? 'w-6 h-6' : size === 'medium' ? 'w-5 h-5' : 'w-4 h-4'}`} />
+      {buttonConfig.showLabel && buttonConfig.label && (
+        <span className="ml-2 text-sm font-medium">{buttonConfig.label}</span>
+      )}
+    </button>
+  )
+}
+
