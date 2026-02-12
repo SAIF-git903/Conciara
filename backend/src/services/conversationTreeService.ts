@@ -385,3 +385,94 @@ export async function loadConversationTree(sessionId: string): Promise<Conversat
     return null;
   }
 }
+<<<<<<< HEAD
+=======
+
+/**
+ * Build a minimal conversation tree from conversation_history when no traces exist.
+ * Used as fallback so sessions that have history but no traces still load in the debugger.
+ */
+export async function buildConversationTreeFromHistory(sessionId: string): Promise<ConversationTree | null> {
+  try {
+    const sessionResult = await pool.query(
+      'SELECT session_id, tree_id, user_id, created_at, updated_at FROM conversation_sessions WHERE session_id = $1',
+      [sessionId]
+    );
+    if (sessionResult.rows.length === 0) {
+      return null;
+    }
+    const session = sessionResult.rows[0];
+
+    const historyResult = await pool.query(
+      'SELECT id, user_message, bot_response, created_at FROM conversation_history WHERE session_id = $1 ORDER BY created_at ASC',
+      [sessionId]
+    );
+    const history = historyResult.rows;
+    if (history.length === 0) {
+      return null;
+    }
+
+    const rootNode: TreeNode = {
+      id: `root_${sessionId}`,
+      type: 'root',
+      label: 'Conversation Start',
+      timestamp: new Date(session.created_at).getTime(),
+      relativeTime: 0,
+      children: [],
+    };
+
+    const baseTime = new Date(session.created_at).getTime();
+    history.forEach((row: any, index: number) => {
+      const createdAt = new Date(row.created_at).getTime();
+      const relativeTime = createdAt - baseTime;
+      const userMessageNode: TreeNode = {
+        id: `user_hist_${row.id}`,
+        type: 'user_message',
+        label: 'User Message',
+        content: row.user_message || '',
+        timestamp: createdAt,
+        relativeTime,
+        data: { historyId: row.id },
+        children: [],
+        parentId: rootNode.id,
+      };
+      rootNode.children.push(userMessageNode);
+
+      if (row.bot_response != null && row.bot_response !== '') {
+        const responseNode: TreeNode = {
+          id: `response_hist_${row.id}`,
+          type: 'response',
+          label: 'AI Response',
+          content: row.bot_response,
+          timestamp: createdAt,
+          relativeTime,
+          data: { historyId: row.id },
+          children: [],
+          parentId: userMessageNode.id,
+        };
+        userMessageNode.children.push(responseNode);
+      }
+    });
+
+    const stats = countTreeStats(rootNode);
+    const lastUpdated = history.length > 0
+      ? new Date(history[history.length - 1].created_at)
+      : new Date(session.updated_at);
+
+    return {
+      sessionId: session.session_id,
+      treeId: session.tree_id,
+      userId: session.user_id || null,
+      rootNode,
+      totalNodes: stats.totalNodes,
+      totalToolCalls: 0,
+      totalMemoryAccesses: 0,
+      createdAt: new Date(session.created_at),
+      updatedAt: lastUpdated,
+    };
+  } catch (error: any) {
+    console.error('[ConversationTreeService] Error building tree from history:', error.message);
+    return null;
+  }
+}
+>>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd

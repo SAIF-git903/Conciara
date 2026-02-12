@@ -1,34 +1,27 @@
-'use client'
+'use client';
 
-import { useState, useEffect } from 'react'
-import { MergedSkinConfig } from '../types/skinConfig'
-import SkinRenderer from './SkinRenderer'
-
-// Get API URL - use proxy in production to avoid mixed content issues
-const getDefaultApiUrl = () => {
-  if (typeof window === 'undefined') return 'http://localhost:3001/api';
-  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  return isLocalhost ? 'http://localhost:3001/api' : '/api/proxy';
-};
+import { useState, useEffect } from 'react';
+import { getApiBaseUrl } from '@/lib/api';
+import { MergedSkinConfig } from '../types/skinConfig';
+import SkinRenderer from './SkinRenderer';
 
 interface ChatbotWidgetProps {
-  apiUrl?: string
-  treeId?: number
-  websiteId?: number
-  domain?: string
-  skinId?: number  // New: Direct skin selection
-  userId?: string  // New: User ID for memory system
-  useMemory?: boolean  // New: Enable memory (default: true)
-  position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
+  apiUrl?: string;
+  treeId?: number;
+  websiteId?: number;
+  domain?: string;
+  skinId?: number; // New: Direct skin selection
+  userId?: string; // New: User ID for memory system
+  useMemory?: boolean; // New: Enable memory (default: true)
+  position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
   theme?: {
-    primaryColor?: string
-    backgroundColor?: string
-    textColor?: string
-  }
+    primaryColor?: string;
+    backgroundColor?: string;
+    textColor?: string;
+  };
   // New: Allow passing skin config directly
-  skinConfig?: MergedSkinConfig
+  skinConfig?: MergedSkinConfig;
 }
-
 
 export default function ChatbotWidget({
   apiUrl: propApiUrl,
@@ -40,23 +33,22 @@ export default function ChatbotWidget({
   useMemory = true,
   position = 'bottom-right',
   theme = {},
-  skinConfig: propSkinConfig
+  skinConfig: propSkinConfig,
 }: ChatbotWidgetProps) {
-  // Use provided apiUrl or smart default (proxy in production)
-  const apiUrl = propApiUrl || getDefaultApiUrl();
-  
-  const [resolvedTreeId, setResolvedTreeId] = useState<number | null>(treeId || null)
-  const [skinConfig, setSkinConfig] = useState<MergedSkinConfig | null>(propSkinConfig || null)
-  const [configLoaded, setConfigLoaded] = useState(!!treeId || !!propSkinConfig)
+  const apiUrl = propApiUrl ?? getApiBaseUrl();
+
+  const [resolvedTreeId, setResolvedTreeId] = useState<number | null>(treeId || null);
+  const [skinConfig, setSkinConfig] = useState<MergedSkinConfig | null>(propSkinConfig || null);
+  const [configLoaded, setConfigLoaded] = useState(!!treeId || !!propSkinConfig);
 
   // Load widget config if websiteId or domain is provided
   useEffect(() => {
     const loadConfig = async () => {
       // If skin config is provided directly, use it
       if (propSkinConfig) {
-        setSkinConfig(propSkinConfig)
-        setConfigLoaded(true)
-        return
+        setSkinConfig(propSkinConfig);
+        setConfigLoaded(true);
+        return;
       }
 
       if (treeId) {
@@ -72,34 +64,33 @@ export default function ChatbotWidget({
               position: position,
             },
           },
-        }
-        setSkinConfig(basicConfig)
-        setConfigLoaded(true)
-        return
+        };
+        setSkinConfig(basicConfig);
+        setConfigLoaded(true);
+        return;
       }
 
       // Priority: skinId > websiteId > domain
       if (skinId || websiteId || domain) {
         try {
-          const params = new URLSearchParams()
+          const params = new URLSearchParams();
           if (skinId) {
-            params.append('skinId', skinId.toString())
+            params.append('skinId', skinId.toString());
           } else if (websiteId) {
-            params.append('websiteId', websiteId.toString())
+            params.append('websiteId', websiteId.toString());
           } else if (domain) {
-            params.append('domain', domain)
+            params.append('domain', domain);
           }
 
-          const url = `${apiUrl}/widget/config?${params.toString()}`
-          
-          const response = await fetch(url)
-          
+          const url = `${apiUrl}/widget/config?${params.toString()}`;
+
+          const response = await fetch(url);
+
           if (response.ok) {
-            const widgetConfig = await response.json()
-            
-            
-            setResolvedTreeId(widgetConfig.treeId)
-            
+            const widgetConfig = await response.json();
+
+            setResolvedTreeId(widgetConfig.treeId);
+
             // Use full skin config if available, otherwise create from legacy theme
             if (widgetConfig.skin?.config) {
               console.log('[ChatbotWidget] ✅ Using full skin config:', {
@@ -107,9 +98,9 @@ export default function ChatbotWidget({
                 primaryColor: widgetConfig.skin.config.theme?.primaryColor,
                 backgroundColor: widgetConfig.skin.config.theme?.backgroundColor,
                 textColor: widgetConfig.skin.config.theme?.textColor,
-                meta: widgetConfig.skin.config._meta
-              })
-              setSkinConfig(widgetConfig.skin.config)
+                meta: widgetConfig.skin.config._meta,
+              });
+              setSkinConfig(widgetConfig.skin.config);
             } else if (widgetConfig.theme) {
               // Legacy: create config from theme
               const legacyConfig: MergedSkinConfig = {
@@ -123,8 +114,8 @@ export default function ChatbotWidget({
                     position: position || widgetConfig.position || 'bottom-right',
                   },
                 },
-              }
-              setSkinConfig(legacyConfig)
+              };
+              setSkinConfig(legacyConfig);
             } else {
               // Fallback to defaults
               const defaultConfig: MergedSkinConfig = {
@@ -138,13 +129,13 @@ export default function ChatbotWidget({
                     position: position || 'bottom-right',
                   },
                 },
-              }
-              setSkinConfig(defaultConfig)
+              };
+              setSkinConfig(defaultConfig);
             }
-            setConfigLoaded(true)
+            setConfigLoaded(true);
           } else {
-            const errorData = await response.json().catch(() => ({}))
-            console.error('Failed to load widget config:', errorData)
+            const errorData = await response.json().catch(() => ({}));
+            console.error('Failed to load widget config:', errorData);
             // Still create a basic config so widget can show error
             const errorConfig: MergedSkinConfig = {
               theme: {
@@ -157,9 +148,9 @@ export default function ChatbotWidget({
                   position: position || 'bottom-right',
                 },
               },
-            }
-            setSkinConfig(errorConfig)
-            setConfigLoaded(true)
+            };
+            setSkinConfig(errorConfig);
+            setConfigLoaded(true);
           }
         } catch (error: any) {
           console.error('[ChatbotWidget] ❌ Error loading widget config:', {
@@ -169,8 +160,8 @@ export default function ChatbotWidget({
             skinId,
             websiteId,
             domain,
-            apiUrl
-          })
+            apiUrl,
+          });
           // Still create a basic config so widget can show error
           const errorConfig: MergedSkinConfig = {
             theme: {
@@ -183,22 +174,22 @@ export default function ChatbotWidget({
                 position: position || 'bottom-right',
               },
             },
-          }
-          setSkinConfig(errorConfig)
-          setConfigLoaded(true)
+          };
+          setSkinConfig(errorConfig);
+          setConfigLoaded(true);
         }
       } else {
         // Try auto-detect from domain
-        const currentDomain = typeof window !== 'undefined' ? window.location.hostname : null
+        const currentDomain = typeof window !== 'undefined' ? window.location.hostname : null;
         if (currentDomain && currentDomain !== 'localhost' && currentDomain !== '127.0.0.1') {
           try {
-            const response = await fetch(`${apiUrl}/widget/config?domain=${encodeURIComponent(currentDomain)}`)
+            const response = await fetch(`${apiUrl}/widget/config?domain=${encodeURIComponent(currentDomain)}`);
             if (response.ok) {
-              const widgetConfig = await response.json()
-              setResolvedTreeId(widgetConfig.treeId)
-              
+              const widgetConfig = await response.json();
+              setResolvedTreeId(widgetConfig.treeId);
+
               if (widgetConfig.skin?.config) {
-                setSkinConfig(widgetConfig.skin.config)
+                setSkinConfig(widgetConfig.skin.config);
               } else {
                 const legacyConfig: MergedSkinConfig = {
                   theme: {
@@ -211,43 +202,33 @@ export default function ChatbotWidget({
                       position: position || widgetConfig.position || 'bottom-right',
                     },
                   },
-                }
-                setSkinConfig(legacyConfig)
+                };
+                setSkinConfig(legacyConfig);
               }
             }
-          } catch (error) {
-          }
+          } catch (error) {}
         }
-        setConfigLoaded(true)
+        setConfigLoaded(true);
       }
-    }
+    };
 
-    loadConfig()
+    loadConfig();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [skinId, websiteId, domain, apiUrl, propSkinConfig])
+  }, [skinId, websiteId, domain, apiUrl, propSkinConfig]);
 
   // Don't render if config not loaded or no skin config
   if (!configLoaded || !skinConfig) {
-    return null
+    return null;
   }
 
   // Use SkinRenderer for data-driven UI
   // Note: treeId can be null - SkinRenderer will handle it gracefully
   // Key forces re-render when config changes - includes skinId and theme colors to detect changes
-  const renderKey = `skin-${skinId || skinConfig._meta?.skinId || 'default'}-${skinConfig.theme?.primaryColor || 'no-color'}-${skinConfig.theme?.backgroundColor || 'no-bg'}`
-  
+  const renderKey = `skin-${skinId || skinConfig._meta?.skinId || 'default'}-${skinConfig.theme?.primaryColor || 'no-color'}-${skinConfig.theme?.backgroundColor || 'no-bg'}`;
 
   return (
     <>
-      <SkinRenderer
-        key={renderKey}
-        config={skinConfig}
-        apiUrl={apiUrl}
-        treeId={resolvedTreeId}
-        userId={userId}
-        useMemory={useMemory}
-      />
+      <SkinRenderer key={renderKey} config={skinConfig} apiUrl={apiUrl} treeId={resolvedTreeId} userId={userId} useMemory={useMemory} />
     </>
-  )
+  );
 }
-

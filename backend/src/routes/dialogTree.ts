@@ -5,10 +5,31 @@ import {
   createDialogTree,
   updateDialogTree,
   deleteDialogTree,
+<<<<<<< HEAD
+=======
+  getDialogTreesWithDomain,
+>>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd
 } from '../services/dialogService.js';
 
 const router = express.Router();
 
+<<<<<<< HEAD
+=======
+/** Base URL for the loader script (frontend origin). Set FRONTEND_URL in .env e.g. http://localhost:3002 */
+const FRONTEND_URL = (process.env.FRONTEND_URL || 'http://localhost:3002').replace(/\/+$/, '');
+/** Public API base URL for data-api-url. Set API_PUBLIC_URL in .env e.g. http://localhost:3001/api */
+const API_PUBLIC_URL = (process.env.API_PUBLIC_URL || 'http://localhost:3001/api').replace(/\/+$/, '');
+
+function buildEmbedCode(treeId: number, domain: string | null): string {
+  const loaderUrl = `${FRONTEND_URL}/loader.js`;
+  const attrs = [`data-api-url="${API_PUBLIC_URL}"`, `data-tree-id="${treeId}"`];
+  if (domain) attrs.push(`data-domain="${domain.replace(/"/g, '&quot;')}"`);
+  return `<!-- ConversaTree Intelligent Chatbot Widget -->
+<!-- Loader validates config with backend first; widget only loads if allowed -->
+<script src="${loaderUrl}" ${attrs.join(' ')}></script>`;
+}
+
+>>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd
 /**
  * @swagger
  * /api/dialog-tree:
@@ -56,6 +77,57 @@ router.get('/', async (req, res) => {
 
 /**
  * @swagger
+<<<<<<< HEAD
+=======
+ * /api/dialog-tree/embed-codes:
+ *   get:
+ *     summary: Get embed code for every dialog tree
+ *     description: Returns an array of dialog trees with their HTML embed snippet (loader script + data attributes)
+ *     tags: [Dialog Trees]
+ *     responses:
+ *       200:
+ *         description: List of trees with embedCode and optional domain
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   treeId:
+ *                     type: integer
+ *                   name:
+ *                     type: string
+ *                   domain:
+ *                     type: string
+ *                     nullable: true
+ *                   embedCode:
+ *                     type: string
+ *       500:
+ *         description: Server error
+ */
+router.get('/embed-codes', async (req, res) => {
+  try {
+    const trees = await getDialogTreesWithDomain();
+    const payload = trees.map((t) => ({
+      treeId: t.id,
+      name: t.name,
+      domain: t.domain ?? null,
+      embedCode: buildEmbedCode(t.id, t.domain),
+    }));
+    res.json(payload);
+  } catch (error: any) {
+    console.error('Error fetching embed codes:', error);
+    res.status(500).json({
+      error: 'Failed to fetch embed codes',
+      details: error?.message || 'Unknown error',
+    });
+  }
+});
+
+/**
+ * @swagger
+>>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd
  * /api/dialog-tree/{id}:
  *   get:
  *     summary: Get dialog tree by ID

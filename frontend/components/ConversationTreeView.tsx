@@ -377,7 +377,6 @@ const TwoDTreeView = ({ rootNode, onNodeClick, selectedNodeId, activeNodeIds = [
                 width: '2px',
               }}
             />
-
             {/* Horizontal line connecting all children */}
             {node.children.length > 1 && (
               <div

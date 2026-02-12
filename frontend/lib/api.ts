@@ -1,22 +1,10 @@
 import axios from 'axios';
 
-// Use proxy in production (Vercel), direct URL in development
-const getApiBaseUrl = () => {
-  // Server-side or during build
-  if (typeof window === 'undefined') {
-    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-  }
-  
-  // Client-side: use proxy on production, direct URL on localhost
-  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  
-  if (isLocalhost) {
-    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-  }
-  
-  // Production: use the proxy to avoid mixed content issues
-  return '/api/proxy';
-};
+/** Single source for API base URL: set NEXT_PUBLIC_API_URL in .env (e.g. .env.local). Fallback only for local dev. */
+export function getApiBaseUrl(): string {
+  const url = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+  return url.replace(/\/+$/, '');
+}
 
 const API_BASE_URL = getApiBaseUrl();
 
@@ -53,7 +41,7 @@ api.interceptors.response.use(
       }
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 export interface DialogTree {
@@ -182,7 +170,7 @@ export const dialogNodeApi = {
     parentId: number | null,
     userInput: string | null,
     botResponse: string | null,
-    generateEmbedding: boolean = true
+    generateEmbedding: boolean = true,
   ): Promise<DialogNode> => {
     const response = await api.post('/dialog-node', {
       tree_id: treeId,
@@ -197,7 +185,7 @@ export const dialogNodeApi = {
     id: number,
     userInput: string | null,
     botResponse: string | null,
-    generateEmbedding: boolean = true
+    generateEmbedding: boolean = true,
   ): Promise<DialogNode> => {
     const response = await api.put(`/dialog-node/${id}`, {
       user_input: userInput,
@@ -325,7 +313,13 @@ export const abVariationApi = {
     return response.data;
   },
   create: async (skinId: number, name: string, description?: string, variationConfig?: any, isActive?: boolean): Promise<ABVariation> => {
-    const response = await api.post('/ab-variation', { skin_id: skinId, name, description, variation_config: variationConfig, is_active: isActive });
+    const response = await api.post('/ab-variation', {
+      skin_id: skinId,
+      name,
+      description,
+      variation_config: variationConfig,
+      is_active: isActive,
+    });
     return response.data;
   },
   update: async (id: number, name: string, description?: string, variationConfig?: any, isActive?: boolean): Promise<ABVariation> => {

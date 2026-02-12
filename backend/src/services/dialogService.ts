@@ -66,6 +66,43 @@ export async function getAllDialogTrees(abVariationId?: number): Promise<DialogT
   return result.rows;
 }
 
+<<<<<<< HEAD
+=======
+/** Tree with optional website domain (for embed code generation) */
+export interface DialogTreeWithDomain {
+  id: number;
+  name: string;
+  description: string | null;
+  ab_variation_id: number | null;
+  created_at: Date;
+  updated_at: Date;
+  domain: string | null;
+}
+
+/**
+ * Get all dialog trees with their website domain (via ab_variation -> skin -> website).
+ * Used to build embed codes for each tree.
+ */
+export async function getDialogTreesWithDomain(): Promise<DialogTreeWithDomain[]> {
+  const result = await pool.query(`
+    SELECT
+      dt.id,
+      dt.name,
+      dt.description,
+      dt.ab_variation_id,
+      dt.created_at,
+      dt.updated_at,
+      w.domain
+    FROM dialog_trees dt
+    LEFT JOIN ab_variations av ON dt.ab_variation_id = av.id
+    LEFT JOIN skins s ON av.skin_id = s.id
+    LEFT JOIN websites w ON s.website_id = w.id
+    ORDER BY dt.updated_at DESC
+  `);
+  return result.rows;
+}
+
+>>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd
 export async function getDialogTreeById(id: number): Promise<DialogTree | null> {
   const result = await pool.query('SELECT * FROM dialog_trees WHERE id = $1', [id]);
   return result.rows[0] || null;
@@ -80,6 +117,10 @@ export async function createDialogTree(
     'INSERT INTO dialog_trees (name, description, ab_variation_id) VALUES ($1, $2, $3) RETURNING *',
     [name, description || null, abVariationId || null]
   );
+<<<<<<< HEAD
+=======
+  // console.log(result.rows[0]);
+>>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd
   return result.rows[0];
 }
 

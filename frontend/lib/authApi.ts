@@ -1,7 +1,8 @@
 import axios from 'axios';
+import { getApiBaseUrl } from './api';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://conversatreeapi.geniusai.biz/api';
-console.log(API_BASE_URL, 'API');
+const API_BASE_URL = getApiBaseUrl();
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {

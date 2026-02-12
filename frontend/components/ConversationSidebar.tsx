@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, MessageSquare, Search, User, Globe } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { getApiBaseUrl } from '@/lib/api';
 import DomainSelector from './DomainSelector';
 
 export interface ConversationSummary {
@@ -28,11 +29,8 @@ interface ConversationSidebarProps {
   selectedSessionId?: string;
 }
 
-export default function ConversationSidebar({
-  apiUrl = process.env.NEXT_PUBLIC_API_URL,
-  onSelectConversation,
-  selectedSessionId,
-}: ConversationSidebarProps) {
+export default function ConversationSidebar({ apiUrl, onSelectConversation, selectedSessionId }: ConversationSidebarProps) {
+  const baseUrl = apiUrl ?? getApiBaseUrl();
   const { user, isAdmin, isManager, selectedDomainId } = useAuth();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,9 +40,6 @@ export default function ConversationSidebar({
   const loadConversations = useCallback(async () => {
     try {
       setLoading(true);
-      const isLocalhost =
-        typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-      const baseUrl = isLocalhost ? apiUrl : '/api/proxy';
 
       // Build query params - use selectedDomainId from context
       const params = new URLSearchParams({ limit: '100' });
@@ -69,7 +64,7 @@ export default function ConversationSidebar({
     } finally {
       setLoading(false);
     }
-  }, [apiUrl, selectedDomainId]);
+  }, [baseUrl, selectedDomainId]);
 
   useEffect(() => {
     loadConversations();

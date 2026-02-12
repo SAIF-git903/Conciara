@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { getApiBaseUrl } from '@/lib/api';
 import ConversationSidebar from '@/components/ConversationSidebar';
 import ConversationTreeView, { TreeNode } from '@/components/ConversationTreeView';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -51,7 +52,7 @@ export default function ConversationDebuggerPage() {
   const [selectedNode, setSelectedNode] = useState<TreeNode | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'accordion' | 'tree' | '2d' | '3d'>('3d'); // View mode toggle
+  const [viewMode, setViewMode] = useState<'accordion' | 'tree'>('tree'); // View mode toggle
 
   // Playback state
   const [playbackState, setPlaybackState] = useState<PlaybackState>('idle');
@@ -166,10 +167,8 @@ export default function ConversationDebuggerPage() {
     setLoading(true);
     setError(null);
     try {
-      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      const apiBaseUrl = 'https://conversatreeapi.geniusai.biz/api';
-      //  isLocalhost ? process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api' : '/api/proxy';
-      console.log(apiBaseUrl, 'apibaseurl');
+      const apiBaseUrl = getApiBaseUrl();
+
       // Get auth token from localStorage
       const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const headers: HeadersInit = {
@@ -404,7 +403,9 @@ export default function ConversationDebuggerPage() {
         <AppHeader />
         <div className="flex-1 flex overflow-hidden">
           {/* Sidebar */}
-          <ConversationSidebar onSelectConversation={handleSelectConversation} selectedSessionId={selectedSessionId || undefined} />
+          <div className="h-[92vh]">
+            <ConversationSidebar onSelectConversation={handleSelectConversation} selectedSessionId={selectedSessionId || undefined} />
+          </div>
 
           {/* Main Content */}
           <div className="flex-1 flex flex-col overflow-hidden">
