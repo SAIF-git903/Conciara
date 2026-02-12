@@ -66,6 +66,8 @@ export async function getAllDialogTrees(abVariationId?: number): Promise<DialogT
   return result.rows;
 }
 
+<<<<<<< HEAD
+=======
 /** Tree with optional website domain (for embed code generation) */
 export interface DialogTreeWithDomain {
   id: number;
@@ -100,6 +102,7 @@ export async function getDialogTreesWithDomain(): Promise<DialogTreeWithDomain[]
   return result.rows;
 }
 
+>>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd
 export async function getDialogTreeById(id: number): Promise<DialogTree | null> {
   const result = await pool.query('SELECT * FROM dialog_trees WHERE id = $1', [id]);
   return result.rows[0] || null;
@@ -114,7 +117,10 @@ export async function createDialogTree(
     'INSERT INTO dialog_trees (name, description, ab_variation_id) VALUES ($1, $2, $3) RETURNING *',
     [name, description || null, abVariationId || null]
   );
+<<<<<<< HEAD
+=======
   // console.log(result.rows[0]);
+>>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd
   return result.rows[0];
 }
 

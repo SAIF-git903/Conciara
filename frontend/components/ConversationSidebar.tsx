@@ -29,11 +29,7 @@ interface ConversationSidebarProps {
   selectedSessionId?: string;
 }
 
-export default function ConversationSidebar({
-  apiUrl,
-  onSelectConversation,
-  selectedSessionId,
-}: ConversationSidebarProps) {
+export default function ConversationSidebar({ apiUrl, onSelectConversation, selectedSessionId }: ConversationSidebarProps) {
   const baseUrl = apiUrl ?? getApiBaseUrl();
   const { user, isAdmin, isManager, selectedDomainId } = useAuth();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -50,16 +46,16 @@ export default function ConversationSidebar({
       if (selectedDomainId) {
         params.append('websiteId', selectedDomainId.toString());
       }
-      
+
       const token = localStorage.getItem('auth_token');
       const headers: HeadersInit = {};
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
-      
+
       const response = await fetch(`${baseUrl}/conversations?${params}`, { headers });
       if (!response.ok) throw new Error('Failed to load conversations');
-      
+
       const data = await response.json();
       setConversations(data);
       setFilteredConversations(data);
@@ -81,7 +77,7 @@ export default function ConversationSidebar({
         (conv) =>
           conv.firstMessage?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           conv.lastMessage?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          conv.sessionId.toLowerCase().includes(searchTerm.toLowerCase())
+          conv.sessionId.toLowerCase().includes(searchTerm.toLowerCase()),
       );
       setFilteredConversations(filtered);
     } else {
@@ -101,7 +97,7 @@ export default function ConversationSidebar({
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
-    
+
     return d.toLocaleDateString();
   };
 
@@ -148,9 +144,7 @@ export default function ConversationSidebar({
         {loading ? (
           <div className="p-4 text-center text-sm text-gray-600">Loading...</div>
         ) : filteredConversations.length === 0 ? (
-          <div className="p-4 text-center text-sm text-gray-600">
-            {searchTerm ? 'No conversations found' : 'No conversations yet'}
-          </div>
+          <div className="p-4 text-center text-sm text-gray-600">{searchTerm ? 'No conversations found' : 'No conversations yet'}</div>
         ) : (
           <div className="divide-y divide-gray-100">
             {filteredConversations.map((conv) => (
@@ -165,12 +159,8 @@ export default function ConversationSidebar({
                 {/* Header */}
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs text-gray-500 mb-1 uppercase tracking-wide font-semibold">
-                      {formatDate(conv.updatedAt)}
-                    </div>
-                    <div className="text-sm font-semibold text-gray-900 truncate leading-snug">
-                      {truncate(conv.firstMessage, 35)}
-                    </div>
+                    <div className="text-xs text-gray-500 mb-1 uppercase tracking-wide font-semibold">{formatDate(conv.updatedAt)}</div>
+                    <div className="text-sm font-semibold text-gray-900 truncate leading-snug">{truncate(conv.firstMessage, 35)}</div>
                   </div>
                 </div>
 
@@ -206,10 +196,7 @@ export default function ConversationSidebar({
                 {conv.tags && conv.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
                     {conv.tags.slice(0, 2).map((tag, idx) => (
-                      <span
-                        key={idx}
-                        className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded font-medium"
-                      >
+                      <span key={idx} className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded font-medium">
                         {tag}
                       </span>
                     ))}
@@ -217,11 +204,7 @@ export default function ConversationSidebar({
                 )}
 
                 {/* Model */}
-                {conv.modelUsed && (
-                  <div className="text-xs text-gray-500 mt-2 truncate font-medium">
-                    {conv.modelUsed}
-                  </div>
-                )}
+                {conv.modelUsed && <div className="text-xs text-gray-500 mt-2 truncate font-medium">{conv.modelUsed}</div>}
               </div>
             ))}
           </div>

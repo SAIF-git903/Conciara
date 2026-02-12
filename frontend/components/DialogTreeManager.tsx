@@ -1,194 +1,217 @@
-'use client'
+'use client';
 
-import { useState, useEffect } from 'react'
-import { Plus, Save, Trash2, Edit2, X, MessageSquare, Sparkles, Layers, Zap, Menu, ChevronRight, Settings, Code, Copy, Check, Palette } from 'lucide-react'
-import { dialogTreeApi, dialogNodeApi, prepromptApi, skinApi, getApiBaseUrl, DialogTree, DialogNode, Preprompt, Website, Skin } from '@/lib/api'
-import TreeSelector from './TreeSelector'
-import PrepromptEditor from './PrepromptEditor'
-import NodeEditor from './NodeEditor'
-import TreeVisualization from './TreeVisualization'
-import Toast, { ToastType } from './Toast'
-import ConfirmDialog from './ConfirmDialog'
-import LoadingSpinner from './LoadingSpinner'
-import { useAuth } from '@/contexts/AuthContext'
+import { useState, useEffect } from 'react';
+import {
+  Plus,
+  Save,
+  Trash2,
+  Edit2,
+  X,
+  MessageSquare,
+  Sparkles,
+  Layers,
+  Zap,
+  Menu,
+  ChevronRight,
+  Settings,
+  Code,
+  Copy,
+  Check,
+  Palette,
+} from 'lucide-react';
+import {
+  dialogTreeApi,
+  dialogNodeApi,
+  prepromptApi,
+  skinApi,
+  getApiBaseUrl,
+  DialogTree,
+  DialogNode,
+  Preprompt,
+  Website,
+  Skin,
+} from '@/lib/api';
+import TreeSelector from './TreeSelector';
+import PrepromptEditor from './PrepromptEditor';
+import NodeEditor from './NodeEditor';
+import TreeVisualization from './TreeVisualization';
+import Toast, { ToastType } from './Toast';
+import ConfirmDialog from './ConfirmDialog';
+import LoadingSpinner from './LoadingSpinner';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface DialogTreeManagerProps {
-  initialTree?: DialogTree | null
-  website?: Website | null
+  initialTree?: DialogTree | null;
+  website?: Website | null;
 }
 
 export default function DialogTreeManager({ initialTree, website }: DialogTreeManagerProps = {}) {
-  const { isViewer } = useAuth()
-  const [trees, setTrees] = useState<DialogTree[]>([])
-  const [selectedTree, setSelectedTree] = useState<DialogTree | null>(initialTree || null)
-  const [preprompt, setPreprompt] = useState<Preprompt | null>(null)
-  const [nodes, setNodes] = useState<DialogNode[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null)
+  const { isViewer } = useAuth();
+  const [trees, setTrees] = useState<DialogTree[]>([]);
+  const [selectedTree, setSelectedTree] = useState<DialogTree | null>(initialTree || null);
+  const [preprompt, setPreprompt] = useState<Preprompt | null>(null);
+  const [nodes, setNodes] = useState<DialogNode[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
-    isOpen: boolean
-    title: string
-    message: string
-    onConfirm: () => void
-    variant?: 'danger' | 'warning'
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    variant?: 'danger' | 'warning';
   }>({
     isOpen: false,
     title: '',
     message: '',
     onConfirm: () => {},
-  })
-  const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<'editor' | 'visualization'>('editor')
-  const [showEmbedCode, setShowEmbedCode] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const [allSkins, setAllSkins] = useState<Skin[]>([])
-  const [selectedSkinId, setSelectedSkinId] = useState<number | null>(null)
+  });
+  const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'editor' | 'visualization'>('editor');
+  const [showEmbedCode, setShowEmbedCode] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [allSkins, setAllSkins] = useState<Skin[]>([]);
+  const [selectedSkinId, setSelectedSkinId] = useState<number | null>(null);
 
   const generateEmbedScript = () => {
-    if (!website) return ''
-    
-    const apiUrl = getApiBaseUrl()
-    const loaderUrl = typeof window !== 'undefined' ? `${window.location.origin}/loader.js` : 'http://localhost:3000/loader.js'
-    
+    if (!website) return '';
+
+    const apiUrl = getApiBaseUrl();
+    const loaderUrl = typeof window !== 'undefined' ? `${window.location.origin}/loader.js` : 'http://localhost:3000/loader.js';
+
     // Data attributes for loader: loader validates with backend before fetching widget.js
-    const dataAttrs: string[] = [
-      `data-api-url="${apiUrl}"`
-    ]
-    
+    const dataAttrs: string[] = [`data-api-url="${apiUrl}"`];
+
     if (selectedSkinId) {
-      dataAttrs.push(`data-skin-id="${selectedSkinId}"`)
+      dataAttrs.push(`data-skin-id="${selectedSkinId}"`);
     }
     if (selectedTree?.id) {
-      dataAttrs.push(`data-tree-id="${selectedTree.id}"`)
+      dataAttrs.push(`data-tree-id="${selectedTree.id}"`);
     }
     if (!selectedTree?.id && !selectedSkinId && website.id) {
-      dataAttrs.push(`data-website-id="${website.id}"`)
+      dataAttrs.push(`data-website-id="${website.id}"`);
     }
     if (website.domain) {
-      dataAttrs.push(`data-domain="${website.domain.replace(/"/g, '&quot;')}"`)
+      dataAttrs.push(`data-domain="${website.domain.replace(/"/g, '&quot;')}"`);
     }
-    
+
     return `<!-- ConversaTree Intelligent Chatbot Widget -->
 <!-- Loader validates config with backend first; widget only loads if allowed -->
-<script src="${loaderUrl}" ${dataAttrs.join(' ')}></script>`
-  }
+<script src="${loaderUrl}" ${dataAttrs.join(' ')}></script>`;
+  };
 
   // Load skins for website
   useEffect(() => {
     const loadSkins = async () => {
       if (!website?.id) {
-        setAllSkins([])
-        setSelectedSkinId(null)
-        return
+        setAllSkins([]);
+        setSelectedSkinId(null);
+        return;
       }
-      
+
       try {
-        const skins = await skinApi.getByWebsite(website.id)
-        setAllSkins(skins)
+        const skins = await skinApi.getByWebsite(website.id);
+        setAllSkins(skins);
         // Don't auto-select any skin - user must explicitly choose
-        setSelectedSkinId(null)
+        setSelectedSkinId(null);
       } catch (err) {
-        console.error('Failed to load skins:', err)
-        setAllSkins([])
-        setSelectedSkinId(null)
+        console.error('Failed to load skins:', err);
+        setAllSkins([]);
+        setSelectedSkinId(null);
       }
-    }
-    
+    };
+
     if (showEmbedCode && website) {
-      loadSkins()
+      loadSkins();
     } else {
-      setAllSkins([])
-      setSelectedSkinId(null)
+      setAllSkins([]);
+      setSelectedSkinId(null);
     }
-  }, [website, showEmbedCode])
+  }, [website, showEmbedCode]);
 
   const copyToClipboard = async () => {
-    const script = generateEmbedScript()
+    const script = generateEmbedScript();
     try {
-      await navigator.clipboard.writeText(script)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      await navigator.clipboard.writeText(script);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error('Failed to copy:', err)
+      console.error('Failed to copy:', err);
     }
-  }
+  };
 
   useEffect(() => {
     if (initialTree) {
-      setSelectedTree(initialTree)
+      setSelectedTree(initialTree);
     } else {
       // Reset tree page when initialTree becomes null (e.g., customer type changed)
-      setSelectedTree(null)
-      setPreprompt(null)
-      setNodes([])
-      setSelectedNodeId(null)
-      setError(null)
+      setSelectedTree(null);
+      setPreprompt(null);
+      setNodes([]);
+      setSelectedNodeId(null);
+      setError(null);
     }
-  }, [initialTree])
+  }, [initialTree]);
 
   // Don't load trees independently - they come from MultiTenantNavigator
   // Removed: useEffect(() => { loadTrees() }, [])
 
   useEffect(() => {
     if (selectedTree) {
-      loadTreeData(selectedTree.id)
+      loadTreeData(selectedTree.id);
     } else {
       // Clear tree data when selected tree is cleared
-      setPreprompt(null)
-      setNodes([])
-      setSelectedNodeId(null)
+      setPreprompt(null);
+      setNodes([]);
+      setSelectedNodeId(null);
     }
-  }, [selectedTree])
+  }, [selectedTree]);
 
   const loadTrees = async () => {
     try {
-      setLoading(true)
-      const data = await dialogTreeApi.getAll()
-      setTrees(data)
+      setLoading(true);
+      const data = await dialogTreeApi.getAll();
+      setTrees(data);
     } catch (err: any) {
-      setError(err.message || 'Failed to load trees')
+      setError(err.message || 'Failed to load trees');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const loadTreeData = async (treeId: number) => {
     try {
-      setLoading(true)
-      const [prepromptData, nodesData] = await Promise.all([
-        prepromptApi.getByTreeId(treeId),
-        dialogNodeApi.getByTreeId(treeId),
-      ])
-      setPreprompt(prepromptData)
-      setNodes(nodesData)
+      setLoading(true);
+      const [prepromptData, nodesData] = await Promise.all([prepromptApi.getByTreeId(treeId), dialogNodeApi.getByTreeId(treeId)]);
+      setPreprompt(prepromptData);
+      setNodes(nodesData);
     } catch (err: any) {
-      setError(err.message || 'Failed to load tree data')
+      setError(err.message || 'Failed to load tree data');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
-  const [showCreateTreeModal, setShowCreateTreeModal] = useState(false)
-  const [newTreeName, setNewTreeName] = useState('')
-  const [newTreeDescription, setNewTreeDescription] = useState('')
+  const [showCreateTreeModal, setShowCreateTreeModal] = useState(false);
+  const [newTreeName, setNewTreeName] = useState('');
+  const [newTreeDescription, setNewTreeDescription] = useState('');
 
   const showToast = (message: string, type: ToastType) => {
-    setToast({ message, type })
-  }
+    setToast({ message, type });
+  };
 
   const handleCreateTree = async () => {
     // Trees should be created through MultiTenantNavigator to ensure proper linking to A/B variations
     // This modal should not be accessible anymore
-    setShowCreateTreeModal(false)
-    setNewTreeName('')
-    setNewTreeDescription('')
-  }
+    setShowCreateTreeModal(false);
+    setNewTreeName('');
+    setNewTreeDescription('');
+  };
 
   const handleSelectTree = (tree: DialogTree) => {
-    setSelectedTree(tree)
-  }
+    setSelectedTree(tree);
+  };
 
   const handleDeleteTree = (treeId: number) => {
     setConfirmDialog({
@@ -198,75 +221,70 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
       variant: 'danger',
       onConfirm: async () => {
         try {
-          await dialogTreeApi.delete(treeId)
-          setTrees(trees.filter(t => t.id !== treeId))
+          await dialogTreeApi.delete(treeId);
+          setTrees(trees.filter((t) => t.id !== treeId));
           if (selectedTree?.id === treeId) {
-            setSelectedTree(null)
-            setPreprompt(null)
-            setNodes([])
+            setSelectedTree(null);
+            setPreprompt(null);
+            setNodes([]);
           }
-          showToast('Dialog tree deleted successfully', 'success')
-          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {} })
+          showToast('Dialog tree deleted successfully', 'success');
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {} });
         } catch (err: any) {
-          const errorMsg = err.message || 'Failed to delete tree'
-          setError(errorMsg)
-          showToast(errorMsg, 'error')
-          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {} })
+          const errorMsg = err.message || 'Failed to delete tree';
+          setError(errorMsg);
+          showToast(errorMsg, 'error');
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {} });
         }
       },
-    })
-  }
+    });
+  };
 
   const handlePrepromptSave = async (content: string) => {
-    if (!selectedTree) return
+    if (!selectedTree) return;
 
     try {
-      const updated = await prepromptApi.createOrUpdate(selectedTree.id, content)
-      setPreprompt(updated)
-      showToast('Preprompt saved successfully!', 'success')
+      const updated = await prepromptApi.createOrUpdate(selectedTree.id, content);
+      setPreprompt(updated);
+      showToast('Preprompt saved successfully!', 'success');
     } catch (err: any) {
-      const errorMsg = err.message || 'Failed to save preprompt'
-      setError(errorMsg)
-      showToast(errorMsg, 'error')
+      const errorMsg = err.message || 'Failed to save preprompt';
+      setError(errorMsg);
+      showToast(errorMsg, 'error');
     }
-  }
+  };
 
   const handleNodeCreate = async (parentId: number | null, userInput: string, botResponse: string): Promise<DialogNode> => {
     if (!selectedTree) {
-      throw new Error('No tree selected')
+      throw new Error('No tree selected');
     }
 
     try {
-      const newNode = await dialogNodeApi.create(
-        selectedTree.id,
-        parentId,
-        userInput,
-        botResponse
-      )
-      setNodes([...nodes, newNode])
-      showToast('Node created successfully!', 'success')
-      return newNode
+      const newNode = await dialogNodeApi.create(selectedTree.id, parentId, userInput, botResponse);
+      setNodes([...nodes, newNode]);
+      showToast('Node created successfully!', 'success');
+      return newNode;
     } catch (err: any) {
-      const errorMsg = err.message || 'Failed to create node'
-      setError(errorMsg)
-      showToast(errorMsg, 'error')
-      throw err
+      const errorMsg = err.message || 'Failed to create node';
+      setError(errorMsg);
+      showToast(errorMsg, 'error');
+      throw err;
     }
-  }
+  };
 
   const handleNodeUpdate = async (id: number, userInput: string, botResponse: string): Promise<DialogNode> => {
     try {
-      const updated = await dialogNodeApi.update(id, userInput, botResponse)
-      setNodes(nodes.map(n => n.id === id ? updated : n))
-      showToast('Node updated successfully!', 'success')
-      return updated
+      const updated = await dialogNodeApi.update(id, userInput, botResponse);
+      setNodes(nodes.map((n) => (n.id === id ? updated : n)));
+      showToast('Node updated successfully!', 'success');
+      return updated;
     } catch (err: any) {
-      const errorMsg = err.message || 'Failed to update node'
-      setError(errorMsg)
-      showToast(errorMsg, 'error')
-      throw err
+      const errorMsg = err.message || 'Failed to update node';
+      setError(errorMsg);
+      showToast(errorMsg, 'error');
+      throw err;
     }
-  }
+  };
 
   const handleNodeDelete = (id: number) => {
     setConfirmDialog({
@@ -276,87 +294,84 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
       variant: 'danger',
       onConfirm: async () => {
         try {
-          await dialogNodeApi.delete(id)
-          setNodes(nodes.filter(n => n.id !== id))
-          showToast('Node deleted successfully', 'success')
-          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {} })
+          await dialogNodeApi.delete(id);
+          setNodes(nodes.filter((n) => n.id !== id));
+          showToast('Node deleted successfully', 'success');
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {} });
         } catch (err: any) {
-          const errorMsg = err.message || 'Failed to delete node'
-          setError(errorMsg)
-          showToast(errorMsg, 'error')
-          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {} })
+          const errorMsg = err.message || 'Failed to delete node';
+          setError(errorMsg);
+          showToast(errorMsg, 'error');
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {} });
         }
       },
-    })
-  }
+    });
+  };
 
   const stats = {
     totalTrees: trees.length,
     totalNodes: nodes.length,
     hasPreprompt: !!preprompt,
-  }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
       {/* Compact Sidebar - Hidden since we use MultiTenantNavigator now */}
       {false && (
-      <div className={`${sidebarOpen ? 'w-64' : 'w-16'} bg-white border-r border-gray-200 transition-all duration-300 flex flex-col`}>
-        {/* Sidebar Header */}
-        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-          {sidebarOpen && (
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-primary-100 rounded-lg">
-                <MessageSquare className="w-5 h-5 text-primary-600" />
-              </div>
-              <span className="font-bold text-gray-900 text-sm">Dialog Trees</span>
-            </div>
-          )}
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <Menu className="w-4 h-4 text-gray-600" />
-          </button>
-        </div>
-
-        {/* Tree List */}
-        <div className="flex-1 overflow-y-auto p-2">
-          {trees.length === 0 ? (
-            <div className="text-center py-8 px-2">
-              <MessageSquare className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-              {sidebarOpen && <p className="text-xs text-gray-400">No trees</p>}
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {trees.map((tree) => (
-                <div
-                  key={tree.id}
-                  onClick={() => handleSelectTree(tree)}
-                  className={`p-2 rounded-lg cursor-pointer transition-all group ${
-                    selectedTree?.id === tree.id
-                      ? 'bg-primary-50 border border-primary-200'
-                      : 'hover:bg-gray-50 border border-transparent'
-                  }`}
-                >
-                  {sidebarOpen ? (
-                    <div>
-                      <div className="font-semibold text-sm text-gray-900 truncate">{tree.name}</div>
-                      <div className="text-xs text-gray-500 mt-0.5 truncate">{tree.description || 'No description'}</div>
-                    </div>
-                  ) : (
-                    <div className="flex justify-center">
-                      <MessageSquare className={`w-5 h-5 ${selectedTree?.id === tree.id ? 'text-primary-600' : 'text-gray-400'}`} />
-                    </div>
-                  )}
+        <div className={`${sidebarOpen ? 'w-64' : 'w-16'} bg-white border-r border-gray-200 transition-all duration-300 flex flex-col`}>
+          {/* Sidebar Header */}
+          <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+            {sidebarOpen && (
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-primary-100 rounded-lg">
+                  <MessageSquare className="w-5 h-5 text-primary-600" />
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+                <span className="font-bold text-gray-900 text-sm">Dialog Trees</span>
+              </div>
+            )}
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+              <Menu className="w-4 h-4 text-gray-600" />
+            </button>
+          </div>
 
-        {/* Sidebar Footer - Removed "New Tree" button since trees are created via MultiTenantNavigator */}
-        {/* Trees should be created through the multi-tenant structure to ensure proper linking */}
-      </div>
+          {/* Tree List */}
+          <div className="flex-1 overflow-y-auto p-2">
+            {trees.length === 0 ? (
+              <div className="text-center py-8 px-2">
+                <MessageSquare className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                {sidebarOpen && <p className="text-xs text-gray-400">No trees</p>}
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {trees.map((tree) => (
+                  <div
+                    key={tree.id}
+                    onClick={() => handleSelectTree(tree)}
+                    className={`p-2 rounded-lg cursor-pointer transition-all group ${
+                      selectedTree?.id === tree.id
+                        ? 'bg-primary-50 border border-primary-200'
+                        : 'hover:bg-gray-50 border border-transparent'
+                    }`}
+                  >
+                    {sidebarOpen ? (
+                      <div>
+                        <div className="font-semibold text-sm text-gray-900 truncate">{tree.name}</div>
+                        <div className="text-xs text-gray-500 mt-0.5 truncate">{tree.description || 'No description'}</div>
+                      </div>
+                    ) : (
+                      <div className="flex justify-center">
+                        <MessageSquare className={`w-5 h-5 ${selectedTree?.id === tree.id ? 'text-primary-600' : 'text-gray-400'}`} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Sidebar Footer - Removed "New Tree" button since trees are created via MultiTenantNavigator */}
+          {/* Trees should be created through the multi-tenant structure to ensure proper linking */}
+        </div>
       )}
 
       {/* Main Content Area */}
@@ -399,9 +414,7 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
                 <button
                   onClick={() => setActiveTab('editor')}
                   className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                    activeTab === 'editor'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
+                    activeTab === 'editor' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
                   Editor
@@ -409,9 +422,7 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
                 <button
                   onClick={() => setActiveTab('visualization')}
                   className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                    activeTab === 'visualization'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
+                    activeTab === 'visualization' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
                   Tree View
@@ -464,14 +475,12 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
                       </p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center gap-2">
                     <button
                       onClick={copyToClipboard}
                       className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                        copied 
-                          ? 'bg-green-500 text-white' 
-                          : 'bg-blue-500 text-white hover:bg-blue-600 shadow-sm hover:shadow-md'
+                        copied ? 'bg-green-500 text-white' : 'bg-blue-500 text-white hover:bg-blue-600 shadow-sm hover:shadow-md'
                       }`}
                     >
                       {copied ? (
@@ -494,7 +503,7 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
                     </button>
                   </div>
                 </div>
-                
+
                 {/* Skin Selector */}
                 {allSkins.length > 0 && (
                   <div className="bg-white px-4 py-3 border-b border-gray-100">
@@ -516,7 +525,10 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
                     </select>
                     <p className="text-xs text-gray-500 mt-1.5">
                       {selectedSkinId ? (
-                        <>The embed code will include <code className="text-primary-600 font-mono">skinId: {selectedSkinId}</code> for direct skin selection.</>
+                        <>
+                          The embed code will include <code className="text-primary-600 font-mono">skinId: {selectedSkinId}</code> for
+                          direct skin selection.
+                        </>
                       ) : (
                         <>Leave unselected to use the website&apos;s default active skin (via websiteId/domain).</>
                       )}
@@ -547,7 +559,11 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
                       )}
                       <span className="flex items-center gap-1.5 text-emerald-600">
                         <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          <path
+                            fillRule="evenodd"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                            clipRule="evenodd"
+                          />
                         </svg>
                         Auto-persisted user memory
                       </span>
@@ -555,7 +571,11 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
                     {!website.domain && (
                       <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
                         <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          <path
+                            fillRule="evenodd"
+                            d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                            clipRule="evenodd"
+                          />
                         </svg>
                         <span>Add domain for auto-detection</span>
                       </div>
@@ -592,12 +612,7 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 max-w-7xl mx-auto">
                 {/* Left: Preprompt (1 column) */}
                 <div className="lg:col-span-1">
-                  <PrepromptEditor
-                    preprompt={preprompt}
-                    onSave={handlePrepromptSave}
-                    loading={loading}
-                    readOnly={isViewer}
-                  />
+                  <PrepromptEditor preprompt={preprompt} onSave={handlePrepromptSave} loading={loading} readOnly={isViewer} />
                 </div>
 
                 {/* Right: Nodes (2 columns) */}
@@ -620,33 +635,49 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
                   selectedTree={selectedTree}
                   selectedNodeId={selectedNodeId}
                   onNodeClick={(node) => {
-                    setSelectedNodeId(node.id)
+                    setSelectedNodeId(node.id);
                     // Don't switch tabs - show details in tree view
                   }}
-                  onNodeEdit={isViewer ? undefined : (node) => {
-                    setSelectedNodeId(node.id)
-                    setActiveTab('editor')
-                    const event = new CustomEvent('editNode', { detail: { nodeId: node.id } })
-                    window.dispatchEvent(event)
-                  }}
-                  onNodeDelete={isViewer ? undefined : async (nodeId: number) => {
-                    try {
-                      await dialogNodeApi.delete(nodeId)
-                      setNodes(nodes.filter(n => n.id !== nodeId))
-                      showToast('Node deleted successfully', 'success')
-                    } catch (err: any) {
-                      const errorMsg = err.message || 'Failed to delete node'
-                      setError(errorMsg)
-                      showToast(errorMsg, 'error')
-                      throw err
-                    }
-                  }}
-                  onNodeAddChild={isViewer ? undefined : (parentId) => {
-                    // Handled inline in TreeVisualization now
-                  }}
-                  onNodeAddRoot={isViewer ? undefined : () => {
-                    // Handled inline in TreeVisualization now
-                  }}
+                  onNodeEdit={
+                    isViewer
+                      ? undefined
+                      : (node) => {
+                          setSelectedNodeId(node.id);
+                          setActiveTab('editor');
+                          const event = new CustomEvent('editNode', { detail: { nodeId: node.id } });
+                          window.dispatchEvent(event);
+                        }
+                  }
+                  onNodeDelete={
+                    isViewer
+                      ? undefined
+                      : async (nodeId: number) => {
+                          try {
+                            await dialogNodeApi.delete(nodeId);
+                            setNodes(nodes.filter((n) => n.id !== nodeId));
+                            showToast('Node deleted successfully', 'success');
+                          } catch (err: any) {
+                            const errorMsg = err.message || 'Failed to delete node';
+                            setError(errorMsg);
+                            showToast(errorMsg, 'error');
+                            throw err;
+                          }
+                        }
+                  }
+                  onNodeAddChild={
+                    isViewer
+                      ? undefined
+                      : (parentId) => {
+                          // Handled inline in TreeVisualization now
+                        }
+                  }
+                  onNodeAddRoot={
+                    isViewer
+                      ? undefined
+                      : () => {
+                          // Handled inline in TreeVisualization now
+                        }
+                  }
                   onNodeCreate={isViewer ? undefined : handleNodeCreate}
                   onNodeUpdate={isViewer ? undefined : handleNodeUpdate}
                   onNodesUpdate={setNodes}
@@ -659,9 +690,7 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
                 <MessageSquare className="w-8 h-8 text-gray-400" />
               </div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">No Tree Selected</h3>
-              <p className="text-gray-600 mb-6 text-sm">
-                Select a tree from the sidebar or create a new one to start building
-              </p>
+              <p className="text-gray-600 mb-6 text-sm">Select a tree from the sidebar or create a new one to start building</p>
               {!isViewer && (
                 <button
                   onClick={() => setShowCreateTreeModal(true)}
@@ -678,13 +707,13 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
 
       {/* Create Tree Modal */}
       {showCreateTreeModal && !isViewer && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
-              setShowCreateTreeModal(false)
-              setNewTreeName('')
-              setNewTreeDescription('')
+              setShowCreateTreeModal(false);
+              setNewTreeName('');
+              setNewTreeDescription('');
             }
           }}
         >
@@ -698,16 +727,16 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
               </div>
               <button
                 onClick={() => {
-                  setShowCreateTreeModal(false)
-                  setNewTreeName('')
-                  setNewTreeDescription('')
+                  setShowCreateTreeModal(false);
+                  setNewTreeName('');
+                  setNewTreeDescription('');
                 }}
                 className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg p-1.5 transition-all"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
@@ -722,16 +751,16 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
                   autoFocus
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                      handleCreateTree()
+                      handleCreateTree();
                     } else if (e.key === 'Escape') {
-                      setShowCreateTreeModal(false)
-                      setNewTreeName('')
-                      setNewTreeDescription('')
+                      setShowCreateTreeModal(false);
+                      setNewTreeName('');
+                      setNewTreeDescription('');
                     }
                   }}
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Description <span className="text-gray-400 text-xs font-normal">(optional)</span>
@@ -744,9 +773,9 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
                   placeholder="Brief description..."
                   onKeyDown={(e) => {
                     if (e.key === 'Escape') {
-                      setShowCreateTreeModal(false)
-                      setNewTreeName('')
-                      setNewTreeDescription('')
+                      setShowCreateTreeModal(false);
+                      setNewTreeName('');
+                      setNewTreeDescription('');
                     }
                   }}
                 />
@@ -756,9 +785,9 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
             <div className="flex gap-2 mt-6">
               <button
                 onClick={() => {
-                  setShowCreateTreeModal(false)
-                  setNewTreeName('')
-                  setNewTreeDescription('')
+                  setShowCreateTreeModal(false);
+                  setNewTreeName('');
+                  setNewTreeDescription('');
                 }}
                 className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium text-sm transition-all"
               >
@@ -777,13 +806,7 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
       )}
 
       {/* Toast Notification */}
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       {/* Confirm Dialog */}
       <ConfirmDialog
@@ -805,5 +828,5 @@ export default function DialogTreeManager({ initialTree, website }: DialogTreeMa
         </div>
       )}
     </div>
-  )
+  );
 }

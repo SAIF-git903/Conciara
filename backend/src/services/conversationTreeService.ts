@@ -385,6 +385,8 @@ export async function loadConversationTree(sessionId: string): Promise<Conversat
     return null;
   }
 }
+<<<<<<< HEAD
+=======
 
 /**
  * Build a minimal conversation tree from conversation_history when no traces exist.
@@ -473,3 +475,4 @@ export async function buildConversationTreeFromHistory(sessionId: string): Promi
     return null;
   }
 }
+>>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd

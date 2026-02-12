@@ -50,7 +50,7 @@ export default function TraceViewerPage() {
   const [trace, setTrace] = useState<Trace | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const [playbackState, setPlaybackState] = useState<PlaybackState>('idle');
   const [playbackSpeed, setPlaybackSpeed] = useState<PlaybackSpeed>(1);
   const [currentEventIndex, setCurrentEventIndex] = useState<number>(-1);
@@ -61,14 +61,14 @@ export default function TraceViewerPage() {
 
   const loadTrace = async (id: string) => {
     if (!id) return;
-    
+
     setLoading(true);
     setError(null);
     try {
       const apiBaseUrl = getApiBaseUrl();
       const response = await fetch(`${apiBaseUrl}/trace/${id}`);
       if (!response.ok) throw new Error('Trace not found');
-      
+
       const data = await response.json();
       setTrace(data);
       setCurrentEventIndex(-1);
@@ -83,20 +83,20 @@ export default function TraceViewerPage() {
 
   const startPlayback = () => {
     if (!trace || trace.events.length === 0) return;
-    
+
     // If we're at the end, reset first
     if (currentEventIndex >= trace.events.length - 1) {
       resetPlayback();
       setTimeout(() => startPlayback(), 100);
       return;
     }
-    
+
     isPlayingRef.current = true;
     setPlaybackState('playing');
-    
+
     // Ensure ref is synced with current state
     playbackSpeedRef.current = playbackSpeed;
-    
+
     if (playbackSpeed === 'step') {
       // Step mode: just advance one step
       stepForward();
@@ -106,12 +106,12 @@ export default function TraceViewerPage() {
       // Time-based playback: start from current position
       // If at -1, start from first event (index 0)
       const startIndex = currentEventIndex < 0 ? 0 : currentEventIndex;
-      
+
       if (startIndex < trace.events.length) {
         // Show first event immediately
         setCurrentEventIndex(startIndex);
         setSelectedEvent(trace.events[startIndex]);
-        
+
         // Then schedule next events
         if (startIndex < trace.events.length - 1) {
           scheduleNextEvent(startIndex);
@@ -133,28 +133,30 @@ export default function TraceViewerPage() {
     const nextIndex = currentIndex + 1;
     const currentEvent = trace.events[currentIndex];
     const nextEvent = trace.events[nextIndex];
-    
+
     // Read speed from ref to get latest value (avoids stale closure)
     const currentSpeed = playbackSpeedRef.current;
     const speed = currentSpeed === 'step' ? 1 : currentSpeed;
-    
+
     // Calculate the actual time difference between events
     const timeDiff = nextEvent.relativeTime - currentEvent.relativeTime;
-    
+
     // Apply speed multiplier to the time difference
     // 0.25x = 4x slower, 0.5x = 2x slower, 1x = normal speed
     let delay = timeDiff / speed;
-    
+
     // Add a base delay that's speed-dependent to ensure visible differences
     // This ensures even very fast events (with small timeDiff) show speed differences
     const baseDelay = speed === 0.25 ? 800 : speed === 0.5 ? 400 : 200;
-    
+
     // Combine time-based delay with base delay
     // For slow speeds, the base delay dominates; for fast speeds, timeDiff dominates
     const actualDelay = Math.max(delay, baseDelay);
-    
-    console.log(`[Playback] Event ${nextIndex}: timeDiff=${timeDiff.toFixed(0)}ms, speed=${speed}x, calculated=${delay.toFixed(0)}ms, base=${baseDelay}ms, final=${actualDelay.toFixed(0)}ms`);
-    
+
+    console.log(
+      `[Playback] Event ${nextIndex}: timeDiff=${timeDiff.toFixed(0)}ms, speed=${speed}x, calculated=${delay.toFixed(0)}ms, base=${baseDelay}ms, final=${actualDelay.toFixed(0)}ms`,
+    );
+
     // Schedule the next event
     playbackTimeoutRef.current = setTimeout(() => {
       // Check if still playing using ref (avoids stale closure)
@@ -233,27 +235,29 @@ export default function TraceViewerPage() {
   };
 
   const getEventTypeInfo = (type: string) => {
-    return EVENT_TYPES[type as keyof typeof EVENT_TYPES] || {
-      label: type,
-      color: 'bg-gray-400',
-      icon: '⚙️',
-    };
+    return (
+      EVENT_TYPES[type as keyof typeof EVENT_TYPES] || {
+        label: type,
+        color: 'bg-gray-400',
+        icon: '⚙️',
+      }
+    );
   };
 
   const getEventSummary = (event: TraceEvent) => {
     switch (event.type) {
       case 'vector_db_search':
-        return event.data.topResult 
+        return event.data.topResult
           ? `Match: "${event.data.topResult.userInput.substring(0, 30)}" (${(event.data.topResult.similarity * 100).toFixed(0)}%)`
           : 'No match';
       case 'dialog_tree_search':
-        return event.data.matchedNodeId 
-          ? `Matched: "${event.data.matchedUserInput?.substring(0, 30) || 'node'}"`
-          : 'No match';
+        return event.data.matchedNodeId ? `Matched: "${event.data.matchedUserInput?.substring(0, 30) || 'node'}"` : 'No match';
       case 'llm_call':
-        return event.data.response 
+        return event.data.response
           ? event.data.response.substring(0, 60) + (event.data.response.length > 60 ? '...' : '')
-          : event.data.error ? `Error: ${event.data.error.substring(0, 30)}` : 'Processing';
+          : event.data.error
+            ? `Error: ${event.data.error.substring(0, 30)}`
+            : 'Processing';
       case 'user_memory_retrieval':
         return `${event.data.memoriesFound || 0} memories`;
       default:
@@ -274,7 +278,7 @@ export default function TraceViewerPage() {
               </div>
             )}
           </div>
-          
+
           {/* Compact Loader */}
           <div className="flex gap-2">
             <input
@@ -293,11 +297,7 @@ export default function TraceViewerPage() {
               {loading ? '...' : 'Load'}
             </button>
           </div>
-          {error && (
-            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-xs">
-              {error}
-            </div>
-          )}
+          {error && <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-xs">{error}</div>}
         </div>
 
         {trace && (
@@ -311,14 +311,10 @@ export default function TraceViewerPage() {
                     <div className="text-xs text-gray-500">AI: &quot;{trace.finalResponse.substring(0, 60)}...&quot;</div>
                   )}
                 </div>
-                
+
                 {/* Compact Controls */}
                 <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={resetPlayback}
-                    className="p-1.5 text-gray-600 hover:bg-gray-100 rounded text-sm"
-                    title="Reset"
-                  >
+                  <button onClick={resetPlayback} className="p-1.5 text-gray-600 hover:bg-gray-100 rounded text-sm" title="Reset">
                     ⏮
                   </button>
                   <button
@@ -351,22 +347,22 @@ export default function TraceViewerPage() {
                   >
                     ⏩
                   </button>
-                  
+
                   <div className="h-6 w-px bg-gray-300 mx-1"></div>
-                  
+
                   {([0.25, 0.5, 1, 'step'] as PlaybackSpeed[]).map((speed) => (
                     <button
                       key={String(speed)}
                       onClick={() => {
                         const wasPlaying = isPlayingRef.current;
                         const savedIndex = currentEventIndex;
-                        
+
                         console.log(`[Speed] Changing to ${speed}x, wasPlaying: ${wasPlaying}, currentIndex: ${savedIndex}`);
-                        
+
                         // Update speed ref FIRST (before any async operations)
                         playbackSpeedRef.current = speed;
                         setPlaybackSpeed(speed);
-                        
+
                         // If currently playing, restart from current position with new speed
                         if (wasPlaying && trace) {
                           // Clear current timeout immediately
@@ -374,7 +370,7 @@ export default function TraceViewerPage() {
                             clearTimeout(playbackTimeoutRef.current);
                             playbackTimeoutRef.current = null;
                           }
-                          
+
                           // Restart playback from current position with new speed
                           // Use the saved index (from closure) to avoid stale state
                           if (savedIndex >= 0 && savedIndex < trace.events.length - 1) {
@@ -388,15 +384,13 @@ export default function TraceViewerPage() {
                         }
                       }}
                       className={`px-2 py-1 rounded text-xs font-medium ${
-                        playbackSpeed === speed
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        playbackSpeed === speed ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                       }`}
                     >
                       {speed === 'step' ? 'S' : `${speed}x`}
                     </button>
                   ))}
-                  
+
                   <div className="text-xs text-gray-500 ml-2">
                     {currentEventIndex + 1}/{trace.events.length}
                   </div>
@@ -415,7 +409,7 @@ export default function TraceViewerPage() {
                       const isActive = index === currentEventIndex;
                       const isPast = index < currentEventIndex;
                       const summary = getEventSummary(event);
-                      
+
                       return (
                         <div key={event.id}>
                           <div
@@ -423,35 +417,27 @@ export default function TraceViewerPage() {
                               isActive
                                 ? 'border-blue-500 bg-blue-50 shadow-sm'
                                 : isPast
-                                ? 'border-gray-200 bg-gray-50 opacity-70'
-                                : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                                  ? 'border-gray-200 bg-gray-50 opacity-70'
+                                  : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
                             }`}
                             onClick={() => {
                               setCurrentEventIndex(index);
                               setSelectedEvent(event);
                             }}
                           >
-                            <div className={`w-8 h-8 rounded-full ${eventInfo.color} flex items-center justify-center text-base flex-shrink-0`}>
+                            <div
+                              className={`w-8 h-8 rounded-full ${eventInfo.color} flex items-center justify-center text-base flex-shrink-0`}
+                            >
                               {eventInfo.icon}
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className={`font-medium ${isActive ? 'text-blue-900' : 'text-gray-900'}`}>
-                                  {eventInfo.label}
-                                </span>
-                                <span className="text-xs text-gray-500 font-mono">
-                                  {formatTime(event.relativeTime)}
-                                </span>
+                                <span className={`font-medium ${isActive ? 'text-blue-900' : 'text-gray-900'}`}>{eventInfo.label}</span>
+                                <span className="text-xs text-gray-500 font-mono">{formatTime(event.relativeTime)}</span>
                               </div>
-                              {summary && (
-                                <div className="text-xs text-gray-600 mt-0.5 truncate">
-                                  {summary}
-                                </div>
-                              )}
+                              {summary && <div className="text-xs text-gray-600 mt-0.5 truncate">{summary}</div>}
                             </div>
-                            {isActive && (
-                              <div className="text-blue-600 text-sm">▶</div>
-                            )}
+                            {isActive && <div className="text-blue-600 text-sm">▶</div>}
                           </div>
                           {index < trace.events.length - 1 && (
                             <div className="flex justify-center -my-1">
@@ -472,33 +458,23 @@ export default function TraceViewerPage() {
                     <div className="space-y-3">
                       <div>
                         <div className="text-xs text-gray-500 mb-1">Step</div>
-                        <div className="font-semibold text-sm text-gray-900">
-                          {getEventTypeInfo(selectedEvent.type).label}
-                        </div>
-                        <div className="text-xs text-gray-500 mt-0.5">
-                          {formatTime(selectedEvent.relativeTime)}
-                        </div>
+                        <div className="font-semibold text-sm text-gray-900">{getEventTypeInfo(selectedEvent.type).label}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">{formatTime(selectedEvent.relativeTime)}</div>
                       </div>
 
                       {/* Compact Event-Specific Info */}
                       {selectedEvent.type === 'vector_db_search' && selectedEvent.data.topResult && (
                         <div className="p-2 bg-indigo-50 rounded border border-indigo-200">
                           <div className="text-xs font-semibold text-indigo-900 mb-1">Match</div>
-                          <div className="text-xs text-gray-700 mb-1">
-                            &quot;{selectedEvent.data.topResult.userInput}&quot;
-                          </div>
-                          <div className="text-xs text-gray-600">
-                            {(selectedEvent.data.topResult.similarity * 100).toFixed(0)}% similar
-                          </div>
+                          <div className="text-xs text-gray-700 mb-1">&quot;{selectedEvent.data.topResult.userInput}&quot;</div>
+                          <div className="text-xs text-gray-600">{(selectedEvent.data.topResult.similarity * 100).toFixed(0)}% similar</div>
                         </div>
                       )}
 
                       {selectedEvent.type === 'dialog_tree_search' && selectedEvent.data.matchedNodeId && (
                         <div className="p-2 bg-green-50 rounded border border-green-200">
                           <div className="text-xs font-semibold text-green-900 mb-1">Matched</div>
-                          <div className="text-xs text-gray-700">
-                            &quot;{selectedEvent.data.matchedUserInput}&quot;
-                          </div>
+                          <div className="text-xs text-gray-700">&quot;{selectedEvent.data.matchedUserInput}&quot;</div>
                         </div>
                       )}
 
@@ -513,9 +489,7 @@ export default function TraceViewerPage() {
 
                       {selectedEvent.type === 'user_memory_retrieval' && selectedEvent.data.memories && (
                         <div className="p-2 bg-cyan-50 rounded border border-cyan-200">
-                          <div className="text-xs font-semibold text-cyan-900 mb-1">
-                            {selectedEvent.data.memoriesFound} Memories
-                          </div>
+                          <div className="text-xs font-semibold text-cyan-900 mb-1">{selectedEvent.data.memoriesFound} Memories</div>
                           <div className="space-y-1 mt-1">
                             {selectedEvent.data.memories.slice(0, 2).map((memory: any, idx: number) => (
                               <div key={idx} className="text-xs text-gray-700 bg-white p-1.5 rounded">
@@ -532,9 +506,7 @@ export default function TraceViewerPage() {
                           Technical Details
                         </summary>
                         <div className="mt-1.5 p-2 bg-gray-50 rounded border border-gray-200">
-                          <pre className="text-xs overflow-auto max-h-48">
-                            {JSON.stringify(selectedEvent.data, null, 2)}
-                          </pre>
+                          <pre className="text-xs overflow-auto max-h-48">{JSON.stringify(selectedEvent.data, null, 2)}</pre>
                         </div>
                       </details>
                     </div>
@@ -554,9 +526,7 @@ export default function TraceViewerPage() {
           <div className="bg-white rounded-lg shadow-sm p-8 border border-gray-200 text-center">
             <div className="text-4xl mb-3">🔍</div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">No Trace Loaded</h3>
-            <p className="text-sm text-gray-600 mb-3">
-              Enter a trace ID to view AI processing steps
-            </p>
+            <p className="text-sm text-gray-600 mb-3">Enter a trace ID to view AI processing steps</p>
             <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded inline-block">
               <div className="font-semibold mb-1">How to get Trace ID:</div>
               <div>1. Send a chat message</div>

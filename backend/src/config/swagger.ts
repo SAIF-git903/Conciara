@@ -13,7 +13,15 @@ const options: swaggerJsdoc.Options = {
     },
     servers: [
       {
+<<<<<<< HEAD
+        url: 'http://localhost:3001',
+        description: 'Development server',
+      },
+      {
+        url: 'https://api.conversatree.com',
+=======
         url: 'https://conversatreeapi.geniusai.biz',
+>>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd
         description: 'Production server',
       },
     ],

@@ -1,42 +1,42 @@
-'use client'
+'use client';
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { useAuth } from '@/contexts/AuthContext'
-import LoadingSpinner from '@/components/LoadingSpinner'
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const { login, user } = useAuth()
-  const router = useRouter()
+  const [email, setEmail] = useState('mikeT@gmail.com');
+  const [password, setPassword] = useState('admin@123');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const { login, user } = useAuth();
+  const router = useRouter();
 
   // Redirect if already logged in
   useEffect(() => {
     if (user) {
-      router.push('/')
+      router.push('/');
     }
-  }, [user, router])
+  }, [user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(null)
-    setLoading(true)
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
 
     try {
-      await login(email, password)
+      await login(email, password);
       // Redirect handled by AuthContext
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials.')
+      setError(err.message || 'Login failed. Please check your credentials.');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   if (user) {
-    return null // Will redirect
+    return null; // Will redirect
   }
 
   return (
@@ -47,7 +47,12 @@ export default function LoginPage() {
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-100 rounded-2xl mb-4">
               <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+                />
               </svg>
             </div>
             <h1 className="text-2xl font-bold text-gray-900">ConversaTree</h1>
@@ -113,12 +118,10 @@ export default function LoginPage() {
 
           {/* Footer */}
           <div className="mt-8 text-center">
-            <p className="text-xs text-gray-500">
-              Admin users can only be created via database
-            </p>
+            <p className="text-xs text-gray-500">Admin users can only be created via database</p>
           </div>
         </div>
       </div>
     </div>
-  )
+  );
 }

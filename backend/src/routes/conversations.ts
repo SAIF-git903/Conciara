@@ -6,7 +6,10 @@ import {
 } from '../services/conversationService.js';
 import {
   buildConversationTree,
+<<<<<<< HEAD
+=======
   buildConversationTreeFromHistory,
+>>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd
   loadConversationTree,
   saveConversationTree,
 } from '../services/conversationTreeService.js';
@@ -275,6 +278,15 @@ router.get('/:sessionId/tree', async (req, res) => {
 
     // Build tree from traces
     const traces = await traceService.getSessionTraces(sessionId);
+<<<<<<< HEAD
+    if (traces.length === 0) {
+      return res.status(404).json({ error: 'No traces found for this session' });
+    }
+
+    const tree = buildConversationTree(traces);
+    if (!tree) {
+      return res.status(404).json({ error: 'Could not build conversation tree' });
+=======
     let tree = null;
 
     if (traces.length > 0) {
@@ -292,6 +304,7 @@ router.get('/:sessionId/tree', async (req, res) => {
         error: 'No conversation data found for this session',
         hint: 'No traces or conversation history found. The session may exist but have no messages yet.',
       });
+>>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd
     }
 
     // Save to database for future use

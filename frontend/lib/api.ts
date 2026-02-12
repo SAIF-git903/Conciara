@@ -41,7 +41,7 @@ api.interceptors.response.use(
       }
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 export interface DialogTree {
@@ -170,7 +170,7 @@ export const dialogNodeApi = {
     parentId: number | null,
     userInput: string | null,
     botResponse: string | null,
-    generateEmbedding: boolean = true
+    generateEmbedding: boolean = true,
   ): Promise<DialogNode> => {
     const response = await api.post('/dialog-node', {
       tree_id: treeId,
@@ -185,7 +185,7 @@ export const dialogNodeApi = {
     id: number,
     userInput: string | null,
     botResponse: string | null,
-    generateEmbedding: boolean = true
+    generateEmbedding: boolean = true,
   ): Promise<DialogNode> => {
     const response = await api.put(`/dialog-node/${id}`, {
       user_input: userInput,
@@ -313,7 +313,13 @@ export const abVariationApi = {
     return response.data;
   },
   create: async (skinId: number, name: string, description?: string, variationConfig?: any, isActive?: boolean): Promise<ABVariation> => {
-    const response = await api.post('/ab-variation', { skin_id: skinId, name, description, variation_config: variationConfig, is_active: isActive });
+    const response = await api.post('/ab-variation', {
+      skin_id: skinId,
+      name,
+      description,
+      variation_config: variationConfig,
+      is_active: isActive,
+    });
     return response.data;
   },
   update: async (id: number, name: string, description?: string, variationConfig?: any, isActive?: boolean): Promise<ABVariation> => {

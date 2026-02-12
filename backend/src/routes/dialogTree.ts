@@ -5,11 +5,16 @@ import {
   createDialogTree,
   updateDialogTree,
   deleteDialogTree,
+<<<<<<< HEAD
+=======
   getDialogTreesWithDomain,
+>>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd
 } from '../services/dialogService.js';
 
 const router = express.Router();
 
+<<<<<<< HEAD
+=======
 /** Base URL for the loader script (frontend origin). Set FRONTEND_URL in .env e.g. http://localhost:3002 */
 const FRONTEND_URL = (process.env.FRONTEND_URL || 'http://localhost:3002').replace(/\/+$/, '');
 /** Public API base URL for data-api-url. Set API_PUBLIC_URL in .env e.g. http://localhost:3001/api */
@@ -24,6 +29,7 @@ function buildEmbedCode(treeId: number, domain: string | null): string {
 <script src="${loaderUrl}" ${attrs.join(' ')}></script>`;
 }
 
+>>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd
 /**
  * @swagger
  * /api/dialog-tree:
@@ -71,6 +77,8 @@ router.get('/', async (req, res) => {
 
 /**
  * @swagger
+<<<<<<< HEAD
+=======
  * /api/dialog-tree/embed-codes:
  *   get:
  *     summary: Get embed code for every dialog tree
@@ -119,6 +127,7 @@ router.get('/embed-codes', async (req, res) => {
 
 /**
  * @swagger
+>>>>>>> 524c85588a2547f6095220e8fd3dfffba7d9f7bd
  * /api/dialog-tree/{id}:
  *   get:
  *     summary: Get dialog tree by ID
