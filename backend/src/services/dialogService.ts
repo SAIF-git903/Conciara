@@ -48,7 +48,6 @@ export interface Preprompt {
   updated_at: Date;
 }
 
-
 // Dialog Tree operations
 export async function getAllDialogTrees(abVariationId?: number): Promise<DialogTree[]> {
   let query = 'SELECT * FROM dialog_trees';
@@ -105,28 +104,22 @@ export async function getDialogTreeById(id: number): Promise<DialogTree | null> 
   return result.rows[0] || null;
 }
 
-export async function createDialogTree(
-  name: string,
-  description?: string,
-  abVariationId?: number
-): Promise<DialogTree> {
-  const result = await pool.query(
-    'INSERT INTO dialog_trees (name, description, ab_variation_id) VALUES ($1, $2, $3) RETURNING *',
-    [name, description || null, abVariationId || null]
-  );
+export async function createDialogTree(name: string, description?: string, abVariationId?: number): Promise<DialogTree> {
+  const result = await pool.query('INSERT INTO dialog_trees (name, description, ab_variation_id) VALUES ($1, $2, $3) RETURNING *', [
+    name,
+    description || null,
+    abVariationId || null,
+  ]);
   // console.log(result.rows[0]);
   return result.rows[0];
 }
 
-export async function updateDialogTree(
-  id: number,
-  name: string,
-  description?: string
-): Promise<DialogTree> {
-  const result = await pool.query(
-    'UPDATE dialog_trees SET name = $1, description = $2, updated_at = NOW() WHERE id = $3 RETURNING *',
-    [name, description || null, id]
-  );
+export async function updateDialogTree(id: number, name: string, description?: string): Promise<DialogTree> {
+  const result = await pool.query('UPDATE dialog_trees SET name = $1, description = $2, updated_at = NOW() WHERE id = $3 RETURNING *', [
+    name,
+    description || null,
+    id,
+  ]);
   if (result.rows.length === 0) {
     throw new Error('Dialog tree not found');
   }
@@ -139,10 +132,7 @@ export async function deleteDialogTree(id: number): Promise<void> {
 
 // Dialog Node operations
 export async function getNodesByTreeId(treeId: number): Promise<DialogNode[]> {
-  const result = await pool.query(
-    'SELECT * FROM dialog_nodes WHERE tree_id = $1 ORDER BY created_at ASC',
-    [treeId]
-  );
+  const result = await pool.query('SELECT * FROM dialog_nodes WHERE tree_id = $1 ORDER BY created_at ASC', [treeId]);
   return result.rows;
 }
 
@@ -156,7 +146,7 @@ export async function createDialogNode(
   parentId: number | null,
   userInput: string | null,
   botResponse: string | null,
-  generateEmbeddingForNode: boolean = true
+  generateEmbeddingForNode: boolean = true,
 ): Promise<DialogNode> {
   let embedding: number[] | null = null;
 
@@ -187,13 +177,7 @@ export async function createDialogNode(
     : `INSERT INTO dialog_nodes (tree_id, parent_id, user_input, bot_response, vector_embedding)
        VALUES ($1, $2, $3, $4, $5) RETURNING *`;
 
-  const result = await pool.query(query, [
-    treeId,
-    parentId,
-    userInput,
-    botResponse,
-    embeddingValue
-  ]);
+  const result = await pool.query(query, [treeId, parentId, userInput, botResponse, embeddingValue]);
   return result.rows[0];
 }
 
@@ -201,7 +185,7 @@ export async function updateDialogNode(
   id: number,
   userInput: string | null,
   botResponse: string | null,
-  generateEmbeddingForNode: boolean = true
+  generateEmbeddingForNode: boolean = true,
 ): Promise<DialogNode> {
   let embedding: number[] | null = null;
 
@@ -234,12 +218,7 @@ export async function updateDialogNode(
        SET user_input = $1, bot_response = $2, vector_embedding = $3, updated_at = NOW()
        WHERE id = $4 RETURNING *`;
 
-  const result = await pool.query(query, [
-    userInput,
-    botResponse,
-    embeddingValue,
-    id
-  ]);
+  const result = await pool.query(query, [userInput, botResponse, embeddingValue, id]);
 
   if (result.rows.length === 0) {
     throw new Error('Dialog node not found');
@@ -253,35 +232,23 @@ export async function deleteDialogNode(id: number): Promise<void> {
 
 // Preprompt operations
 export async function getPrepromptByTreeId(treeId: number): Promise<Preprompt | null> {
-  const result = await pool.query(
-    'SELECT * FROM preprompts WHERE tree_id = $1 ORDER BY updated_at DESC LIMIT 1',
-    [treeId]
-  );
+  const result = await pool.query('SELECT * FROM preprompts WHERE tree_id = $1 ORDER BY updated_at DESC LIMIT 1', [treeId]);
   return result.rows[0] || null;
 }
 
-export async function createOrUpdatePreprompt(
-  treeId: number,
-  content: string
-): Promise<Preprompt> {
+export async function createOrUpdatePreprompt(treeId: number, content: string): Promise<Preprompt> {
   // Check if preprompt exists directly in database
-  const existingResult = await pool.query(
-    'SELECT * FROM preprompts WHERE tree_id = $1 ORDER BY updated_at DESC LIMIT 1',
-    [treeId]
-  );
+  const existingResult = await pool.query('SELECT * FROM preprompts WHERE tree_id = $1 ORDER BY updated_at DESC LIMIT 1', [treeId]);
   const existing = existingResult.rows[0];
 
   if (existing) {
-    const result = await pool.query(
-      'UPDATE preprompts SET content = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
-      [content, existing.id]
-    );
+    const result = await pool.query('UPDATE preprompts SET content = $1, updated_at = NOW() WHERE id = $2 RETURNING *', [
+      content,
+      existing.id,
+    ]);
     return result.rows[0];
   } else {
-    const result = await pool.query(
-      'INSERT INTO preprompts (tree_id, content) VALUES ($1, $2) RETURNING *',
-      [treeId, content]
-    );
+    const result = await pool.query('INSERT INTO preprompts (tree_id, content) VALUES ($1, $2) RETURNING *', [treeId, content]);
     return result.rows[0];
   }
 }
@@ -289,4 +256,3 @@ export async function createOrUpdatePreprompt(
 export async function deletePreprompt(id: number): Promise<void> {
   await pool.query('DELETE FROM preprompts WHERE id = $1', [id]);
 }
-
