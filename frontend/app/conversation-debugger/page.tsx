@@ -51,7 +51,7 @@ export default function ConversationDebuggerPage() {
   const [selectedNode, setSelectedNode] = useState<TreeNode | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'accordion' | 'tree'>('tree'); // View mode toggle
+  const [viewMode, setViewMode] = useState<'accordion' | 'tree' | '2d' | '3d'>('3d'); // View mode toggle
 
   // Playback state
   const [playbackState, setPlaybackState] = useState<PlaybackState>('idle');
@@ -89,39 +89,39 @@ export default function ConversationDebuggerPage() {
   }, []);
 
   // Define updateActiveNode first (before it's used in other functions)
-  const updateActiveNode = useCallback((node: TreeNode) => {
-    setActiveNodeIds([node.id]);
-    setSelectedNode(node);
+  const updateActiveNode = useCallback(
+    (node: TreeNode) => {
+      setActiveNodeIds([node.id]);
+      setSelectedNode(node);
 
-    // Highlight path to root
-    if (conversationTree) {
-      const pathToRoot: string[] = [];
-      const findPath = (n: TreeNode, targetId: string, path: string[]): boolean => {
-        if (n.id === targetId) {
-          path.push(n.id);
-          return true;
-        }
-        for (const child of n.children) {
-          if (findPath(child, targetId, path)) {
+      // Highlight path to root
+      if (conversationTree) {
+        const pathToRoot: string[] = [];
+        const findPath = (n: TreeNode, targetId: string, path: string[]): boolean => {
+          if (n.id === targetId) {
             path.push(n.id);
             return true;
           }
-        }
-        return false;
-      };
-      findPath(conversationTree.rootNode, node.id, pathToRoot);
-      setActiveNodeIds(pathToRoot);
-    }
-  }, [conversationTree]);
+          for (const child of n.children) {
+            if (findPath(child, targetId, path)) {
+              path.push(n.id);
+              return true;
+            }
+          }
+          return false;
+        };
+        findPath(conversationTree.rootNode, node.id, pathToRoot);
+        setActiveNodeIds(pathToRoot);
+      }
+    },
+    [conversationTree],
+  );
 
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger if typing in input/textarea
-      if (
-        (e.target as HTMLElement).tagName === 'INPUT' ||
-        (e.target as HTMLElement).tagName === 'TEXTAREA'
-      ) {
+      if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') {
         return;
       }
 
@@ -167,10 +167,9 @@ export default function ConversationDebuggerPage() {
     setError(null);
     try {
       const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      const apiBaseUrl = isLocalhost
-        ? (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api')
-        : '/api/proxy';
-
+      const apiBaseUrl = 'https://conversatreeapi.geniusai.biz/api';
+      //  isLocalhost ? process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api' : '/api/proxy';
+      console.log(apiBaseUrl, 'apibaseurl');
       // Get auth token from localStorage
       const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       const headers: HeadersInit = {
@@ -210,7 +209,7 @@ export default function ConversationDebuggerPage() {
       const collectNodesWithTraceGroups = (
         node: TreeNode,
         traceGroupId: string | null = null,
-        isTraceStart: boolean = false
+        isTraceStart: boolean = false,
       ): PlaybackNode[] => {
         // User messages start a new trace group
         const currentTraceGroupId = node.type === 'user_message' ? node.id : traceGroupId;
@@ -225,12 +224,8 @@ export default function ConversationDebuggerPage() {
         const nodes: PlaybackNode[] = [playbackNode];
 
         // Recursively collect children with the same trace group
-        node.children.forEach(child => {
-          nodes.push(...collectNodesWithTraceGroups(
-            child,
-            currentTraceGroupId || traceGroupId,
-            false
-          ));
+        node.children.forEach((child) => {
+          nodes.push(...collectNodesWithTraceGroups(child, currentTraceGroupId || traceGroupId, false));
         });
 
         return nodes;
@@ -303,18 +298,13 @@ export default function ConversationDebuggerPage() {
     let delay: number;
 
     // Check if we're transitioning between different trace groups (different user messages)
-    const isDifferentTraceGroup =
-      currentNode.traceGroupId &&
-      nextNode.traceGroupId &&
-      currentNode.traceGroupId !== nextNode.traceGroupId;
+    const isDifferentTraceGroup = currentNode.traceGroupId && nextNode.traceGroupId && currentNode.traceGroupId !== nextNode.traceGroupId;
 
     // Check if next node starts a new trace (new user message)
     const isNewTraceStart = nextNode.isTraceStart || nextNode.type === 'user_message';
 
     // Check if current node is root or user message (these should appear instantly)
-    const isTransitionFromRootOrUser =
-      currentNode.type === 'root' ||
-      currentNode.type === 'user_message';
+    const isTransitionFromRootOrUser = currentNode.type === 'root' || currentNode.type === 'user_message';
 
     if (isDifferentTraceGroup || isNewTraceStart || isTransitionFromRootOrUser) {
       // Skip gaps between user messages - they should appear instantly
@@ -414,10 +404,7 @@ export default function ConversationDebuggerPage() {
         <AppHeader />
         <div className="flex-1 flex overflow-hidden">
           {/* Sidebar */}
-          <ConversationSidebar
-            onSelectConversation={handleSelectConversation}
-            selectedSessionId={selectedSessionId || undefined}
-          />
+          <ConversationSidebar onSelectConversation={handleSelectConversation} selectedSessionId={selectedSessionId || undefined} />
 
           {/* Main Content */}
           <div className="flex-1 flex flex-col overflow-hidden">
@@ -428,9 +415,7 @@ export default function ConversationDebuggerPage() {
                   <Bug className="w-5 h-5 text-gray-700" />
                   <div>
                     <h1 className="text-lg font-bold text-gray-900">AI Conversation Debugger</h1>
-                    <p className="text-xs text-gray-500 uppercase tracking-wide">
-                      Visualize and replay AI conversations
-                    </p>
+                    <p className="text-xs text-gray-500 uppercase tracking-wide">Visualize and replay AI conversations</p>
                   </div>
                 </div>
 
@@ -521,7 +506,7 @@ export default function ConversationDebuggerPage() {
                           onChange={(e) => handleTimelineChange(parseInt(e.target.value))}
                           className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                           style={{
-                            background: `linear-gradient(to right, #2563eb 0%, #2563eb ${allNodesRef.current.length > 1 ? (currentPlaybackIndex / (allNodesRef.current.length - 1)) * 100 : 0}%, #e5e7eb ${allNodesRef.current.length > 1 ? (currentPlaybackIndex / (allNodesRef.current.length - 1)) * 100 : 0}%, #e5e7eb 100%)`
+                            background: `linear-gradient(to right, #2563eb 0%, #2563eb ${allNodesRef.current.length > 1 ? (currentPlaybackIndex / (allNodesRef.current.length - 1)) * 100 : 0}%, #e5e7eb ${allNodesRef.current.length > 1 ? (currentPlaybackIndex / (allNodesRef.current.length - 1)) * 100 : 0}%, #e5e7eb 100%)`,
                           }}
                         />
                         {playbackState === 'playing' && (
@@ -529,7 +514,7 @@ export default function ConversationDebuggerPage() {
                             <div
                               className="h-full bg-blue-400 opacity-30 rounded-lg transition-all duration-100"
                               style={{
-                                width: `${allNodesRef.current.length > 1 ? (currentPlaybackIndex / (allNodesRef.current.length - 1)) * 100 : 0}%`
+                                width: `${allNodesRef.current.length > 1 ? (currentPlaybackIndex / (allNodesRef.current.length - 1)) * 100 : 0}%`,
                               }}
                             />
                           </div>
@@ -555,10 +540,11 @@ export default function ConversationDebuggerPage() {
                               setTimeout(() => startPlayback(), 100);
                             }
                           }}
-                          className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${playbackSpeed === speed
+                          className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${
+                            playbackSpeed === speed
                               ? 'bg-blue-600 text-white shadow-sm'
                               : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
-                            }`}
+                          }`}
                         >
                           {speed === 'step' ? 'Step' : `${speed}x`}
                         </button>
@@ -610,33 +596,41 @@ export default function ConversationDebuggerPage() {
                 ) : conversationTree ? (
                   <div className="h-full flex flex-col">
                     {/* View Mode Toggle */}
-                    <div className="flex items-center justify-end gap-2 px-3 py-2 bg-gray-50 border-b border-gray-200">
+                    {/* <div className="flex items-center justify-end gap-2 px-3 py-2 bg-gray-50 border-b border-gray-200">
                       <span className="text-xs text-gray-600 font-medium">View:</span>
                       <div className="flex gap-1 bg-white border border-gray-300 rounded-lg p-1">
                         <button
                           onClick={() => setViewMode('accordion')}
-                          className={`px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5 ${viewMode === 'accordion'
-                              ? 'bg-blue-600 text-white shadow-sm'
-                              : 'text-gray-700 hover:bg-gray-100'
-                            }`}
+                          className={`px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                            viewMode === 'accordion' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-100'
+                          }`}
                           title="Accordion View"
                         >
                           <LayoutList className="w-3.5 h-3.5" />
                           Accordion
                         </button>
                         <button
-                          onClick={() => setViewMode('tree')}
-                          className={`px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5 ${viewMode === 'tree'
-                              ? 'bg-blue-600 text-white shadow-sm'
-                              : 'text-gray-700 hover:bg-gray-100'
-                            }`}
+                          onClick={() => setViewMode('3d')}
+                          className={`px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                            viewMode === 'tree' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-100'
+                          }`}
+                          title="Tree View with Branches"
+                        >
+                          <Network className="w-3.5 h-3.5" />
+                          Tree
+                        </button>
+                        <button
+                          onClick={() => setViewMode('2d')}
+                          className={`px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                            viewMode === 'tree' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-100'
+                          }`}
                           title="Tree View with Branches"
                         >
                           <Network className="w-3.5 h-3.5" />
                           Tree
                         </button>
                       </div>
-                    </div>
+                    </div> */}
                     <ConversationTreeView
                       rootNode={conversationTree.rootNode}
                       onNodeClick={handleNodeClick}
@@ -684,9 +678,7 @@ export default function ConversationDebuggerPage() {
 
                     <div>
                       <div className="text-xs text-gray-500 mb-1.5 uppercase tracking-wide font-semibold">Time</div>
-                      <div className="text-sm text-gray-700 font-mono font-semibold">
-                        {formatTime(selectedNode.relativeTime)}
-                      </div>
+                      <div className="text-sm text-gray-700 font-mono font-semibold">{formatTime(selectedNode.relativeTime)}</div>
                     </div>
 
                     {selectedNode.data && Object.keys(selectedNode.data).length > 0 && (
