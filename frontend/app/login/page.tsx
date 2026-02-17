@@ -4,13 +4,18 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import { authApi, type BypassUser } from '@/lib/authApi';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('mikeT@gmail.com');
   const [password, setPassword] = useState('admin@123');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const { login, user } = useAuth();
+  const [bypassUsers, setBypassUsers] = useState<BypassUser[]>([]);
+  const [bypassLoading, setBypassLoading] = useState(false);
+  const [bypassError, setBypassError] = useState<string | null>(null);
+  const [bypassSelect, setBypassSelect] = useState<string>('');
+  const { login, loginBypass, user } = useAuth();
   const router = useRouter();
 
   // Redirect if already logged in
@@ -19,6 +24,33 @@ export default function LoginPage() {
       router.push('/');
     }
   }, [user, router]);
+
+  // Load bypass users on mount
+  useEffect(() => {
+    let mounted = true;
+    setBypassLoading(true);
+    setBypassError(null);
+    authApi
+      .getBypassUsers()
+      .then((data) => {
+        if (mounted && data.users?.length) {
+          setBypassUsers(data.users);
+          setBypassSelect('');
+        } else if (mounted) {
+          setBypassUsers([]);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setBypassUsers([]);
+          setBypassError('Could not load users. Is the API running?');
+        }
+      })
+      .finally(() => {
+        if (mounted) setBypassLoading(false);
+      });
+    return () => { mounted = false; };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,6 +65,15 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleBypassSelect = (userId: string) => {
+    if (!userId) return;
+    setError(null);
+    setLoading(true);
+    loginBypass(Number(userId)).catch((err: any) => {
+      setError(err.message || 'Bypass login failed.');
+    }).finally(() => setLoading(false));
   };
 
   if (user) {
@@ -65,6 +106,48 @@ export default function LoginPage() {
               <p className="text-sm text-red-800">{error}</p>
             </div>
           )}
+
+          {/* Quick login: one user per role */}
+          <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-lg">
+            <p className="text-sm font-medium text-gray-700 mb-2">Quick login</p>
+            <p className="text-xs text-gray-500 mb-3">Select a user to log in as that role</p>
+            {bypassLoading ? (
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <LoadingSpinner size="sm" />
+                Loading users…
+              </div>
+            ) : bypassError ? (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">{bypassError}</p>
+            ) : bypassUsers.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                <select
+                  value={bypassSelect}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setBypassSelect(val);
+                    if (val) handleBypassSelect(val);
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition text-sm"
+                  disabled={loading}
+                >
+                  <option value="">Choose user…</option>
+                  {bypassUsers.map((u) => (
+                    <option key={u.id} value={String(u.id)}>
+                      {u.fullName || u.email} ({u.role})
+                    </option>
+                  ))}
+                </select>
+                {loading && (
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <LoadingSpinner size="sm" />
+                    Logging in…
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">No users available. Add at least one user per role (admin, manager, viewer).</p>
+            )}
+          </div>
 
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-6">

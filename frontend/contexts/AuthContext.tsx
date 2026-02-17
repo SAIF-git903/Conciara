@@ -27,6 +27,7 @@ interface AuthContextType {
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginBypass: (userId: number) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   isAdmin: boolean;
@@ -230,6 +231,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [router],
   );
 
+  const loginBypass = useCallback(
+    async (userId: number) => {
+      try {
+        const { authApi } = await import('@/lib/authApi');
+        const response = await authApi.loginBypass(userId);
+        const { token: newToken, refreshToken, user: userData } = response;
+
+        localStorage.setItem('auth_token', newToken);
+        localStorage.setItem('auth_refresh_token', refreshToken);
+        localStorage.setItem('auth_user', JSON.stringify(userData));
+
+        setToken(newToken);
+        setUser(userData);
+
+        axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+
+        router.push('/');
+      } catch (error: any) {
+        const message = error.response?.data?.error || 'Bypass login failed';
+        throw new Error(message);
+      }
+    },
+    [router],
+  );
+
   const logout = useCallback(() => {
     // Clear storage
     localStorage.removeItem('auth_token');
@@ -279,6 +305,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         token,
         loading,
         login,
+        loginBypass,
         logout,
         refreshUser,
         isAdmin,

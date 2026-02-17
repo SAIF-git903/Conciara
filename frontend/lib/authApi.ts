@@ -47,9 +47,27 @@ export interface CreateUserInput {
   websiteIds?: number[];
 }
 
+export interface BypassUser {
+  id: number;
+  email: string;
+  fullName?: string;
+  role: string;
+  websites?: User['websites'];
+}
+
 export const authApi = {
   login: async (email: string, password: string) => {
     const response = await api.post('/auth/login', { email, password });
+    return response.data;
+  },
+
+  getBypassUsers: async (): Promise<{ users: BypassUser[] }> => {
+    const response = await api.get('/auth/bypass-users');
+    return response.data;
+  },
+
+  loginBypass: async (userId: number) => {
+    const response = await api.post('/auth/bypass', { userId });
     return response.data;
   },
 

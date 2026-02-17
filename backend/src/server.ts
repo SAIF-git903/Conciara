@@ -20,6 +20,8 @@ import mediaRoutes from './routes/media.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import apiKeyRoutes from './routes/apiKeys.js';
+import { getBypassUsers, getUserById, getUserWebsites, updateLastLogin } from './services/userService.js';
+import { generateJWT, generateRefreshToken } from './services/authService.js';
 
 dotenv.config();
 
@@ -51,6 +53,40 @@ app.use(cors({
 app.use('/api/media', mediaRoutes);
 
 app.use(express.json());
+
+// Bypass login (no secret; remove later for production)
+app.get('/api/auth/bypass-users', async (req, res) => {
+  try {
+    const users = await getBypassUsers();
+    return res.json({ users });
+  } catch (error: any) {
+    console.error('Bypass users error:', error);
+    return res.status(500).json({ error: 'Failed to load bypass users' });
+  }
+});
+app.post('/api/auth/bypass', async (req, res) => {
+  const userId = req.body?.userId;
+  if (userId == null) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
+  try {
+    const user = await getUserById(Number(userId));
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!user.isActive) return res.status(403).json({ error: 'User is disabled' });
+    await updateLastLogin(user.id);
+    const websites = await getUserWebsites(user.id);
+    const token = generateJWT({ id: user.id, email: user.email, role: user.role, fullName: user.fullName });
+    const refreshToken = generateRefreshToken({ id: user.id, email: user.email, role: user.role, fullName: user.fullName });
+    return res.json({
+      token,
+      refreshToken,
+      user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role, websites },
+    });
+  } catch (error: any) {
+    console.error('Bypass login error:', error);
+    return res.status(500).json({ error: 'Bypass login failed' });
+  }
+});
 
 // Swagger API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {

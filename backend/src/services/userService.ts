@@ -256,6 +256,51 @@ export async function getUserWebsiteIds(userId: number): Promise<number[]> {
 }
 
 /**
+ * Get one active user per role for bypass/demo login dropdown
+ */
+export async function getBypassUsers(): Promise<Array<{
+  id: number;
+  email: string;
+  fullName?: string;
+  role: string;
+  websites: Array<{ websiteId: number; websiteName: string; domain: string; role: string }>;
+}>> {
+  const result = await pool.query(
+    `SELECT id, email, full_name, role FROM users
+     WHERE is_active = true
+     ORDER BY role, id`
+  );
+
+  const seen = new Set<string>();
+  const byRole: typeof result.rows = [];
+  for (const row of result.rows) {
+    if (seen.has(row.role)) continue;
+    seen.add(row.role);
+    byRole.push(row);
+  }
+
+  const withWebsites = await Promise.all(
+    byRole.map(async (row) => {
+      const websites = await getUserWebsites(row.id);
+      return {
+        id: row.id,
+        email: row.email,
+        fullName: row.full_name,
+        role: row.role,
+        websites: websites.map((w) => ({
+          websiteId: w.websiteId,
+          websiteName: w.websiteName,
+          domain: w.domain,
+          role: w.role,
+        })),
+      };
+    })
+  );
+
+  return withWebsites;
+}
+
+/**
  * Check if user has access to a website
  */
 export async function userHasWebsiteAccess(userId: number, websiteId: number): Promise<boolean> {

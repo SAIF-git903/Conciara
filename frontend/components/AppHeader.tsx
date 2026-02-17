@@ -1,13 +1,33 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import Link from 'next/link'
 import { MessageSquare, Users, Bug } from 'lucide-react'
 import NavItem from './NavItem'
 import UserDropdown from './UserDropdown'
+import { authApi, type BypassUser } from '@/lib/authApi'
 
 export default function AppHeader() {
-  const { user, isAdmin } = useAuth()
+  const { user, isAdmin, loginBypass } = useAuth()
+  const [bypassUsers, setBypassUsers] = useState<BypassUser[]>([])
+  const [bypassSwitching, setBypassSwitching] = useState(false)
+
+  useEffect(() => {
+    authApi.getBypassUsers().then((data) => {
+      if (data.users?.length) setBypassUsers(data.users)
+    }).catch(() => {})
+  }, [])
+
+  const handleBypassSwitch = async (userId: number) => {
+    if (userId === user?.id) return
+    setBypassSwitching(true)
+    try {
+      await loginBypass(userId)
+    } finally {
+      setBypassSwitching(false)
+    }
+  }
 
   if (!user) return null
 
@@ -22,7 +42,11 @@ export default function AppHeader() {
       label: 'Debugger',
       icon: Bug,
     },
-
+    ...(isAdmin ? [{
+      href: '/users',
+      label: 'Users',
+      icon: Users,
+    }] : []),
   ]
 
   return (
@@ -73,9 +97,26 @@ export default function AppHeader() {
             </nav>
           </div>
 
-          {/* Right: User */}
+          {/* Right: User + optional bypass switch */}
           <div className="flex items-center gap-3 flex-shrink-0">
-            {/* User Dropdown */}
+            {bypassUsers.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 hidden sm:inline">Login as:</span>
+                <select
+                  value={user.id}
+                  onChange={(e) => handleBypassSwitch(Number(e.target.value))}
+                  disabled={bypassSwitching}
+                  className="text-sm border border-gray-200 rounded-md px-2 py-1.5 bg-gray-50 text-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-50"
+                  aria-label="Switch user (demo)"
+                >
+                  {bypassUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.fullName || u.email} ({u.role})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <UserDropdown />
           </div>
         </div>

@@ -4,7 +4,7 @@
  */
 
 import express from 'express';
-import { getUserByEmail, updateLastLogin } from '../services/userService.js';
+import { getUserByEmail, getUserById, updateLastLogin, getBypassUsers } from '../services/userService.js';
 import { 
   verifyPassword, 
   generateJWT, 
@@ -149,6 +149,64 @@ router.post('/login', async (req, res) => {
   } catch (error: any) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Login failed', details: error.message });
+  }
+});
+
+/**
+ * GET /api/auth/bypass-users - one user per role (bypass routes are mounted in server.ts)
+ * POST /api/auth/bypass - login by userId (no secret)
+ */
+router.get('/bypass-users', async (req, res) => {
+  try {
+    const users = await getBypassUsers();
+    return res.json({ users });
+  } catch (error: any) {
+    console.error('Bypass users error:', error);
+    return res.status(500).json({ error: 'Failed to load bypass users' });
+  }
+});
+router.post('/bypass', async (req, res) => {
+  const userId = req.body?.userId;
+  if (userId == null) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
+  try {
+    const user = await getUserById(Number(userId));
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (!user.isActive) {
+      return res.status(403).json({ error: 'User is disabled' });
+    }
+    await updateLastLogin(user.id);
+    const { getUserWebsites } = await import('../services/userService.js');
+    const websites = await getUserWebsites(user.id);
+    const token = generateJWT({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      fullName: user.fullName,
+    });
+    const refreshToken = generateRefreshToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      fullName: user.fullName,
+    });
+    res.json({
+      token,
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+        websites,
+      },
+    });
+  } catch (error: any) {
+    console.error('Bypass login error:', error);
+    res.status(500).json({ error: 'Bypass login failed' });
   }
 });
 
