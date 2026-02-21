@@ -104,6 +104,7 @@
       this.messages = [];
       this.quickReplies = [];
       this.isLoading = false;
+      this.isInitializingConversation = false;
       this.container = null;
       this.configLoaded = false;
       this.isSendingMessage = false;
@@ -706,6 +707,8 @@
         this.container = document.createElement('div');
         this.container.id = 'conversatree-widget';
         this.container.innerHTML = this.renderButton();
+        // New container element => listeners need attaching again
+        this.eventListenersAttached = false;
         
         // Apply position styles
         const positionStyles = this.getPositionStyles();
@@ -1950,8 +1953,6 @@
       
       if (this.isOpen) {
         this.container.innerHTML = this.renderWindow();
-        // Reset event listeners flag when re-rendering
-        this.eventListenersAttached = false;
         this.attachEventListeners();
         this.scrollToBottom();
         
@@ -2141,11 +2142,16 @@
     }
 
     async initializeConversation() {
+      // Guard against duplicate calls (e.g. duplicated event listeners / rapid toggles)
+      if (this.isInitializingConversation) {
+        return;
+      }
       if (!this.config.treeId) {
         this.addMessage('bot', this.getUIText('errorMessage', "Sorry, no chatbot is configured. Please contact support."));
         return;
       }
 
+      this.isInitializingConversation = true;
       this.isLoading = true;
       this.updateView();
 
@@ -2192,6 +2198,7 @@
       } finally {
         this.isLoading = false;
         this.isSendingMessage = false;
+        this.isInitializingConversation = false;
         this.updateView();
       }
     }
