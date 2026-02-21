@@ -11,6 +11,8 @@ import {
 import {
   generateContextualResponse,
   generateHybridResponse,
+  translateLinesToLanguage,
+  translateTextToLanguage,
   LLMError,
   isLLMLimitError,
   isLLMAuthError,
@@ -736,6 +738,13 @@ async function findMatchingNode(
   return null;
 }
 
+// Language code -> display name for LLM instruction (respond in this language)
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: 'English', es: 'Spanish', fr: 'French', de: 'German', it: 'Italian', pt: 'Portuguese',
+  ar: 'Arabic', hi: 'Hindi', zh: 'Chinese', ja: 'Japanese', ko: 'Korean',
+  nl: 'Dutch', ru: 'Russian', tr: 'Turkish',
+};
+
 // Process chat message with user memory support
 export async function processChatMessage(
   treeId: number,
@@ -743,7 +752,8 @@ export async function processChatMessage(
   sessionId: string | null,
   userId?: string | null,
   useMemory: boolean = true, // Enable memory by default
-  enableTracing: boolean = true // Enable tracing by default
+  enableTracing: boolean = true, // Enable tracing by default
+  language: string | null = null // Optional: respond in this language (e.g. "es", "fr")
 ): Promise<ChatMessage> {
   // Create trace for this conversation
   const session = await getOrCreateSession(sessionId, treeId, userId);
@@ -775,7 +785,11 @@ export async function processChatMessage(
   
   // Get preprompt for this tree (if configured)
   const preprompt = await getPrepromptByTreeId(treeId);
-  const prepromptContent = preprompt?.content || undefined;
+  let prepromptContent = preprompt?.content || undefined;
+  if (language) {
+    const langName = LANGUAGE_NAMES[language] || language;
+    prepromptContent = (prepromptContent || '') + `\n\nIMPORTANT: You must respond only in ${langName}. All your messages must be written in ${langName}.`;
+  }
 
   // Load product catalog for this tree's website (so LLM knows what products exist)
   const productCatalog = await getProductCatalogForTree(treeId);
@@ -798,8 +812,9 @@ export async function processChatMessage(
   if (userMessage === '__START__' || userMessage.trim() === '') {
     const rootNode = getRootNode(allNodes);
     let greeting = rootNode?.bot_response || "Hello! I'm ready to help you.";
-    
-    // Personalize greeting if user has memory
+    let greetingViaLLM = false;
+
+    // Personalize greeting if user has memory (LLM output will respect preprompt language)
     if (userId && useMemory) {
       const userContext = await buildUserContext(userId);
       if (userContext) {
@@ -812,16 +827,33 @@ export async function processChatMessage(
             prepromptContent,
             recentConversation
           );
+          greetingViaLLM = true;
         } catch (error: any) {
-          // LLM failed - use original greeting from dialog tree
           if (error instanceof LLMError && error.shouldFallback) {
             console.warn('[ChatService] LLM limit exceeded during greeting. Using dialog tree greeting.');
           }
-          // greeting already has the dialog tree value, so just continue
         }
       }
     }
-    
+
+    // When language is set but we did not run greeting through LLM, translate greeting to that language
+    if (language && !greetingViaLLM) {
+      const langName = LANGUAGE_NAMES[language] || language;
+      if (hasLLMCredits()) {
+        try {
+          const before = greeting;
+          greeting = await translateTextToLanguage(greeting, langName);
+          if (greeting === before) {
+            console.warn('[ChatService] Greeting translation returned unchanged (language=%s)', language);
+          }
+        } catch (error: any) {
+          console.warn('[ChatService] Greeting translation failed:', error?.message || error);
+        }
+      } else {
+        console.warn('[ChatService] Skipping greeting translation: OPENAI_API_KEY not set (language=%s)', language);
+      }
+    }
+
     if (rootNode) {
       await updateSessionNode(session.session_id, rootNode.id);
       await logConversation(
@@ -833,10 +865,20 @@ export async function processChatMessage(
       );
 
       const childNodes = allNodes.filter(node => node.parent_id === rootNode.id);
-      const options = childNodes
+      let options = childNodes
         .filter(node => node.user_input)
         .slice(0, 3)
         .map(node => node.user_input!);
+
+      if (language && options.length > 0 && LANGUAGE_NAMES[language]) {
+        if (hasLLMCredits()) {
+          try {
+            options = await translateLinesToLanguage(options, LANGUAGE_NAMES[language]);
+          } catch (err: any) {
+            console.warn('[ChatService] Options translation failed:', err?.message || err);
+          }
+        }
+      }
 
       // Get media for root node
       const media = await getNodeMedia(rootNode.id);
@@ -1233,6 +1275,26 @@ export async function processChatMessage(
         skippedDialogTreeOptions: true,
         reason: 'Strong memory context - providing direct personalized answer',
       });
+    }
+  }
+
+  // When language is set, always translate bot_response and options to that language
+  // (guarantees output in requested language whether from LLM or dialog tree)
+  if (language && LANGUAGE_NAMES[language] && hasLLMCredits()) {
+    const langName = LANGUAGE_NAMES[language];
+    if (botResponse) {
+      try {
+        botResponse = await translateTextToLanguage(botResponse, langName);
+      } catch (err: any) {
+        console.warn('[ChatService] bot_response translation failed:', err?.message || err);
+      }
+    }
+    if (options && options.length > 0) {
+      try {
+        options = await translateLinesToLanguage(options, langName);
+      } catch (err: any) {
+        console.warn('[ChatService] options translation failed:', err?.message || err);
+      }
     }
   }
 

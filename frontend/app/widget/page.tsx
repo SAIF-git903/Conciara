@@ -50,6 +50,7 @@ export default function WidgetPage() {
         domain={domain || undefined}
         skinId={skinId || undefined}
         position="bottom-right"
+        requireLanguageSelection={true}
       />
     </div>
   );

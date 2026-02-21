@@ -1,6 +1,6 @@
 'use client'
 
-import { Bot, Minimize2, Maximize2, X } from 'lucide-react'
+import { Bot, Minimize2, Maximize2, X, Settings } from 'lucide-react'
 import { MergedSkinConfig } from '../../types/skinConfig'
 
 interface DynamicHeaderProps {
@@ -8,13 +8,17 @@ interface DynamicHeaderProps {
   isMinimized: boolean
   onMinimize: () => void
   onClose: () => void
+  onSettingsClick?: () => void
+  showSettings?: boolean
 }
 
 export default function DynamicHeader({ 
   config, 
   isMinimized, 
   onMinimize, 
-  onClose 
+  onClose,
+  onSettingsClick,
+  showSettings = false
 }: DynamicHeaderProps) {
   const headerConfig = config.components?.header || {}
   const primaryColor = config.theme?.primaryColor || '#6366f1'
@@ -49,6 +53,15 @@ export default function DynamicHeader({
         )}
       </div>
       <div className="flex items-center gap-2">
+        {showSettings && onSettingsClick && (
+          <button
+            onClick={onSettingsClick}
+            className="p-1 hover:bg-white/20 rounded transition-colors"
+            aria-label="Settings"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+        )}
         {headerConfig.showMinimize && (
           <button
             onClick={onMinimize}

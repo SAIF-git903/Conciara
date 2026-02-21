@@ -43,6 +43,33 @@
 (function() {
   'use strict';
 
+  // Language options for the language picker (code and display name)
+  const WIDGET_LANGUAGES = [
+    { code: 'en', name: 'English' }, { code: 'es', name: 'Spanish' }, { code: 'fr', name: 'French' },
+    { code: 'de', name: 'German' }, { code: 'it', name: 'Italian' }, { code: 'pt', name: 'Portuguese' },
+    { code: 'ar', name: 'Arabic' }, { code: 'hi', name: 'Hindi' }, { code: 'zh', name: 'Chinese' },
+    { code: 'ja', name: 'Japanese' }, { code: 'ko', name: 'Korean' }, { code: 'nl', name: 'Dutch' },
+    { code: 'ru', name: 'Russian' }, { code: 'tr', name: 'Turkish' }
+  ];
+
+  // UI strings per language (widget title, placeholder, empty/error/loading messages)
+  const WIDGET_UI_TRANSLATIONS = {
+    en: { chatTitle: 'Chat Assistant', placeholder: 'Type your message...', emptyMessage: 'Starting conversation...', errorMessage: "Sorry, I'm having trouble. Please try again.", loadingMessage: 'Thinking...' },
+    es: { chatTitle: 'Asistente de chat', placeholder: 'Escribe tu mensaje...', emptyMessage: 'Iniciando conversación...', errorMessage: 'Lo siento, tengo problemas. Por favor, inténtalo de nuevo.', loadingMessage: 'Pensando...' },
+    fr: { chatTitle: 'Assistant de chat', placeholder: 'Tapez votre message...', emptyMessage: 'Démarrage de la conversation...', errorMessage: "Désolé, j'ai des difficultés. Veuillez réessayer.", loadingMessage: 'Réflexion...' },
+    de: { chatTitle: 'Chat-Assistent', placeholder: 'Nachricht eingeben...', emptyMessage: 'Gespräch wird gestartet...', errorMessage: 'Entschuldigung, es gibt ein Problem. Bitte versuchen Sie es erneut.', loadingMessage: 'Denke nach...' },
+    it: { chatTitle: 'Assistente chat', placeholder: 'Scrivi il tuo messaggio...', emptyMessage: 'Avvio conversazione...', errorMessage: 'Scusa, ho dei problemi. Riprova.', loadingMessage: 'Sto pensando...' },
+    pt: { chatTitle: 'Assistente de chat', placeholder: 'Digite sua mensagem...', emptyMessage: 'Iniciando conversa...', errorMessage: 'Desculpe, estou com problemas. Tente novamente.', loadingMessage: 'Pensando...' },
+    ar: { chatTitle: 'مساعد الدردشة', placeholder: 'اكتب رسالتك...', emptyMessage: 'بدء المحادثة...', errorMessage: 'عذراً، أواجه مشكلة. يرجى المحاولة مرة أخرى.', loadingMessage: 'جاري التفكير...' },
+    hi: { chatTitle: 'चैट सहायक', placeholder: 'अपना संदेश लिखें...', emptyMessage: 'बातचीत शुरू हो रही है...', errorMessage: 'क्षमा करें, समस्या हो रही है। कृपया पुनः प्रयास करें।', loadingMessage: 'सोच रहा हूं...' },
+    zh: { chatTitle: '聊天助手', placeholder: '输入您的消息...', emptyMessage: '正在开始对话...', errorMessage: '抱歉，遇到问题。请重试。', loadingMessage: '思考中...' },
+    ja: { chatTitle: 'チャットアシスタント', placeholder: 'メッセージを入力...', emptyMessage: '会話を開始しています...', errorMessage: '申し訳ありません。問題が発生しました。もう一度お試しください。', loadingMessage: '考え中...' },
+    ko: { chatTitle: '채팅 도우미', placeholder: '메시지를 입력하세요...', emptyMessage: '대화를 시작하는 중...', errorMessage: '죄송합니다. 문제가 발생했습니다. 다시 시도해 주세요.', loadingMessage: '생각 중...' },
+    nl: { chatTitle: 'Chatassistent', placeholder: 'Typ uw bericht...', emptyMessage: 'Gesprek starten...', errorMessage: 'Sorry, er is een probleem. Probeer het opnieuw.', loadingMessage: 'Denken...' },
+    ru: { chatTitle: 'Чат-помощник', placeholder: 'Введите сообщение...', emptyMessage: 'Начало разговора...', errorMessage: 'Извините, возникла проблема. Попробуйте снова.', loadingMessage: 'Думаю...' },
+    tr: { chatTitle: 'Sohbet Asistanı', placeholder: 'Mesajınızı yazın...', emptyMessage: 'Sohbet başlatılıyor...', errorMessage: 'Üzgünüm, bir sorun oluştu. Lütfen tekrar deneyin.', loadingMessage: 'Düşünüyor...' }
+  };
+
   // Default configuration
   const defaults = {
     apiUrl: 'http://localhost:3001/api',
@@ -72,6 +99,8 @@
       this.sessionId = null;
       this.isOpen = false;
       this.isMinimized = false;
+      this.selectedLanguage = null;  // User must select language before conversation starts
+      this.settingsOpen = false;    // Settings panel (language switcher) visibility
       this.messages = [];
       this.quickReplies = [];
       this.isLoading = false;
@@ -1170,6 +1199,12 @@
       return value !== undefined && value !== null ? value : defaultValue;
     }
 
+    // UI string in selected language (when user has chosen a language)
+    getUIText(key, fallback) {
+      var t = this.selectedLanguage && WIDGET_UI_TRANSLATIONS[this.selectedLanguage] ? WIDGET_UI_TRANSLATIONS[this.selectedLanguage] : null;
+      return (t && t[key]) ? t[key] : fallback;
+    }
+
     // Helper to determine if a color is light or dark
     isLightColor(color) {
       if (!color) return true; // Default to light
@@ -1297,7 +1332,7 @@
       const showTitle = headerConfig.showTitle !== false;
       const showMinimize = headerConfig.showMinimize !== false;
       const showClose = headerConfig.showClose !== false;
-      const title = headerConfig.title || this.config.title || 'Chat Assistant';
+      const title = this.getUIText('chatTitle', headerConfig.title || this.config.title || 'Chat Assistant');
       
       const windowStyle = `width: ${width}px; min-width: ${minWidth}px; max-width: ${maxWidth ? maxWidth + 'px' : 'none'}; height: ${this.isMinimized ? headerHeight : height}px; min-height: ${this.isMinimized ? headerHeight : minHeight}px; max-height: ${maxHeight && !this.isMinimized ? maxHeight + 'px' : 'none'}; border-radius: ${borderRadius}px; box-shadow: ${boxShadow}; background: ${backgroundColor} !important;`;
       
@@ -1314,6 +1349,14 @@
               ` : ''}
             </div>
             <div class="ct-header-actions">
+              ${this.selectedLanguage ? `
+              <button class="ct-header-button ct-settings" aria-label="Settings" title="Settings">
+                <svg class="ct-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
+              ` : ''}
               ${showMinimize ? `
               <button class="ct-header-button ct-minimize" aria-label="Minimize">
                 <svg class="ct-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1331,11 +1374,22 @@
             </div>
           </div>
           ` : ''}
-          ${!this.isMinimized ? `
+          ${!this.isMinimized ? (this.settingsOpen && this.selectedLanguage ? `
+            <div class="ct-settings-panel" style="flex:1; overflow-y:auto; padding: 16px; background: ${backgroundColor} !important;">
+              <button type="button" class="ct-settings-back" style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 0; margin-bottom: 16px; font-size: 14px; font-weight: 500; border: none; background: none; cursor: pointer; color: ${this.config.textColor || '#1f2937'};">← Back</button>
+              <p style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: ${this.config.textColor || '#1f2937'};">Choose your language</p>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                ${WIDGET_LANGUAGES.map(function(l) {
+                  var isActive = l.code === this.selectedLanguage;
+                  return '<button type="button" class="ct-settings-lang" data-ct-lang="' + l.code + '" style="padding: 10px 12px; border-radius: 8px; font-size: 14px; font-weight: 500; border: 1px solid ' + (isActive ? 'transparent' : (this.config.borderColor || '#e5e7eb')) + '; background: ' + (isActive ? primaryColor : 'transparent') + ' !important; color: ' + (isActive ? 'white' : (this.config.textColor || '#1f2937')) + '; cursor: pointer; text-align: left;">' + this.escapeHtml(l.name) + '</button>';
+                }.bind(this)).join('')}
+              </div>
+            </div>
+          ` : this.selectedLanguage ? `
             <div class="ct-messages" id="ct-messages" data-layout="${this.getConfigValue('components.messages.layout', 'bubbles')}">
               ${this.messages.length === 0 && !this.isLoading ? `
                 <div style="text-align: center; color: #6b7280; padding: 20px; font-size: 14px;">
-                  ${this.getConfigValue('states.empty.message', 'Starting conversation...')}
+                  ${this.getUIText('emptyMessage', this.getConfigValue('states.empty.message', 'Starting conversation...'))}
                 </div>
               ` : ''}
               ${this.messages.map(msg => this.renderMessage(msg)).join('')}
@@ -1348,7 +1402,7 @@
                   <textarea 
                     class="ct-input ct-input-expandable" 
                     id="ct-input" 
-                    placeholder="${this.getConfigValue('components.input.placeholder', 'Type your message...')}"
+                    placeholder="${this.getUIText('placeholder', this.getConfigValue('components.input.placeholder', 'Type your message...'))}"
                     autocomplete="off"
                     rows="1"
                     ${this.getConfigValue('components.input.autoFocus', true) ? 'autofocus' : ''}
@@ -1369,7 +1423,17 @@
                 ` : ''}
               </form>
             </div>
-          ` : ''}
+          ` : `
+            <div class="ct-language-picker" id="ct-language-picker" style="flex:1; overflow-y:auto; padding: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 280px; background: ${backgroundColor} !important;">
+              <p style="font-size: 16px; font-weight: 600; margin-bottom: 4px; color: ${this.config.textColor || '#1f2937'};">Choose your language</p>
+              <p style="font-size: 14px; color: #6b7280; margin-bottom: 20px;">Select a language to continue</p>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; max-width: 280px;">
+                ${WIDGET_LANGUAGES.map(function(l) {
+                  return '<button type="button" class="ct-lang-btn" data-ct-lang="' + l.code + '" style="padding: 10px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; border: none; background: ' + primaryColor + ' !important; color: white; cursor: pointer;">' + this.escapeHtml(l.name) + '</button>';
+                }.bind(this)).join('')}
+              </div>
+            </div>
+          `) : ''}
         </div>
       `;
     }
@@ -1689,6 +1753,31 @@
           this.closeChat();
         } else if (e.target.closest('.ct-minimize')) {
           this.toggleMinimize();
+        } else if (e.target.closest('.ct-settings')) {
+          this.settingsOpen = true;
+          this.updateView();
+        } else if (e.target.closest('.ct-settings-back')) {
+          this.settingsOpen = false;
+          this.updateView();
+        } else if (e.target.closest('.ct-settings-lang')) {
+          var btn = e.target.closest('.ct-settings-lang');
+          var code = btn.getAttribute('data-ct-lang');
+          if (code) {
+            var isNewLanguage = code !== this.selectedLanguage;
+            this.selectedLanguage = code;
+            this.settingsOpen = false;
+            if (isNewLanguage) {
+              this.messages = [];
+              this.quickReplies = [];
+              this.sessionId = null;
+              this.initializeConversation();
+            }
+            this.updateView();
+          }
+        } else if (e.target.closest('[data-ct-lang]')) {
+          const btn = e.target.closest('[data-ct-lang]');
+          const code = btn.getAttribute('data-ct-lang');
+          if (code) this.selectLanguage(code);
         } else if (e.target.closest('.ct-quick-reply')) {
           e.preventDefault();
           e.stopPropagation();
@@ -1830,7 +1919,15 @@
       this.isMinimized = false;
       this.updateView();
       
-      if (this.isOpen && this.messages.length === 0) {
+      if (this.isOpen && this.messages.length === 0 && this.selectedLanguage) {
+        this.initializeConversation();
+      }
+    }
+
+    selectLanguage(code) {
+      this.selectedLanguage = code;
+      this.updateView();
+      if (this.messages.length === 0 && this.config.treeId) {
         this.initializeConversation();
       }
     }
@@ -1838,6 +1935,7 @@
     closeChat() {
       this.isOpen = false;
       this.isMinimized = false;
+      this.settingsOpen = false;
       this.updateView();
     }
 
@@ -2044,7 +2142,7 @@
 
     async initializeConversation() {
       if (!this.config.treeId) {
-        this.addMessage('bot', "Sorry, no chatbot is configured. Please contact support.");
+        this.addMessage('bot', this.getUIText('errorMessage', "Sorry, no chatbot is configured. Please contact support."));
         return;
       }
 
@@ -2059,7 +2157,8 @@
           user_id: this.config.userId || null,
           use_memory: this.config.useMemory !== false
         };
-        
+        if (this.selectedLanguage) requestBody.language = this.selectedLanguage;
+
         const response = await fetch(`${this.config.apiUrl}/chat/message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2085,11 +2184,11 @@
           // Add message (include media if present)
           this.addMessage('bot', data.bot_response, data.media);
         } else {
-          this.addMessage('bot', "Sorry, I received an empty response. Please try again.");
+          this.addMessage('bot', this.getUIText('errorMessage', "Sorry, I received an empty response. Please try again."));
         }
       } catch (error) {
         console.error('Error initializing conversation:', error);
-        this.addMessage('bot', "Sorry, I'm having trouble connecting. Please try again.");
+        this.addMessage('bot', this.getUIText('errorMessage', "Sorry, I'm having trouble connecting. Please try again."));
       } finally {
         this.isLoading = false;
         this.isSendingMessage = false;
@@ -2105,7 +2204,7 @@
       
       // Don't send if treeId is not set
       if (!this.config.treeId) {
-        this.addMessage('bot', "Sorry, the chatbot is not properly configured. Please contact support.");
+        this.addMessage('bot', this.getUIText('errorMessage', "Sorry, the chatbot is not properly configured. Please contact support."));
         return;
       }
       
@@ -2123,7 +2222,8 @@
           user_id: this.config.userId || null,
           use_memory: this.config.useMemory !== false
         };
-        
+        if (this.selectedLanguage) requestBody.language = this.selectedLanguage;
+
         const response = await fetch(`${this.config.apiUrl}/chat/message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2149,7 +2249,7 @@
         }
       } catch (error) {
         console.error('Error sending message:', error);
-        this.addMessage('bot', "Sorry, I'm having trouble. Please try again.");
+        this.addMessage('bot', this.getUIText('errorMessage', "Sorry, I'm having trouble. Please try again."));
       } finally {
         this.isLoading = false;
         this.isSendingMessage = false;

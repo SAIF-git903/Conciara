@@ -360,3 +360,59 @@ Rules:
     );
   }
 }
+
+/**
+ * Translate a single text to the target language.
+ * Returns the original text if LLM is unavailable or translation fails.
+ */
+export async function translateTextToLanguage(
+  text: string,
+  languageName: string
+): Promise<string> {
+  if (!openai || !apiKey || !text || !text.trim()) return text;
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'user',
+          content: `You are a translator. Translate the following text to ${languageName}. Rules: Output ONLY the translated text, no quotes, no explanation, no preamble. Keep the same tone and meaning.\n\nText to translate:\n${text}`,
+        },
+      ],
+      max_tokens: 500,
+      temperature: 0.2,
+    });
+    const translated = response.choices[0]?.message?.content?.trim() || '';
+    return translated || text;
+  } catch (err: any) {
+    console.warn('[LLM] translateTextToLanguage failed:', err?.message || err);
+    return text;
+  }
+}
+
+/**
+ * Translate a list of strings to the target language (e.g. for quick-reply options).
+ * Returns the same list if LLM is unavailable or translation fails.
+ */
+export async function translateLinesToLanguage(
+  lines: string[],
+  languageName: string
+): Promise<string[]> {
+  if (!openai || !apiKey || lines.length === 0) return lines;
+  try {
+    const prompt = `You are a translator. Translate each of the following lines to ${languageName}. Output ONLY the translated lines, one per line, in the same order. No numbering, no quotes, no extra text.\n\n${lines.join('\n')}`;
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 300,
+      temperature: 0.2,
+    });
+    const text = response.choices[0]?.message?.content?.trim() || '';
+    if (!text) return lines;
+    const translated = text.split(/\r?\n/).map(s => s.replace(/^\d+[\.\)]\s*/, '').replace(/^["']|["']$/g, '').trim()).filter(Boolean);
+    return translated.length >= lines.length ? translated.slice(0, lines.length) : lines;
+  } catch (err: any) {
+    console.warn('[LLM] translateLinesToLanguage failed:', err?.message || err);
+    return lines;
+  }
+}

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { getApiBaseUrl } from '@/lib/api';
 import { MergedSkinConfig } from '../types/skinConfig';
+import { applyWidgetTranslations } from '@/lib/widgetTranslations';
 import SkinRenderer from './SkinRenderer';
 
 interface ChatbotWidgetProps {
@@ -21,6 +22,8 @@ interface ChatbotWidgetProps {
   };
   // New: Allow passing skin config directly
   skinConfig?: MergedSkinConfig;
+  /** When true (default), user must choose a language before the conversation starts */
+  requireLanguageSelection?: boolean;
 }
 
 export default function ChatbotWidget({
@@ -34,12 +37,14 @@ export default function ChatbotWidget({
   position = 'bottom-right',
   theme = {},
   skinConfig: propSkinConfig,
+  requireLanguageSelection = true,
 }: ChatbotWidgetProps) {
   const apiUrl = propApiUrl ?? getApiBaseUrl();
 
   const [resolvedTreeId, setResolvedTreeId] = useState<number | null>(treeId || null);
   const [skinConfig, setSkinConfig] = useState<MergedSkinConfig | null>(propSkinConfig || null);
   const [configLoaded, setConfigLoaded] = useState(!!treeId || !!propSkinConfig);
+  const [selectedLanguage, setSelectedLanguage] = useState<string | null>(null);
 
   // Load widget config if websiteId or domain is provided
   useEffect(() => {
@@ -221,14 +226,29 @@ export default function ChatbotWidget({
     return null;
   }
 
+  // Config with translated UI strings when a language is selected
+  const effectiveConfig = selectedLanguage
+    ? applyWidgetTranslations(skinConfig, selectedLanguage)
+    : skinConfig;
+
   // Use SkinRenderer for data-driven UI
   // Note: treeId can be null - SkinRenderer will handle it gracefully
-  // Key forces re-render when config changes - includes skinId and theme colors to detect changes
-  const renderKey = `skin-${skinId || skinConfig._meta?.skinId || 'default'}-${skinConfig.theme?.primaryColor || 'no-color'}-${skinConfig.theme?.backgroundColor || 'no-bg'}`;
+  // Key forces re-render when config or language changes
+  const renderKey = `skin-${skinId || skinConfig._meta?.skinId || 'default'}-${skinConfig.theme?.primaryColor || 'no-color'}-${skinConfig.theme?.backgroundColor || 'no-bg'}-${selectedLanguage || 'none'}`;
 
   return (
     <>
-      <SkinRenderer key={renderKey} config={skinConfig} apiUrl={apiUrl} treeId={resolvedTreeId} userId={userId} useMemory={useMemory} />
+      <SkinRenderer
+        key={renderKey}
+        config={effectiveConfig}
+        apiUrl={apiUrl}
+        treeId={resolvedTreeId}
+        userId={userId}
+        useMemory={useMemory}
+        language={selectedLanguage}
+        onLanguageSelect={requireLanguageSelection !== false ? setSelectedLanguage : undefined}
+        requireLanguageSelection={requireLanguageSelection}
+      />
     </>
   );
 }

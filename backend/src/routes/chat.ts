@@ -38,7 +38,7 @@ const router = express.Router();
  */
 router.post('/message', async (req, res) => {
   try {
-    const { tree_id, user_message, session_id, user_id, use_memory } = req.body;
+    const { tree_id, user_message, session_id, user_id, use_memory, language } = req.body;
 
     if (!tree_id || typeof tree_id !== 'number') {
       return res.status(400).json({ error: 'tree_id is required and must be a number' });
@@ -49,11 +49,13 @@ router.post('/message', async (req, res) => {
     }
 
     const response = await processChatMessage(
-      tree_id, 
-      user_message, 
+      tree_id,
+      user_message,
       session_id || null,
       user_id || null,
-      use_memory !== false // Default to true, can be disabled
+      use_memory !== false, // Default to true, can be disabled
+      true, // enableTracing
+      typeof language === 'string' && language.trim() ? language.trim() : null
     );
     res.json(response);
   } catch (error: any) {

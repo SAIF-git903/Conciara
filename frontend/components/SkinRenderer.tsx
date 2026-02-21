@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { MergedSkinConfig } from '../types/skinConfig'
+import { WIDGET_LANGUAGES, getWidgetTranslations } from '@/lib/widgetTranslations'
 import DynamicButton from './DynamicComponents/DynamicButton'
 import DynamicWindow from './DynamicComponents/DynamicWindow'
 import DynamicHeader from './DynamicComponents/DynamicHeader'
@@ -27,12 +28,18 @@ interface Message {
   media?: MediaItem[]
 }
 
-interface SkinRendererProps {
+export interface SkinRendererProps {
   config: MergedSkinConfig
   apiUrl: string
   treeId: number | null
-  userId?: string | null  // New: User ID for memory system
-  useMemory?: boolean  // New: Enable memory (default: true)
+  userId?: string | null
+  useMemory?: boolean
+  /** Selected language code (e.g. "es"). When null and requireLanguageSelection, picker is shown first. */
+  language?: string | null
+  /** Called when user selects a language in the picker */
+  onLanguageSelect?: (lang: string) => void
+  /** When true, user must select a language before the conversation starts (picker shown first) */
+  requireLanguageSelection?: boolean
   onMessage?: (message: string) => Promise<void>
   initialMessages?: Message[]
   sessionId?: string | null
@@ -44,6 +51,9 @@ export default function SkinRenderer({
   treeId,
   userId,
   useMemory = true,
+  language = null,
+  onLanguageSelect,
+  requireLanguageSelection = false,
   onMessage,
   initialMessages = [],
   sessionId: initialSessionId = null
@@ -55,8 +65,10 @@ export default function SkinRenderer({
   const [isLoading, setIsLoading] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(initialSessionId)
   const [quickReplies, setQuickReplies] = useState<string[]>([])
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const initializingRef = useRef(false)
 
   const buttonConfig = config.components?.button || {}
   const position = buttonConfig.position || 'bottom-right'
@@ -78,25 +90,28 @@ export default function SkinRenderer({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Initialize conversation when opened
+  // When onLanguageSelect is provided, only start conversation after user selects a language
+  const hasLanguagePicker = typeof onLanguageSelect === 'function'
+  const canStartConversation = !hasLanguagePicker || !!language
   useEffect(() => {
-    if (isOpen && messages.length === 0 && !isLoading) {
-      if (treeId) {
-        initializeConversation()
-      } else {
-        // Show error message if no treeId
-        addMessage('bot', config.states?.error?.message || "Sorry, no chatbot is configured. Please contact support.")
-      }
+    if (!isOpen || messages.length > 0 || isLoading) return
+    if (!canStartConversation) return // Must choose language first
+    if (treeId) {
+      if (initializingRef.current) return // Prevent double call (e.g. React Strict Mode)
+      initializingRef.current = true
+      initializeConversation()
+    } else {
+      addMessage('bot', config.states?.error?.message || "Sorry, no chatbot is configured. Please contact support.")
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen])
+  }, [isOpen, language, canStartConversation])
 
-  const initializeConversation = async () => {
+  const initializeConversation = async (languageOverride?: string) => {
     if (!treeId) {
       addMessage('bot', "Sorry, no chatbot is configured for this website. Please contact support.")
       return
     }
-    
+    const langToUse = languageOverride ?? language
     try {
       setIsLoading(true)
       const response = await fetch(`${apiUrl}/chat/message`, {
@@ -107,7 +122,8 @@ export default function SkinRenderer({
           user_message: '__START__',
           session_id: null,
           user_id: userId || null,
-          use_memory: useMemory
+          use_memory: useMemory,
+          ...(langToUse ? { language: langToUse } : {})
         })
       })
 
@@ -132,6 +148,7 @@ export default function SkinRenderer({
       addMessage('bot', config.states?.error?.message || "Sorry, I'm having trouble connecting. Please try again.")
     } finally {
       setIsLoading(false)
+      initializingRef.current = false
     }
   }
 
@@ -167,7 +184,8 @@ export default function SkinRenderer({
             user_message: userMessage,
             session_id: sessionId,
             user_id: userId || null,
-            use_memory: useMemory
+            use_memory: useMemory,
+            ...(language ? { language } : {})
           })
         })
 
@@ -206,6 +224,7 @@ export default function SkinRenderer({
   const handleClose = () => {
     setIsOpen(false)
     setIsMinimized(false)
+    setSettingsOpen(false)
   }
 
   // Show error message if no treeId instead of hiding widget
@@ -260,31 +279,111 @@ export default function SkinRenderer({
             isMinimized={isMinimized}
             onMinimize={() => setIsMinimized(!isMinimized)}
             onClose={handleClose}
+            showSettings={!!(language && typeof onLanguageSelect === 'function')}
+            onSettingsClick={() => setSettingsOpen(true)}
           />
 
           {!isMinimized && (
             <>
-              <DynamicMessages
-                config={config}
-                messages={messages}
-                isLoading={isLoading}
-              />
-              <div ref={messagesEndRef} />
+              {settingsOpen && language && typeof onLanguageSelect === 'function' ? (
+                <div
+                  className="flex-1 overflow-y-auto p-4 min-h-0"
+                  style={{ backgroundColor: config.theme?.backgroundColor || '#ffffff' }}
+                >
+                  <div className="flex items-center gap-2 mb-4">
+                    <button
+                      type="button"
+                      onClick={() => setSettingsOpen(false)}
+                      className="p-1.5 rounded-lg hover:bg-gray-100 flex items-center gap-1 text-sm font-medium"
+                      style={{ color: config.theme?.textColor || '#1f2937' }}
+                    >
+                      <span className="text-lg leading-none">←</span>
+                      Back
+                    </button>
+                  </div>
+                  <p className="text-sm font-semibold mb-2" style={{ color: config.theme?.textColor || '#1f2937' }}>
+                    {getWidgetTranslations(language).chooseLanguage}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {WIDGET_LANGUAGES.map(({ code, name }) => (
+                      <button
+                        key={code}
+                        type="button"
+                        onClick={() => {
+                          const isNewLanguage = code !== language
+                          onLanguageSelect(code)
+                          setSettingsOpen(false)
+                          if (isNewLanguage) {
+                            setMessages([])
+                            setQuickReplies([])
+                            setSessionId(null)
+                            initializingRef.current = false
+                            if (treeId) initializeConversation(code)
+                          }
+                        }}
+                        className="px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left"
+                        style={{
+                          backgroundColor: code === language ? (config.theme?.primaryColor || '#6366f1') : undefined,
+                          color: code === language ? 'white' : (config.theme?.textColor || '#1f2937'),
+                          border: code === language ? 'none' : `1px solid ${config.theme?.borderColor || '#e5e7eb'}`,
+                        }}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (!language && typeof onLanguageSelect === 'function') ? (
+                <div
+                  className="flex-1 overflow-y-auto p-6 flex flex-col items-center justify-center min-h-[280px]"
+                  style={{ backgroundColor: config.theme?.backgroundColor || '#ffffff' }}
+                  data-conversatree="language-picker"
+                >
+                  <p className="text-base font-semibold mb-1" style={{ color: config.theme?.textColor || '#1f2937' }}>
+                    {getWidgetTranslations('en').chooseLanguage}
+                  </p>
+                  <p className="text-sm text-gray-500 mb-5">
+                    Select a language to continue
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 w-full max-w-xs">
+                    {WIDGET_LANGUAGES.map(({ code, name }) => (
+                      <button
+                        key={code}
+                        type="button"
+                        onClick={() => onLanguageSelect(code)}
+                        className="px-4 py-2.5 rounded-lg text-sm font-medium transition-colors hover:opacity-90 text-white"
+                        style={{ backgroundColor: config.theme?.primaryColor || '#6366f1' }}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <DynamicMessages
+                    config={config}
+                    messages={messages}
+                    isLoading={isLoading}
+                  />
+                  <div ref={messagesEndRef} />
 
-              <DynamicQuickReplies
-                config={config}
-                replies={quickReplies}
-                onReply={handleQuickReply}
-              />
+                  <DynamicQuickReplies
+                    config={config}
+                    replies={quickReplies}
+                    onReply={handleQuickReply}
+                  />
 
-              <DynamicInput
-                config={config}
-                value={inputValue}
-                onChange={setInputValue}
-                onSubmit={handleSubmit}
-                isLoading={isLoading}
-                inputRef={inputRef}
-              />
+                  <DynamicInput
+                    config={config}
+                    value={inputValue}
+                    onChange={setInputValue}
+                    onSubmit={handleSubmit}
+                    isLoading={isLoading}
+                    inputRef={inputRef}
+                  />
+                </>
+              )}
             </>
           )}
         </DynamicWindow>
