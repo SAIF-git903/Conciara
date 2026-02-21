@@ -64,6 +64,7 @@ export default function Home() {
                       <li className="flex items-start gap-2">
                         <span className="font-bold text-indigo-600">3.</span>
                         <span><strong>Skin</strong> - UI theme configuration</span>
+                        
                       </li>
                       <li className="flex items-start gap-2">
                         <span className="font-bold text-indigo-600">4.</span>
