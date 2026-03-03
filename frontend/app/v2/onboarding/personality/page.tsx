@@ -88,7 +88,7 @@ export default function OnboardingPersonalityPage() {
 
           <motion.div variants={item} className="pt-2">
             <Link
-              href="/v2/dashboard/playground"
+              href="/v2/dashboard"
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--v2-primary)] px-4 py-3.5 text-sm font-semibold text-[var(--v2-primary-foreground)] shadow-lg shadow-[var(--v2-primary)]/20 transition hover:bg-[var(--v2-primary-hover)] hover:shadow-xl hover:shadow-[var(--v2-primary)]/25"
             >
               Confirm & go to Playground

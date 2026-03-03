@@ -44,11 +44,17 @@ const dashboardNavItems = [
   { href: '#', label: 'Workspace settings', Icon: Settings, children: ['General', 'Members', 'Plans', 'Billing', 'API keys'] },
 ]
 
+// Map sidebar child labels to routes (for Activity, Analytics, etc.)
+const childHrefMap: Record<string, Record<string, string>> = {
+  Activity: { 'Chat logs': '/v2/dashboard/activity/chat-logs' },
+  Analytics: { Chats: '/v2/dashboard/analytics/chats' },
+}
+
 // Sidebar when inside an agent (e.g. Playground, agent settings)
 const agentNavItems = [
   { href: '/v2/dashboard/playground', label: 'Playground', Icon: Play },
-  { href: '#', label: 'Activity', Icon: MessageSquare, children: ['Chat logs', 'Chats'] },
-  { href: '#', label: 'Analytics', Icon: BarChart3, children: ['Reports', 'Usage'] },
+  { href: '#', label: 'Activity', Icon: MessageSquare, children: ['Chat logs'] },
+  { href: '#', label: 'Analytics', Icon: BarChart3, children: ['Chats'] },
   { href: '#', label: 'Data sources', Icon: Database, children: ['Files', 'Q&A', 'Website'] },
   { href: '#', label: 'Actions', Icon: Zap },
   { href: '#', label: 'Contacts', Icon: Users },
@@ -235,7 +241,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             {navItems.map((item) => {
               const isActive = pathname === item.href
               const hasChildren = 'children' in item && item.children?.length
-              const isExpanded = hasChildren && expanded[item.label]
+              const isChildRoute =
+                hasChildren &&
+                (item as { children: string[] }).children.some(
+                  (child) =>
+                    pathname === (childHrefMap[item.label]?.[child] ?? '')
+                )
+              const isExpanded =
+                hasChildren && (expanded[item.label] || isChildRoute)
 
               return (
                 <div key={item.label} className="px-2">
@@ -266,15 +279,24 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                   )}
                 {hasChildren && isExpanded && (
                   <div className="ml-6 mt-1 space-y-0.5 border-l border-slate-200 pl-3">
-                    {(item as { children: string[] }).children.map((child) => (
-                      <Link
-                        key={child}
-                        href="#"
-                        className="block py-1.5 text-xs text-slate-500 hover:text-slate-700"
-                      >
-                        {child}
-                      </Link>
-                    ))}
+                    {(item as { children: string[] }).children.map((child) => {
+                      const childHref =
+                        childHrefMap[item.label]?.[child] ?? '#'
+                      const isChildActive = pathname === childHref
+                      return (
+                        <Link
+                          key={child}
+                          href={childHref}
+                          className={`block py-1.5 text-xs ${
+                            isChildActive
+                              ? 'font-medium text-slate-900'
+                              : 'text-slate-500 hover:text-slate-700'
+                          }`}
+                        >
+                          {child}
+                        </Link>
+                      )
+                    })}
                   </div>
                 )}
               </div>

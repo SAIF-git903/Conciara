@@ -44,6 +44,11 @@ input:disabled, textarea:disabled {
   background-color: #f9fafb !important; /* bg-gray-50 */
 }
 
+/* react-date-range - use app primary for range highlight (theme uses currentColor) */
+.analytics-date-range-picker {
+  color: var(--v2-primary, #0f172a);
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
