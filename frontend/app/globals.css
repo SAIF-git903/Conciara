@@ -11,6 +11,14 @@
   --background-end-rgb: 255, 255, 255;
 }
 
+/* v2 marketing theme */
+.v2-theme {
+  --v2-primary: #0f172a;
+  --v2-primary-hover: #1e293b;
+  --v2-primary-soft: #f1f5f9;
+  --v2-primary-foreground: #ffffff;
+}
+
 * {
   @apply antialiased;
 }
