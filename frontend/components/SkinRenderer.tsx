@@ -230,8 +230,8 @@ export default function SkinRenderer({
     setSettingsOpen(false)
   }
 
-  // Show error message if no treeId instead of hiding widget
-  if (!treeId) {
+  // Show error message if no treeId instead of hiding widget (skip in preview mode – use initialMessages only)
+  if (!treeId && !previewMode) {
     return (
       <div className={`fixed ${positionClasses[position]} z-50`}>
         <DynamicButton
@@ -265,7 +265,7 @@ export default function SkinRenderer({
   }
 
   return (
-    <div className={previewMode ? 'relative flex h-full w-full flex-col justify-end items-end' : `fixed ${positionClasses[position]} z-50`}>
+    <div className={previewMode ? 'relative flex h-full w-full flex-col justify-end items-center' : `fixed ${positionClasses[position]} z-50`}>
       {/* Chat Button - hidden in preview mode */}
       {!previewMode && !isOpen && (
         <DynamicButton
@@ -276,7 +276,7 @@ export default function SkinRenderer({
 
       {/* Chat Window */}
       {isOpen && (
-        <DynamicWindow config={config} isMinimized={isMinimized}>
+        <DynamicWindow config={config} isMinimized={isMinimized} fillContainer={previewMode}>
           <DynamicHeader
             config={config}
             isMinimized={isMinimized}

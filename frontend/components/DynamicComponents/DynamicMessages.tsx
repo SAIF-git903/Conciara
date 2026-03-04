@@ -66,17 +66,39 @@ export default function DynamicMessages({
   const botAlignment = messagesConfig.botAlignment || 'left'
   const showAvatars = messagesConfig.showAvatars !== false
   const bubbleStyle = messagesConfig.bubbleStyle || 'rounded'
-  
+
   const borderRadiusMap = {
     rounded: 'rounded-lg',
     square: 'rounded-none',
     minimal: 'rounded-sm'
-  }
+  } as const
+
+  const alignmentMap = {
+    left: 'justify-start',
+    right: 'justify-end',
+  } as const
+
+  const userJustify = alignmentMap[userAlignment as keyof typeof alignmentMap] ?? 'justify-end'
+  const botJustify = alignmentMap[botAlignment as keyof typeof alignmentMap] ?? 'justify-start'
+
+  const isList = layout === 'list'
+  const isCards = layout === 'cards'
+  const isBubbles = layout === 'bubbles'
+
+  const messageRowClass = (isUser: boolean) =>
+    `flex gap-2 ${isUser ? userJustify : botJustify}`
+
+  const bubbleRadius = borderRadiusMap[bubbleStyle] ?? 'rounded-lg'
+  const bubbleMaxWidth = isList ? 'max-w-full' : isCards ? 'max-w-full' : 'max-w-[80%]'
+  const bubbleLayoutClasses = isCards
+    ? 'border border-slate-200 shadow-sm'
+    : ''
 
   return (
-    <div 
-      className="flex-1 overflow-y-auto p-4 space-y-4"
+    <div
+      className={`flex-1 overflow-y-auto p-4 ${isList ? 'space-y-2' : isCards ? 'space-y-3' : 'space-y-4'}`}
       style={{ backgroundColor }}
+      data-layout={layout}
     >
       {messages.length === 0 && !isLoading && (
         <div className="text-center text-gray-500 text-sm py-8">
@@ -87,11 +109,7 @@ export default function DynamicMessages({
       {messages.map((message) => (
         <div
           key={message.id}
-          className={`flex gap-2 ${
-            message.type === 'user' 
-              ? `justify-${userAlignment}` 
-              : `justify-${botAlignment}`
-          }`}
+          className={messageRowClass(message.type === 'user')}
         >
           {message.type === 'bot' && showAvatars && (
             <div
@@ -102,7 +120,7 @@ export default function DynamicMessages({
             </div>
           )}
           <div
-            className={`max-w-[80%] ${borderRadiusMap[bubbleStyle]} px-3 py-2 ${
+            className={`${bubbleMaxWidth} ${bubbleRadius} px-3 py-2 ${bubbleLayoutClasses} ${
               message.type === 'user'
                 ? 'bg-gray-100 text-gray-900'
                 : 'text-white'

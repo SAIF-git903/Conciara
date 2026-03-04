@@ -27,16 +27,19 @@ export default function DynamicHeader({
     return null
   }
 
-  const height = headerConfig.height || 48
+  const height = headerConfig.height || 65;
   const title = headerConfig.title || 'Chat Assistant'
+  const windowRadius = Math.min(30, Math.max(0, config.components?.window?.borderRadius ?? 8))
 
   return (
     <div
-      className="px-4 rounded-t-lg flex items-center justify-between text-white"
+      className="px-4 flex items-center justify-between text-white shrink-0"
       style={{ 
         backgroundColor: primaryColor,
         height: `${height}px`,
-        minHeight: `${height}px`
+        minHeight: `${height}px`,
+        borderTopLeftRadius: `${windowRadius}px`,
+        borderTopRightRadius: `${windowRadius}px`,
       }}
     >
       <div className="flex items-center gap-2">
@@ -49,7 +52,7 @@ export default function DynamicHeader({
           </div>
         )}
         {headerConfig.showTitle && (
-          <span className="font-semibold">{title}</span>
+          <span className="font-semibold ml-2">{title}</span>
         )}
       </div>
       <div className="flex items-center gap-2">

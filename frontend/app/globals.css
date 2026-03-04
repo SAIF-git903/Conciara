@@ -11,12 +11,26 @@
   --background-end-rgb: 255, 255, 255;
 }
 
-/* v2 marketing theme */
+/* v2 theme: colors, font, and typography scale */
 .v2-theme {
   --v2-primary: #0f172a;
   --v2-primary-hover: #1e293b;
   --v2-primary-soft: #f1f5f9;
   --v2-primary-foreground: #ffffff;
+  /* Single font stack for all v2 */
+  --v2-font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--v2-font-sans);
+  /* Typography scale (match Tailwind text-*) */
+  --v2-text-xs: 0.75rem;
+  --v2-text-sm: 0.875rem;
+  --v2-text-base: 1rem;
+  --v2-text-lg: 1.125rem;
+  --v2-text-xl: 1.25rem;
+  --v2-text-2xl: 1.5rem;
+  --v2-font-normal: 400;
+  --v2-font-medium: 500;
+  --v2-font-semibold: 600;
+  --v2-font-bold: 700;
 }
 
 * {

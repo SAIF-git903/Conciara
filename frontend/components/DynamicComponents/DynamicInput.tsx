@@ -1,6 +1,6 @@
 'use client'
 
-import { Send } from 'lucide-react'
+import { ArrowUp, Mic } from 'lucide-react'
 import { MergedSkinConfig } from '../../types/skinConfig'
 import { useRef, useEffect } from 'react'
 
@@ -36,7 +36,7 @@ export default function DynamicInput({
       (inputRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el
   }
 
-  const placeholder = inputConfig.placeholder || 'Type your message...'
+  const placeholder = inputConfig.placeholder || 'Message...'
   const showSendButton = inputConfig.showSendButton !== false
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -68,7 +68,13 @@ export default function DynamicInput({
 
   return (
     <form onSubmit={handleSubmit} className="p-4 border-t" style={{ borderColor }}>
-      <div className="flex gap-2 items-end">
+      <div
+        className="flex items-end gap-1 rounded-full border bg-white overflow-hidden shadow-sm focus-within:ring-2 focus-within:ring-offset-0"
+        style={{
+          borderColor,
+          '--tw-ring-color': primaryColor,
+        } as React.CSSProperties}
+      >
         <textarea
           ref={setRef}
           value={value}
@@ -76,27 +82,33 @@ export default function DynamicInput({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           rows={1}
-          className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-0 text-sm resize-none overflow-y-auto"
-          style={{ 
-            borderColor,
+          className="flex-1 py-2.5 pl-4 pr-1 border-0 focus:outline-none focus:ring-0 bg-transparent text-sm resize-none overflow-y-auto rounded-full placeholder:text-gray-400"
+          style={{
             minHeight: MIN_HEIGHT_PX,
             maxHeight: MAX_HEIGHT_PX,
-            '--tw-ring-color': primaryColor 
-          } as React.CSSProperties}
+          }}
           disabled={isLoading}
           maxLength={inputConfig.maxLength}
           autoFocus={inputConfig.autoFocus !== false}
         />
-        {showSendButton && (
+        <div className="flex items-center gap-0.5 shrink-0 pr-1.5 pb-1.5 pt-1">
           <button
-            type="submit"
-            disabled={!value.trim() || isLoading}
-            className="px-4 py-2 rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ backgroundColor: primaryColor }}
+            type="button"
+            aria-label="Voice message"
+            className="p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
           >
-            <Send className="w-4 h-4" />
+            <Mic className="w-4 h-4" />
           </button>
-        )}
+          {showSendButton && (
+            <button
+              type="submit"
+              disabled={!value.trim() || isLoading}
+              className="p-2 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-gray-100"
+            >
+              <ArrowUp className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
       {inputConfig.showCharacterCount && inputConfig.maxLength && (
         <div className="text-xs text-gray-500 mt-1 text-right">
