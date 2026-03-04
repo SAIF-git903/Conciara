@@ -169,3 +169,25 @@ input:disabled, textarea:disabled {
   stroke-width: 3px !important;
 }
 
+/* Website crawl row: subtle left-edge shimmer */
+@keyframes crawl-shimmer {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.crawl-row-active {
+  position: relative;
+}
+
+.crawl-row-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 3px 0 0 3px;
+  background: linear-gradient(180deg, #f59e0b, #fbbf24);
+  animation: crawl-shimmer 1.5s ease-in-out infinite;
+}
+

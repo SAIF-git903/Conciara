@@ -19,9 +19,9 @@ import {
   MessageSquare,
   BarChart3,
   Database,
-  Zap,
   Users,
-  Rocket,
+  Plug,
+  Palette,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -48,6 +48,15 @@ const dashboardNavItems = [
 const childHrefMap: Record<string, Record<string, string>> = {
   Activity: { 'Chat logs': '/v2/dashboard/activity/chat-logs' },
   Analytics: { Chats: '/v2/dashboard/analytics/chats' },
+  'Data sources': {
+    Files: '/v2/dashboard/data-sources/files',
+    'Q&A': '/v2/dashboard/data-sources/qa',
+    Website: '/v2/dashboard/data-sources/website',
+  },
+  Settings: {
+    General: '/v2/dashboard/settings/general',
+    'API keys': '/v2/dashboard/settings/api-keys',
+  },
 }
 
 // Sidebar when inside an agent (e.g. Playground, agent settings)
@@ -56,9 +65,9 @@ const agentNavItems = [
   { href: '#', label: 'Activity', Icon: MessageSquare, children: ['Chat logs'] },
   { href: '#', label: 'Analytics', Icon: BarChart3, children: ['Chats'] },
   { href: '#', label: 'Data sources', Icon: Database, children: ['Files', 'Q&A', 'Website'] },
-  { href: '#', label: 'Actions', Icon: Zap },
-  { href: '#', label: 'Contacts', Icon: Users },
-  { href: '#', label: 'Deploy', Icon: Rocket },
+  { href: '/v2/dashboard/members', label: 'Members', Icon: Users },
+  { href: '/v2/dashboard/connected-apps', label: 'Connected Apps', Icon: Plug },
+  { href: '/v2/dashboard/settings/chatbot', label: 'Chatbot Customizations', Icon: Palette },
   { href: '#', label: 'Settings', Icon: Settings, children: ['General', 'API keys'] },
 ]
 
