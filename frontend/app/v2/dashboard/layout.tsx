@@ -7,9 +7,6 @@ import {
   Bot,
   ChevronDown,
   Clock,
-  Gift,
-  RefreshCw,
-  HelpCircle,
   User,
   Settings,
   Search,
@@ -22,6 +19,7 @@ import {
   Users,
   Plug,
   Palette,
+  BookOpen,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -67,7 +65,7 @@ const agentNavItems = [
   { href: '#', label: 'Data sources', Icon: Database, children: ['Files', 'Q&A', 'Website'] },
   { href: '/v2/dashboard/members', label: 'Members', Icon: Users },
   { href: '/v2/dashboard/connected-apps', label: 'Connected Apps', Icon: Plug },
-  { href: '/v2/dashboard/settings/chatbot', label: 'Chatbot Customizations', Icon: Palette },
+  { href: '/v2/dashboard/settings/chatbot', label: 'Chat widget', Icon: Palette },
   { href: '#', label: 'Settings', Icon: Settings, children: ['General', 'API keys'] },
 ]
 
@@ -225,18 +223,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         )}
 
         <div className="ml-auto flex items-center gap-1">
-          <button type="button" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="History">
-            <Clock className="h-4 w-4" />
-          </button>
-          <button type="button" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Rewards">
-            <Gift className="h-4 w-4" />
-          </button>
-          <button type="button" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Refresh">
-            <RefreshCw className="h-4 w-4" />
-          </button>
-          <button type="button" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Help">
-            <HelpCircle className="h-4 w-4" />
-          </button>
+          <Link
+            href="/docs"
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Documentation"
+          >
+            <BookOpen className="h-4 w-4" />
+            <span className="hidden sm:inline">Docs</span>
+          </Link>
           <button type="button" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Profile">
             <User className="h-4 w-4" />
           </button>

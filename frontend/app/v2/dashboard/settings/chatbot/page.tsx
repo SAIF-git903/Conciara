@@ -1,12 +1,22 @@
 'use client'
 
 import { useState } from 'react'
-import { Palette, Layout, ChevronDown, ChevronRight, Monitor, Save } from 'lucide-react'
+import { Palette, Layout, ChevronDown, ChevronRight, Monitor, Save, Copy, Check } from 'lucide-react'
 import type { SkinConfig, ThemeColors, ComponentsConfig, StatesConfig } from '@/types/skinConfig'
 import SkinRenderer from '@/components/SkinRenderer'
 import V2Select from '@/components/v2/Select'
 
-type TabType = 'theme' | 'components'
+type TabType = 'theme' | 'components' | 'embed'
+
+const EMBED_SNIPPET = `<script
+  src="https://your-app.com/loader.js"
+  data-api-url="https://api.your-app.com/api"
+  data-website-id="YOUR_WEBSITE_ID"
+  data-domain="yourdomain.com"
+  data-skin-id="YOUR_SKIN_ID"
+  data-tree-id="YOUR_TREE_ID"
+  data-position="bottom-right"
+></script>`
 
 const DEFAULT_WINDOW = { width: 384, height: 600, minWidth: 320, minHeight: 400, borderRadius: 20 }
 
@@ -216,6 +226,13 @@ function Section({
 export default function ChatbotCustomizationsPage() {
   const [config, setConfig] = useState<SkinConfig>(defaultConfig)
   const [activeTab, setActiveTab] = useState<TabType>('theme')
+  const [embedCopied, setEmbedCopied] = useState(false)
+
+  const handleCopyEmbed = async () => {
+    await navigator.clipboard.writeText(EMBED_SNIPPET)
+    setEmbedCopied(true)
+    setTimeout(() => setEmbedCopied(false), 2000)
+  }
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     window: false,
     header: false,
@@ -261,9 +278,9 @@ export default function ChatbotCustomizationsPage() {
           <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-4 sm:px-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h1 className="text-lg font-semibold text-slate-900">Chatbot customizations</h1>
+                <h1 className="text-lg font-semibold text-slate-900">Chat widget</h1>
                 <p className="mt-0.5 text-sm text-slate-500">
-                  Customize how your chat widget looks and behaves. Changes appear in the live preview.
+                  Customize how your widget looks and add it to your site. Changes appear in the live preview.
                 </p>
               </div>
               <button
@@ -283,6 +300,7 @@ export default function ChatbotCustomizationsPage() {
                 {[
                   { id: 'theme' as TabType, label: 'Theme' },
                   { id: 'components' as TabType, label: 'Components' },
+                  { id: 'embed' as TabType, label: 'Embed' },
                 ].map(({ id, label }) => (
                   <button
                     key={id}
@@ -452,6 +470,39 @@ export default function ChatbotCustomizationsPage() {
                       />
                     </div>
                   </Section>
+                </div>
+              )}
+
+              {activeTab === 'embed' && (
+                <div className="space-y-3">
+                  <div className="rounded-lg border border-slate-200 bg-slate-900 overflow-hidden">
+                    <div className="flex items-center justify-between px-3 py-2 border-b border-slate-700/80">
+                      <span className="text-[11px] font-medium uppercase tracking-wider text-slate-400">HTML</span>
+                      <button
+                        type="button"
+                        onClick={handleCopyEmbed}
+                        className="flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 transition"
+                      >
+                        {embedCopied ? (
+                          <>
+                            <Check className="h-3 w-3 text-emerald-400" />
+                            Copied
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3 w-3" />
+                            Copy
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <pre className="p-3 overflow-x-auto text-[11px] leading-[1.6] text-slate-300 font-mono">
+                      <code>{EMBED_SNIPPET}</code>
+                    </pre>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Insert before <code className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600 font-mono">&lt;/body&gt;</code>. Replace placeholders with your API URL, website ID, domain, skin ID, and tree ID.
+                  </p>
                 </div>
               )}
             </div>
