@@ -1,9 +1,18 @@
 'use client'
 
-import { useState } from 'react'
-import Link from 'next/link'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import V2Select from '@/components/v2/Select'
+import v2Api from '@/lib/v2-api'
+import { useV2Auth } from '@/contexts/V2AuthContext'
+import {
+  clearOnboardingKeys,
+  getOnboardingWorkspaceId,
+  getOnboardingAgentName,
+  getOnboardingAgentLogoUrl,
+  resetOnboardingAndGoToWorkspace,
+} from '@/lib/v2-onboarding'
 
 const container = {
   hidden: { opacity: 0 },
@@ -18,9 +27,89 @@ const item = {
   show: { opacity: 1 },
 }
 
+interface ModelOption {
+  id: string
+  label: string
+}
+
 export default function OnboardingPersonalityPage() {
-  const [model, setModel] = useState('gpt-4-turbo')
+  const router = useRouter()
+  const { refreshUser } = useV2Auth()
+  const workspaceId = getOnboardingWorkspaceId()
+  const [models, setModels] = useState<ModelOption[]>([])
+  const [model, setModel] = useState('gpt-4o-mini')
   const [prePrompt, setPrePrompt] = useState('')
+  const [prePromptLoading, setPrePromptLoading] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    v2Api.get<{ models: ModelOption[] }>('/v2/models').then(({ data }) => {
+      if (data.models?.length) {
+        setModels(data.models)
+        if (!data.models.some((m) => m.id === model)) {
+          setModel(data.models[0].id)
+        }
+      }
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (workspaceId == null) return
+    setPrePromptLoading(true)
+    v2Api
+      .get<{ prePrompt: string }>(`/v2/workspaces/${workspaceId}/generate-preprompt`)
+      .then(({ data }) => {
+        if (data.prePrompt?.trim()) setPrePrompt(data.prePrompt.trim())
+      })
+      .catch((err: unknown) => {
+        const status = err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { status?: number } }).response?.status
+          : 0
+        if (status === 403) resetOnboardingAndGoToWorkspace(router)
+      })
+      .finally(() => setPrePromptLoading(false))
+  }, [workspaceId, router])
+
+  const handleGeneratePrePrompt = () => {
+    if (workspaceId == null) return
+    setPrePromptLoading(true)
+    v2Api
+      .get<{ prePrompt: string }>(`/v2/workspaces/${workspaceId}/generate-preprompt`)
+      .then(({ data }) => {
+        if (data.prePrompt?.trim()) setPrePrompt(data.prePrompt.trim())
+      })
+      .catch((err: unknown) => {
+        const status = err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { status?: number } }).response?.status
+          : 0
+        if (status === 403) resetOnboardingAndGoToWorkspace(router)
+      })
+      .finally(() => setPrePromptLoading(false))
+  }
+
+  const handleConfirm = async () => {
+    if (workspaceId == null) return
+    setIsSubmitting(true)
+    try {
+      const name = getOnboardingAgentName()?.trim() || 'My Agent'
+      const logoUrl = getOnboardingAgentLogoUrl() || ''
+      const { data } = await v2Api.post<{ agent: { id: number; name: string; workspaceId: number } }>(
+        `/v2/workspaces/${workspaceId}/agents`,
+        { name, model, prePrompt: prePrompt.trim() || undefined, logoUrl: logoUrl || undefined }
+      )
+      clearOnboardingKeys()
+      await refreshUser()
+      router.push(`/v2/dashboard?agent=${data.agent.id}`)
+    } catch (err: unknown) {
+      const status = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { status?: number } }).response?.status
+        : 0
+      if (status === 403) resetOnboardingAndGoToWorkspace(router)
+      else setIsSubmitting(false)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   return (
     <div className="grid gap-12 lg:grid-cols-2">
@@ -63,39 +152,61 @@ export default function OnboardingPersonalityPage() {
               label="AI Model"
               value={model}
               onChange={setModel}
-              options={[
-                { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
-                { value: 'gpt-4', label: 'GPT-4' },
-                { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
-                { value: 'claude-3', label: 'Claude 3' },
-              ]}
+              options={models.length ? models.map((m) => ({ value: m.id, label: m.label })) : [{ value: 'gpt-4o-mini', label: 'GPT-4o Mini' }]}
             />
+            <p className="mt-1 text-xs text-slate-500">Models supported by your backend.</p>
           </motion.div>
 
           <motion.div variants={item}>
-            <label htmlFor="prePrompt" className="mb-2 block text-sm font-medium text-slate-700">
-              Pre-prompt for AI
-            </label>
+            <div className="mb-2 flex items-center justify-between">
+              <label htmlFor="prePrompt" className="block text-sm font-medium text-slate-700">
+                Pre-prompt for AI
+              </label>
+              <button
+                type="button"
+                onClick={handleGeneratePrePrompt}
+                disabled={prePromptLoading || workspaceId == null}
+                className="text-xs font-medium text-[var(--v2-primary)] hover:underline disabled:opacity-50"
+              >
+                {prePromptLoading ? 'Generating…' : 'Generate from website'}
+              </button>
+            </div>
             <textarea
               id="prePrompt"
               value={prePrompt}
               onChange={(e) => setPrePrompt(e.target.value)}
               rows={5}
-              placeholder="Enter a pre-prompt to guide your AI agent's behavior and responses. For example: 'You are a friendly customer support agent for a tech company. Always be polite and provide clear, concise answers.'"
+              placeholder={prePromptLoading ? 'Generating pre-prompt from your website…' : "Enter a pre-prompt to guide your AI agent's behavior. Use \"Generate from website\" to create one from your crawled content."}
               className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm ring-1 ring-slate-200/50 transition focus:border-[var(--v2-primary)] focus:ring-2 focus:ring-[var(--v2-primary)]/20"
             />
+            <p className="mt-1 text-xs text-slate-500">Pre-filled using your website content. Edit or regenerate as needed.</p>
           </motion.div>
 
           <motion.div variants={item} className="pt-2">
-            <Link
-              href="/v2/dashboard"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--v2-primary)] px-4 py-3.5 text-sm font-semibold text-[var(--v2-primary-foreground)] shadow-lg shadow-[var(--v2-primary)]/20 transition hover:bg-[var(--v2-primary-hover)] hover:shadow-xl hover:shadow-[var(--v2-primary)]/25"
+            <button
+              type="button"
+              onClick={handleConfirm}
+              disabled={isSubmitting}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--v2-primary)] px-4 py-3.5 text-sm font-semibold text-[var(--v2-primary-foreground)] shadow-lg shadow-[var(--v2-primary)]/20 transition hover:bg-[var(--v2-primary-hover)] hover:shadow-xl hover:shadow-[var(--v2-primary)]/25 disabled:opacity-50 disabled:pointer-events-none"
             >
-              Confirm & go to Playground
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-              </svg>
-            </Link>
+              {isSubmitting ? (
+                <>
+                  <motion.span
+                    className="h-4 w-4 rounded-full border-2 border-[var(--v2-primary-foreground)] border-t-transparent"
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
+                  />
+                  Taking you to dashboard...
+                </>
+              ) : (
+                <>
+                  Confirm & go to Playground
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                  </svg>
+                </>
+              )}
+            </button>
           </motion.div>
         </motion.div>
       </div>

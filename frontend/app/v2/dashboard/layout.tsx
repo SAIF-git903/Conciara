@@ -2,7 +2,9 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useV2Auth } from '@/contexts/V2AuthContext'
+import v2Api from '@/lib/v2-api'
 import {
   Bot,
   ChevronDown,
@@ -22,24 +24,18 @@ import {
   BookOpen,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { DashboardProvider } from '@/contexts/DashboardContext'
+import { getSelectedWorkspaceId, setSelectedWorkspaceId } from '@/lib/v2-workspace-selection'
 
-// Mock data - replace with real data later
-const MOCK_WORKSPACES = [
-  { id: '1', name: 'Test12345', plan: 'Free' },
-  { id: '2', name: 'Acme Support', plan: 'Pro' },
-  { id: '3', name: 'Marketing Team', plan: 'Free' },
-]
-const MOCK_AGENTS = [
-  { id: '1', name: 'ConversaTree', workspaceId: '1' },
-  { id: '2', name: 'Support Bot', workspaceId: '1' },
-  { id: '3', name: 'Sales Assistant', workspaceId: '2' },
-]
-
-// Sidebar when on dashboard (Agents list)
-const dashboardNavItems = [
+// Sidebar when on dashboard (Agents list). Members cannot access workspace settings or billing.
+const dashboardNavItemsOwner = [
   { href: '/v2/dashboard', label: 'Agents', Icon: Bot },
   { href: '#', label: 'Usage', Icon: Clock },
   { href: '#', label: 'Workspace settings', Icon: Settings, children: ['General', 'Members', 'Plans', 'Billing', 'API keys'] },
+]
+const dashboardNavItemsMember = [
+  { href: '/v2/dashboard', label: 'Agents', Icon: Bot },
+  { href: '#', label: 'Usage', Icon: Clock },
 ]
 
 // Map sidebar child labels to routes (for Activity, Analytics, etc.)
@@ -50,6 +46,13 @@ const childHrefMap: Record<string, Record<string, string>> = {
     Files: '/v2/dashboard/data-sources/files',
     'Q&A': '/v2/dashboard/data-sources/qa',
     Website: '/v2/dashboard/data-sources/website',
+  },
+  'Workspace settings': {
+    General: '/v2/dashboard/settings/general',
+    Members: '/v2/dashboard/members',
+    Plans: '/v2/pricing',
+    Billing: '/v2/dashboard/settings/general',
+    'API keys': '/v2/dashboard/settings/api-keys',
   },
   Settings: {
     General: '/v2/dashboard/settings/general',
@@ -71,14 +74,115 @@ const agentNavItems = [
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const { user, loading } = useV2Auth()
+  const agentIdFromUrl = searchParams.get('agent')
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [openDropdown, setOpenDropdown] = useState<'workspace' | 'agent' | null>(null)
   const [workspaceSearch, setWorkspaceSearch] = useState('')
   const [agentSearch, setAgentSearch] = useState('')
-  const [currentWorkspace, setCurrentWorkspace] = useState(MOCK_WORKSPACES[0])
-  const [currentAgent, setCurrentAgent] = useState(MOCK_AGENTS[0])
+  const workspaces = user?.workspaces?.length ? user.workspaces : [{ id: 0, name: 'My Workspace', plan: 'free', role: 'owner' as const }]
+  const [currentWorkspace, setCurrentWorkspace] = useState(workspaces[0])
+  const [agents, setAgents] = useState<{ id: string; name: string; workspaceId: number }[]>([])
+  const [currentAgent, setCurrentAgent] = useState<{ id: string; name: string; workspaceId: number } | null>(null)
   const workspaceRef = useRef<HTMLDivElement>(null)
   const agentRef = useRef<HTMLDivElement>(null)
+  const isOwner = user?.role === 'owner'
+  const dashboardNavItems = isOwner ? dashboardNavItemsOwner : dashboardNavItemsMember
+
+  useEffect(() => {
+    if (loading) return
+    if (!user) {
+      router.replace('/v2/signin')
+      return
+    }
+    const hasWorkspaces = (user.workspaces?.length ?? 0) > 0
+    if (!hasWorkspaces) {
+      router.replace('/v2/onboarding')
+    }
+  }, [user, loading, router])
+
+  // When user has multiple workspaces: require a chosen workspace; otherwise use stored or first
+  useEffect(() => {
+    if (workspaces.length === 0 || workspaces[0].id === 0) return
+    const selectedId = getSelectedWorkspaceId()
+    const selectedWorkspace = selectedId ? workspaces.find((w) => w.id === selectedId) : null
+    if (workspaces.length > 1 && !selectedWorkspace) {
+      router.replace('/v2/choose-workspace')
+      return
+    }
+    const next = selectedWorkspace ?? workspaces[0]
+    setCurrentWorkspace((prev) => (prev.id === next.id ? prev : next))
+  }, [workspaces, router])
+
+  // Persist workspace choice when user changes it via dropdown (so multi-workspace users keep selection)
+  const handleWorkspaceSelect = (workspace: typeof workspaces[0]) => {
+    setCurrentWorkspace(workspace)
+    setOpenDropdown(null)
+    setSelectedWorkspaceId(workspace.id)
+  }
+
+  if (loading || !user) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-white">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--v2-primary)] border-t-transparent" />
+      </div>
+    )
+  }
+
+  const hasWorkspaces = (user.workspaces?.length ?? 0) > 0
+  if (!hasWorkspaces) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-white">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--v2-primary)] border-t-transparent" />
+      </div>
+    )
+  }
+
+  const selectedId = getSelectedWorkspaceId()
+  const selectedWorkspace = selectedId ? workspaces.find((w) => w.id === selectedId) : null
+  const needsWorkspaceChoice = workspaces.length > 1 && !selectedWorkspace
+  if (needsWorkspaceChoice) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-white">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--v2-primary)] border-t-transparent" />
+      </div>
+    )
+  }
+
+  // Load agents for the current workspace
+  useEffect(() => {
+    if (currentWorkspace.id === 0) return
+    v2Api.get<{ agents: Array<{ id: number; workspaceId: number; name: string }> }>(`/v2/workspaces/${currentWorkspace.id}/agents`)
+      .then((res) => {
+        const list = (res.data.agents ?? []).map((a) => ({
+          id: String(a.id),
+          name: a.name,
+          workspaceId: a.workspaceId,
+        }))
+        setAgents(list)
+      })
+      .catch(() => setAgents([]))
+  }, [currentWorkspace.id])
+
+  useEffect(() => {
+    const inWorkspace = agents.filter((a) => a.workspaceId === currentWorkspace.id)
+    if (inWorkspace.length > 0 && (!currentAgent || !inWorkspace.find((a) => a.id === currentAgent?.id))) {
+      setCurrentAgent(inWorkspace[0])
+    }
+  }, [currentWorkspace.id, agents, currentAgent?.id])
+
+  // After onboarding: select the newly created agent from ?agent= and go to playground
+  useEffect(() => {
+    if (!agentIdFromUrl || agents.length === 0) return
+    const inWorkspace = agents.filter((a) => a.workspaceId === currentWorkspace.id)
+    const found = inWorkspace.find((a) => a.id === agentIdFromUrl)
+    if (found) {
+      setCurrentAgent(found)
+      router.replace('/v2/dashboard/playground')
+    }
+  }, [agentIdFromUrl, agents, currentWorkspace.id, router])
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -94,10 +198,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     setExpanded((prev) => ({ ...prev, [label]: !prev[label] }))
   }
 
-  const filteredWorkspaces = MOCK_WORKSPACES.filter((w) =>
+  const filteredWorkspaces = workspaces.filter((w) =>
     w.name.toLowerCase().includes(workspaceSearch.toLowerCase())
   )
-  const filteredAgents = MOCK_AGENTS.filter((a) =>
+  const agentsInWorkspace = agents.filter((a) => a.workspaceId === currentWorkspace.id)
+  const filteredAgents = agentsInWorkspace.filter((a) =>
     a.name.toLowerCase().includes(agentSearch.toLowerCase())
   )
 
@@ -106,31 +211,33 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-full w-full min-h-0 flex-col bg-white">
-      {/* Full-width top header - workspace and agent dropdowns */}
+      {/* Full-width top header - workspace name and agent dropdowns */}
       <header className="relative flex h-12 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-[var(--v2-primary)] text-sm font-bold text-white">
           C
         </div>
         <span className="text-slate-300">/</span>
 
-        {/* Workspace selector */}
+        {/* Workspace name / selector */}
         <div className="relative" ref={workspaceRef}>
           <button
             type="button"
             onClick={() => setOpenDropdown((v) => (v === 'workspace' ? null : 'workspace'))}
             className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-slate-700 hover:bg-slate-50"
           >
-            <span className="font-medium">{currentWorkspace.name}</span>
-            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">{currentWorkspace.plan}</span>
+            <span className="font-medium" title="Workspace">{currentWorkspace.name}</span>
+            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">{currentWorkspace.plan.charAt(0).toUpperCase() + currentWorkspace.plan.slice(1)}</span>
             <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${openDropdown === 'workspace' ? 'rotate-180' : ''}`} />
           </button>
           {openDropdown === 'workspace' && (
             <div className="absolute left-0 top-full z-50 mt-0.5 w-64 rounded-lg border border-slate-200 bg-white py-1.5 shadow-lg">
-              <div className="border-b border-slate-100 px-1.5 pb-1.5">
-                <button type="button" className="flex w-full items-center justify-center gap-1 rounded border border-[var(--v2-primary)] py-1.5 text-xs font-medium text-[var(--v2-primary)] hover:bg-[var(--v2-primary)]/10">
-                  <Plus className="h-3 w-3" /> Create workspace
-                </button>
-              </div>
+              {isOwner && (
+                <div className="border-b border-slate-100 px-1.5 pb-1.5">
+                  <button type="button" className="flex w-full items-center justify-center gap-1 rounded border border-[var(--v2-primary)] py-1.5 text-xs font-medium text-[var(--v2-primary)] hover:bg-[var(--v2-primary)]/10">
+                    <Plus className="h-3 w-3" /> Create workspace
+                  </button>
+                </div>
+              )}
               <div className="px-1.5 pt-1.5">
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
@@ -148,7 +255,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                   <button
                     key={w.id}
                     type="button"
-                    onClick={() => { setCurrentWorkspace(w); setOpenDropdown(null) }}
+                    onClick={() => handleWorkspaceSelect(w)}
                     className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs ${
                       currentWorkspace.id === w.id ? 'bg-slate-200 text-slate-900 font-medium' : 'text-slate-700 hover:bg-slate-50'
                     }`}
@@ -175,7 +282,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 onClick={() => setOpenDropdown((v) => (v === 'agent' ? null : 'agent'))}
                 className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-slate-700 hover:bg-slate-50"
               >
-                <span className="font-medium">{currentAgent.name}</span>
+                <span className="font-medium">{currentAgent?.name ?? 'Agent'}</span>
                 <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">Agent</span>
                 <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${openDropdown === 'agent' ? 'rotate-180' : ''}`} />
               </button>
@@ -205,11 +312,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                     type="button"
                     onClick={() => { setCurrentAgent(a); setOpenDropdown(null) }}
                     className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs ${
-                      currentAgent.id === a.id ? 'bg-slate-200 text-slate-900 font-medium' : 'text-slate-700 hover:bg-slate-50'
+                      currentAgent?.id === a.id ? 'bg-slate-200 text-slate-900 font-medium' : 'text-slate-700 hover:bg-slate-50'
                     }`}
                   >
                     <span>{a.name}</span>
-                    {currentAgent.id === a.id && <Check className="h-3.5 w-3.5 shrink-0" />}
+                    {currentAgent?.id === a.id && <Check className="h-3.5 w-3.5 shrink-0" />}
                   </button>
                 ))}
                 {filteredAgents.length === 0 && (
@@ -243,7 +350,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           <nav className="flex-1 overflow-y-auto py-3">
             {navItems.map((item) => {
               const isActive = pathname === item.href
-              const hasChildren = 'children' in item && item.children?.length
+              const hasChildren = 'children' in item && Array.isArray((item as { children?: string[] }).children) && (item as { children: string[] }).children.length > 0
               const isChildRoute =
                 hasChildren &&
                 (item as { children: string[] }).children.some(
@@ -321,7 +428,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         {/* Main content area */}
         <div className="flex min-h-0 flex-1 flex-col">
           <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {children}
+            <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace}>
+              {children}
+            </DashboardProvider>
           </main>
         </div>
       </div>

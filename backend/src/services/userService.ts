@@ -1,17 +1,21 @@
 /**
  * User Service
- * Handles user CRUD operations and authentication-related user queries
+ * Handles user CRUD operations and authentication-related user queries.
+ * Auth-related functions (createUser, getUserByEmail, getUserById, updateLastLogin) use Prisma.
  */
 
 import { pool } from '../db/connection.js';
+import { prisma } from '../db/prisma.js';
 import { hashPassword } from './authService.js';
+
+export type UserRole = 'owner' | 'member';
 
 export interface User {
   id: number;
   email: string;
   passwordHash: string;
   fullName?: string;
-  role: 'admin' | 'manager' | 'viewer';
+  role: UserRole;
   isActive: boolean;
   lastLogin?: Date;
   createdAt: Date;
@@ -22,64 +26,53 @@ export interface CreateUserInput {
   email: string;
   password: string;
   fullName?: string;
-  role?: 'admin' | 'manager' | 'viewer';
+  role?: UserRole;
 }
 
 export interface UpdateUserInput {
   email?: string;
   password?: string;
   fullName?: string;
-  role?: 'admin' | 'manager' | 'viewer';
+  role?: UserRole;
   isActive?: boolean;
 }
 
 /**
- * Create a new user
+ * Create a new user (Prisma)
  */
 export async function createUser(input: CreateUserInput): Promise<User> {
   const passwordHash = await hashPassword(input.password);
-  const role = input.role || 'manager';
+  const role = (input.role || 'member') as UserRole;
 
-  const result = await pool.query(
-    `INSERT INTO users (email, password_hash, full_name, role)
-     VALUES ($1, $2, $3, $4)
-     RETURNING *`,
-    [input.email, passwordHash, input.fullName || null, role]
-  );
-
-  return mapRowToUser(result.rows[0]);
+  const user = await prisma.user.create({
+    data: {
+      email: input.email,
+      passwordHash,
+      fullName: input.fullName ?? null,
+      role,
+    },
+  });
+  return prismaUserToUser(user);
 }
 
 /**
- * Get user by email
+ * Get user by email (Prisma)
  */
 export async function getUserByEmail(email: string): Promise<User | null> {
-  const result = await pool.query(
-    `SELECT * FROM users WHERE email = $1`,
-    [email]
-  );
-
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  return mapRowToUser(result.rows[0]);
+  const user = await prisma.user.findUnique({
+    where: { email },
+  });
+  return user ? prismaUserToUser(user) : null;
 }
 
 /**
- * Get user by ID
+ * Get user by ID (Prisma)
  */
 export async function getUserById(id: number): Promise<User | null> {
-  const result = await pool.query(
-    `SELECT * FROM users WHERE id = $1`,
-    [id]
-  );
-
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  return mapRowToUser(result.rows[0]);
+  const user = await prisma.user.findUnique({
+    where: { id },
+  });
+  return user ? prismaUserToUser(user) : null;
 }
 
 /**
@@ -161,13 +154,13 @@ export async function updateUser(id: number, input: UpdateUserInput): Promise<Us
 }
 
 /**
- * Update last login timestamp
+ * Update last login timestamp (Prisma)
  */
 export async function updateLastLogin(id: number): Promise<void> {
-  await pool.query(
-    `UPDATE users SET last_login = NOW() WHERE id = $1`,
-    [id]
-  );
+  await prisma.user.update({
+    where: { id },
+    data: { lastLogin: new Date() },
+  });
 }
 
 /**
@@ -190,9 +183,9 @@ export async function deleteUser(id: number): Promise<void> {
 export async function assignUserToWebsite(
   userId: number,
   websiteId: number,
-  role?: 'admin' | 'manager' | 'viewer'
+  role?: 'owner' | 'member'
 ): Promise<void> {
-  const userRole = role || 'manager';
+  const userRole = role || 'member';
   
   await pool.query(
     `INSERT INTO user_tenants (user_id, website_id, role)
@@ -256,15 +249,16 @@ export async function getUserWebsiteIds(userId: number): Promise<number[]> {
 }
 
 /**
- * Get one active user per role for bypass/demo login dropdown
+ * Get one active user per role for bypass/demo login dropdown (owner, member)
  */
 export async function getBypassUsers(): Promise<Array<{
   id: number;
   email: string;
   fullName?: string;
   role: string;
-  websites: Array<{ websiteId: number; websiteName: string; domain: string; role: string }>;
+  workspaces: Array<{ id: number; name: string; plan: string; role: string }>;
 }>> {
+  const { getWorkspacesForUser } = await import('./workspaceService.js');
   const result = await pool.query(
     `SELECT id, email, full_name, role FROM users
      WHERE is_active = true
@@ -278,36 +272,29 @@ export async function getBypassUsers(): Promise<Array<{
     seen.add(row.role);
     byRole.push(row);
   }
-  // 
 
-  const withWebsites = await Promise.all(
+  const withWorkspaces = await Promise.all(
     byRole.map(async (row) => {
-      const websites = await getUserWebsites(row.id);
+      const workspaces = await getWorkspacesForUser(row.id);
       return {
         id: row.id,
         email: row.email,
         fullName: row.full_name,
         role: row.role,
-        websites: websites.map((w) => ({
-          websiteId: w.websiteId,
-          websiteName: w.websiteName,
-          domain: w.domain,
-          role: w.role,
-        })),
+        workspaces,
       };
     })
   );
 
-  return withWebsites;
+  return withWorkspaces;
 }
 
 /**
  * Check if user has access to a website
  */
 export async function userHasWebsiteAccess(userId: number, websiteId: number): Promise<boolean> {
-  // Admins have access to all websites
   const user = await getUserById(userId);
-  if (user && user.role === 'admin') {
+  if (user && user.role === 'owner') {
     return true;
   }
 
@@ -321,7 +308,7 @@ export async function userHasWebsiteAccess(userId: number, websiteId: number): P
 }
 
 /**
- * Map database row to User object
+ * Map database row to User object (for pool queries)
  */
 function mapRowToUser(row: any): User {
   return {
@@ -334,5 +321,32 @@ function mapRowToUser(row: any): User {
     lastLogin: row.last_login ? new Date(row.last_login) : undefined,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
+  };
+}
+
+/**
+ * Map Prisma User to User object
+ */
+function prismaUserToUser(row: {
+  id: number;
+  email: string;
+  passwordHash: string;
+  fullName: string | null;
+  role: string;
+  isActive: boolean;
+  lastLogin: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): User {
+  return {
+    id: row.id,
+    email: row.email,
+    passwordHash: row.passwordHash,
+    fullName: row.fullName ?? undefined,
+    role: row.role as UserRole,
+    isActive: row.isActive,
+    lastLogin: row.lastLogin ?? undefined,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }

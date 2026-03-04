@@ -109,29 +109,24 @@ export async function optionalAuth(
 }
 
 /**
- * Middleware factory to require a specific role
+ * Middleware factory to require a specific role (owner | member)
  */
-export function requireRole(role: 'admin' | 'manager' | 'viewer') {
+export function requireRole(role: 'owner' | 'member') {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     if (!req.user) {
       res.status(401).json({ error: 'Authentication required' });
       return;
     }
 
-    const roleHierarchy: Record<string, number> = {
-      viewer: 1,
-      manager: 2,
-      admin: 3,
-    };
+    const roleLevel: Record<string, number> = { member: 1, owner: 2 };
+    const userLevel = roleLevel[req.user.role] ?? 0;
+    const requiredLevel = roleLevel[role] ?? 0;
 
-    const userRoleLevel = roleHierarchy[req.user.role] || 0;
-    const requiredRoleLevel = roleHierarchy[role] || 0;
-
-    if (userRoleLevel < requiredRoleLevel) {
-      res.status(403).json({ 
+    if (userLevel < requiredLevel) {
+      res.status(403).json({
         error: 'Insufficient permissions',
         required: role,
-        current: req.user.role
+        current: req.user.role,
       });
       return;
     }
@@ -163,11 +158,11 @@ export function requirePermission(permission: string) {
 }
 
 /**
- * Middleware to require admin role (shorthand)
+ * Middleware to require owner role (full access)
  */
-export const requireAdmin = requireRole('admin');
+export const requireAdmin = requireRole('owner');
 
 /**
- * Middleware to require manager or admin role (shorthand)
+ * Middleware to require owner role (same as requireAdmin)
  */
-export const requireManager = requireRole('manager');
+export const requireManager = requireRole('owner');

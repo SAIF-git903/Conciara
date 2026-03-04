@@ -2,13 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { Plus, MoreHorizontal, MessageCircle } from 'lucide-react'
-
-const MOCK_AGENTS = [
-  { id: '1', name: 'ConversaTree', lastTrained: 'Just now' },
-  { id: '2', name: 'Support Bot', lastTrained: '2 hours ago' },
-  { id: '3', name: 'Sales Assistant', lastTrained: 'Yesterday' },
-]
+import { Plus, MoreHorizontal, MessageCircle, Bot } from 'lucide-react'
+import { useDashboard } from '@/contexts/DashboardContext'
 
 function AgentCardPreview() {
   return (
@@ -25,7 +20,7 @@ function AgentCardPreview() {
 }
 
 export default function DashboardPage() {
-  const [agents] = useState(MOCK_AGENTS)
+  const { currentWorkspace, agents } = useDashboard()
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -41,7 +36,10 @@ export default function DashboardPage() {
   return (
     <div className="flex h-full flex-col overflow-auto">
       <div className="shrink-0 flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-6 py-4">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Agents</h1>
+        <div>
+          <p className="text-sm font-medium text-slate-500">{currentWorkspace.name}</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Agents</h1>
+        </div>
         <button
           type="button"
           className="flex items-center gap-2 rounded-lg bg-[var(--v2-primary)] px-4 py-2.5 text-sm font-semibold text-[var(--v2-primary-foreground)] shadow-sm transition hover:bg-[var(--v2-primary-hover)]"
@@ -74,18 +72,18 @@ export default function DashboardPage() {
             {agents.map((agent) => (
               <Link
                 key={agent.id}
-                href="/v2/dashboard/playground"
+                href={`/v2/dashboard/playground?agent=${agent.id}`}
                 className="group relative flex flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md"
               >
-                <div className="mb-4 aspect-video overflow-hidden rounded-lg">
-                  <AgentCardPreview />
+                <div className="mb-4 flex aspect-video items-center justify-center overflow-hidden rounded-lg bg-slate-50">
+                  <Bot className="h-12 w-12 text-slate-300 group-hover:text-[var(--v2-primary)]/70" />
                 </div>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <h3 className="truncate font-semibold text-slate-900 group-hover:text-[var(--v2-primary)]">
                       {agent.name}
                     </h3>
-                    <p className="mt-0.5 text-xs text-slate-500">Last trained {agent.lastTrained}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">Open in Playground</p>
                   </div>
                   <div ref={menuOpen === agent.id ? menuRef : undefined} className="relative">
                     <button
@@ -98,7 +96,7 @@ export default function DashboardPage() {
                     </button>
                     {menuOpen === agent.id && (
                       <div className="absolute right-0 top-full z-10 mt-1 w-40 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-                        <Link href="/v2/dashboard/playground" className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
+                        <Link href={`/v2/dashboard/playground?agent=${agent.id}`} className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
                           Open Playground
                         </Link>
                         <button type="button" className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">

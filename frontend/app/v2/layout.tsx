@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import type { ReactNode } from 'react'
+import { V2AuthProvider } from '@/contexts/V2AuthContext'
 
 export default function V2Layout({ children }: { children: ReactNode }) {
   const pathname = usePathname()
@@ -60,7 +61,9 @@ export default function V2Layout({ children }: { children: ReactNode }) {
             : `mx-auto max-w-6xl px-4 pb-16 sm:px-6 lg:px-8 ${isOnboarding ? 'pt-8' : 'pt-10'}`
         }
       >
-        {children}
+        <V2AuthProvider>
+          {children}
+        </V2AuthProvider>
       </main>
     </div>
   )

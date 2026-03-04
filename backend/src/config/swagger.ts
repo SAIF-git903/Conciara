@@ -52,7 +52,7 @@ const options: swaggerJsdoc.Options = {
             id: { type: 'integer' },
             email: { type: 'string', format: 'email' },
             fullName: { type: 'string' },
-            role: { type: 'string', enum: ['admin', 'manager'] },
+            role: { type: 'string', enum: ['owner', 'member'] },
             isActive: { type: 'boolean' },
             lastLogin: { type: 'string', format: 'date-time', nullable: true },
             createdAt: { type: 'string', format: 'date-time' },

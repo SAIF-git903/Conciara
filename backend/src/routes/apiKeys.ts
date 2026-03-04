@@ -18,7 +18,7 @@ router.use(requireAuth);
  * /api/api-keys:
  *   get:
  *     summary: List API keys
- *     description: List API keys. Users see their own keys, admins see all keys.
+ *     description: List API keys. Users see their own keys, owners see all keys.
  *     tags: [API Keys]
  *     security:
  *       - bearerAuth: []
@@ -64,13 +64,13 @@ router.use(requireAuth);
 router.get('/', async (req, res) => {
   try {
     const currentUser = req.user!;
-    const isAdmin = currentUser.role === 'admin';
+    const isOwner = currentUser.role === 'owner';
 
     let query: string;
     let params: any[];
 
-    if (isAdmin) {
-      // Admin can see all keys
+    if (isOwner) {
+      // Owner can see all keys
       query = `
         SELECT 
           ak.id,
@@ -221,12 +221,10 @@ router.post('/', async (req, res) => {
     let finalPermissions = permissionsArray;
     if (permissionsArray.length === 0) {
       // Default permissions based on role
-      if (currentUser.role === 'admin') {
+      if (currentUser.role === 'owner') {
         finalPermissions = ['*'];
-      } else if (currentUser.role === 'manager') {
-        finalPermissions = ['chat:read', 'chat:write', 'tree:read', 'tree:write'];
       } else {
-        finalPermissions = ['chat:read', 'tree:read'];
+        finalPermissions = ['chat:read', 'chat:write', 'tree:read', 'tree:write'];
       }
     }
 
@@ -284,7 +282,7 @@ router.post('/', async (req, res) => {
  * /api/api-keys/{id}:
  *   delete:
  *     summary: Revoke an API key
- *     description: Revoke (delete) an API key. Users can only revoke their own keys, admins can revoke any.
+ *     description: Revoke (delete) an API key. Users can only revoke their own keys, owners can revoke any.
  *     tags: [API Keys]
  *     security:
  *       - bearerAuth: []
@@ -317,9 +315,9 @@ router.delete('/:id', async (req, res) => {
   try {
     const apiKeyId = parseInt(req.params.id);
     const currentUser = req.user!;
-    const isAdmin = currentUser.role === 'admin';
+    const isOwner = currentUser.role === 'owner';
 
-    // Check if key exists and belongs to user (unless admin)
+    // Check if key exists and belongs to user (unless owner)
     const keyResult = await pool.query(
       `SELECT user_id FROM api_keys WHERE id = $1`,
       [apiKeyId]
@@ -331,13 +329,12 @@ router.delete('/:id', async (req, res) => {
 
     const keyUserId = keyResult.rows[0].user_id;
 
-    // Users can only revoke their own keys (unless admin)
-    if (!isAdmin && keyUserId !== currentUser.id) {
+    // Users can only revoke their own keys (unless owner)
+    if (!isOwner && keyUserId !== currentUser.id) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
 
-    // Revoke the key
-    await revokeAPIKey(apiKeyId, isAdmin ? undefined : currentUser.id);
+    await revokeAPIKey(apiKeyId, isOwner ? undefined : currentUser.id);
 
     res.json({ message: 'API key revoked successfully' });
   } catch (error: any) {

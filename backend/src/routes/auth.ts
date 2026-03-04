@@ -18,7 +18,8 @@ import {
   cleanupExpiredSessions
 } from '../services/authService.js';
 import { requireAuth, requireAdmin } from '../middleware/authMiddleware.js';
-import { pool } from '../db/connection.js';
+import { createSession, updateSessionRefresh } from '../services/authService.js';
+import { prisma } from '../db/prisma.js';
 
 const router = express.Router();
 
@@ -96,9 +97,8 @@ router.post('/login', async (req, res) => {
     // Update last login
     await updateLastLogin(user.id);
 
-    // Get user's assigned websites
-    const { getUserWebsites } = await import('../services/userService.js');
-    const websites = await getUserWebsites(user.id);
+    const { getWorkspacesForUser } = await import('../services/workspaceService.js');
+    const workspaces = await getWorkspacesForUser(user.id);
 
     // Generate tokens
     const token = generateJWT({
@@ -115,23 +115,16 @@ router.post('/login', async (req, res) => {
       fullName: user.fullName,
     });
 
-    // Store refresh token in database (optional - for revocation)
-    // Generate a unique session identifier
-    const sessionId = `session_${user.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     try {
-      await pool.query(
-        `INSERT INTO user_sessions (user_id, session_token, refresh_token, expires_at, ip_address, user_agent)
-         VALUES ($1, $2, $3, NOW() + INTERVAL '7 days', $4, $5)`,
-        [
-          user.id,
-          sessionId,
-          refreshToken,
-          req.ip || req.socket.remoteAddress,
-          req.headers['user-agent'] || null,
-        ]
-      );
+      await createSession({
+        userId: user.id,
+        sessionToken: `session_${user.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        refreshToken,
+        expiresInDays: 7,
+        ipAddress: req.ip || (req.socket as any)?.remoteAddress,
+        userAgent: req.headers['user-agent'] || null,
+      });
     } catch (error: any) {
-      // If insert fails (e.g., unique constraint), log but don't fail login
       console.warn('Failed to store session:', error.message);
     }
 
@@ -143,12 +136,85 @@ router.post('/login', async (req, res) => {
         email: user.email,
         fullName: user.fullName,
         role: user.role,
-        websites,
+        workspaces,
       },
     });
   } catch (error: any) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Login failed', details: error.message });
+  }
+});
+
+/**
+ * POST /api/auth/signup - Public self-registration (for v2 UI).
+ * Creates user as owner with no workspace; user must create one via onboarding.
+ */
+router.post('/signup', async (req, res) => {
+  try {
+    const { email, password, fullName } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    const existingUser = await getUserByEmail(email);
+    if (existingUser) {
+      return res.status(400).json({ error: 'User already exists with this email' });
+    }
+
+    const { createUser } = await import('../services/userService.js');
+    const { getWorkspacesForUser } = await import('../services/workspaceService.js');
+
+    const user = await createUser({
+      email,
+      password,
+      fullName: fullName || undefined,
+      role: 'owner',
+    });
+
+    await updateLastLogin(user.id);
+    const workspaces = await getWorkspacesForUser(user.id);
+
+    const token = generateJWT({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      fullName: user.fullName,
+    });
+    const refreshToken = generateRefreshToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      fullName: user.fullName,
+    });
+
+    try {
+      await createSession({
+        userId: user.id,
+        sessionToken: `session_${user.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        refreshToken,
+        expiresInDays: 7,
+        ipAddress: req.ip || (req.socket as any)?.remoteAddress,
+        userAgent: req.headers['user-agent'] || null,
+      });
+    } catch (error: any) {
+      console.warn('Failed to store session:', error.message);
+    }
+
+    res.status(201).json({
+      token,
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+        workspaces,
+      },
+    });
+  } catch (error: any) {
+    console.error('Signup error:', error);
+    res.status(500).json({ error: 'Signup failed', details: error.message });
   }
 });
 
@@ -179,8 +245,8 @@ router.post('/bypass', async (req, res) => {
       return res.status(403).json({ error: 'User is disabled' });
     }
     await updateLastLogin(user.id);
-    const { getUserWebsites } = await import('../services/userService.js');
-    const websites = await getUserWebsites(user.id);
+    const { getWorkspacesForUser } = await import('../services/workspaceService.js');
+    const workspaces = await getWorkspacesForUser(user.id);
     const token = generateJWT({
       id: user.id,
       email: user.email,
@@ -201,7 +267,7 @@ router.post('/bypass', async (req, res) => {
         email: user.email,
         fullName: user.fullName,
         role: user.role,
-        websites,
+        workspaces,
       },
     });
   } catch (error: any) {
@@ -260,7 +326,7 @@ router.post('/logout', requireAuth, async (req, res) => {
         console.warn('Failed to revoke refresh token:', error.message);
       }
     } else if (refreshToken) {
-      // Fallback: try to revoke without user check (for admin)
+      // Fallback: try to revoke without user check (for owner)
       await revokeRefreshToken(refreshToken);
     }
 
@@ -298,7 +364,7 @@ router.post('/logout', requireAuth, async (req, res) => {
  *                 type: string
  *               role:
  *                 type: string
- *                 enum: [manager]
+ *                 enum: [member]
  *             required:
  *               - email
  *               - password
@@ -332,7 +398,7 @@ router.post('/register', requireAuth, requireAdmin, async (req, res) => {
       email,
       password,
       fullName,
-      role: role || 'manager',
+      role: role || 'member',
     });
 
     res.status(201).json({
@@ -381,14 +447,15 @@ router.get('/me', requireAuth, async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { getUserById, getUserWebsites } = await import('../services/userService.js');
+    const { getUserById } = await import('../services/userService.js');
     const user = await getUserById(req.user.id);
 
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const websites = await getUserWebsites(user.id);
+    const { getWorkspacesForUser } = await import('../services/workspaceService.js');
+    const workspaces = await getWorkspacesForUser(user.id);
 
     res.json({
       user: {
@@ -399,7 +466,7 @@ router.get('/me', requireAuth, async (req, res) => {
         isActive: user.isActive,
         lastLogin: user.lastLogin,
         createdAt: user.createdAt,
-        websites,
+        workspaces,
       },
     });
   } catch (error: any) {
@@ -479,16 +546,8 @@ router.post('/refresh', async (req, res) => {
       fullName: user.fullName,
     });
 
-    // Generate new session ID
     const newSessionId = `session_${payload.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    // Update session
-    await pool.query(
-      `UPDATE user_sessions 
-       SET session_token = $1, refresh_token = $2, expires_at = NOW() + INTERVAL '7 days'
-       WHERE refresh_token = $3`,
-      [newSessionId, newRefreshToken, refreshToken]
-    );
+    await updateSessionRefresh(refreshToken, newSessionId, newRefreshToken, 7);
 
     res.json({
       token: newToken,
@@ -580,10 +639,10 @@ router.post('/change-password', requireAuth, async (req, res) => {
 
     // Update password
     const newPasswordHash = await hashPassword(newPassword);
-    await pool.query(
-      `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
-      [newPasswordHash, user.id]
-    );
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash: newPasswordHash, updatedAt: new Date() },
+    });
 
     // Revoke all refresh tokens for security (user will need to login again)
     const revokedCount = await revokeAllUserRefreshTokens(user.id);
@@ -822,7 +881,7 @@ router.delete('/sessions/:sessionToken', requireAuth, async (req, res) => {
  *       401:
  *         description: Not authenticated
  *       403:
- *         description: Insufficient permissions (admin only)
+ *         description: Insufficient permissions (owner only)
  *       500:
  *         description: Server error
  */
