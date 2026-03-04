@@ -43,6 +43,8 @@ export interface SkinRendererProps {
   onMessage?: (message: string) => Promise<void>
   initialMessages?: Message[]
   sessionId?: string | null
+  /** When true, only the chat window is shown (no floating button); window starts open. For embed/preview. */
+  previewMode?: boolean
 }
 
 export default function SkinRenderer({
@@ -56,9 +58,10 @@ export default function SkinRenderer({
   requireLanguageSelection = false,
   onMessage,
   initialMessages = [],
-  sessionId: initialSessionId = null
+  sessionId: initialSessionId = null,
+  previewMode = false
 }: SkinRendererProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(previewMode)
   const [isMinimized, setIsMinimized] = useState(false)
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [inputValue, setInputValue] = useState('')
@@ -100,7 +103,7 @@ export default function SkinRenderer({
       if (initializingRef.current) return // Prevent double call (e.g. React Strict Mode)
       initializingRef.current = true
       initializeConversation()
-    } else {
+    } else if (!previewMode) {
       addMessage('bot', config.states?.error?.message || "Sorry, no chatbot is configured. Please contact support.")
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -262,9 +265,9 @@ export default function SkinRenderer({
   }
 
   return (
-    <div className={`fixed ${positionClasses[position]} z-50`}>
-      {/* Chat Button */}
-      {!isOpen && (
+    <div className={previewMode ? 'relative flex h-full w-full flex-col justify-end items-end' : `fixed ${positionClasses[position]} z-50`}>
+      {/* Chat Button - hidden in preview mode */}
+      {!previewMode && !isOpen && (
         <DynamicButton
           config={config}
           onClick={() => setIsOpen(true)}
@@ -277,9 +280,9 @@ export default function SkinRenderer({
           <DynamicHeader
             config={config}
             isMinimized={isMinimized}
-            onMinimize={() => setIsMinimized(!isMinimized)}
-            onClose={handleClose}
-            showSettings={!!(language && typeof onLanguageSelect === 'function')}
+            onMinimize={previewMode ? () => {} : () => setIsMinimized(!isMinimized)}
+            onClose={previewMode ? () => {} : handleClose}
+            showSettings={!previewMode && !!(language && typeof onLanguageSelect === 'function')}
             onSettingsClick={() => setSettingsOpen(true)}
           />
 
