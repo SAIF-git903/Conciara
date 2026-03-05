@@ -152,7 +152,8 @@ export default function ChatLogsPage() {
       setReviseMessage(null)
     } catch (e: unknown) {
       const msg = e && typeof e === 'object' && 'response' in e && (e as { response?: { data?: { error?: string } } }).response?.data?.error
-      setReviseError(msg || (e instanceof Error ? e.message : 'Failed to save as Q&A'))
+      const errorStr: string = typeof msg === 'string' ? msg : (e instanceof Error ? e.message : 'Failed to save as Q&A')
+      setReviseError(errorStr)
     } finally {
       setSavingRevise(false)
     }
