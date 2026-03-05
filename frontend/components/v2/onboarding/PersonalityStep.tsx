@@ -7,6 +7,7 @@ import v2Api from '@/lib/v2-api'
 import {
   clearOnboardingKeys,
   getOnboardingWorkspaceId,
+  getOnboardingCrawlId,
   getOnboardingAgentName,
   getOnboardingAgentLogoUrl,
 } from '@/lib/v2-onboarding'
@@ -104,6 +105,10 @@ export default function PersonalityStep({
         `/v2/workspaces/${workspaceId}/agents`,
         { name, model, prePrompt: prePrompt.trim() || undefined, logoUrl: logoUrl || undefined }
       )
+      const crawlId = getOnboardingCrawlId()
+      if (crawlId != null) {
+        await v2Api.patch(`/v2/workspaces/${workspaceId}/crawls/${crawlId}`, { agentId: data.agent.id })
+      }
       clearOnboardingKeys()
       onSuccess(data.agent.id)
     } catch (err: unknown) {

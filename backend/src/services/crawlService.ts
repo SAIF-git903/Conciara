@@ -119,17 +119,19 @@ export interface StoredCrawl {
 }
 
 /**
- * Crawl a URL and store the result for the workspace (for onboarding; agent linked when agent is created).
+ * Crawl a URL and store the result for the workspace. Optionally link to an agent (Data Sources).
  */
 export async function crawlAndStore(
   workspaceId: number,
   url: string,
-  useCase: string = 'general'
+  useCase: string = 'general',
+  agentId?: number | null
 ): Promise<StoredCrawl> {
   const result = await crawlWebsite(url);
   const crawl = await prisma.websiteCrawl.create({
     data: {
       workspaceId,
+      agentId: agentId ?? undefined,
       url: result.metadata.url as string,
       title: result.title,
       description: result.description,
@@ -151,6 +153,77 @@ export async function crawlAndStore(
     metadata: (crawl.metadata as Record<string, unknown>) || {},
     createdAt: crawl.createdAt,
   };
+}
+
+/**
+ * List crawls for a workspace. If agentId is provided, return only crawls linked to that agent.
+ */
+export async function listCrawlsByWorkspace(
+  workspaceId: number,
+  agentId?: number | null
+): Promise<StoredCrawl[]> {
+  const where: { workspaceId: number; agentId?: number } = { workspaceId };
+  if (agentId != null) {
+    where.agentId = agentId;
+  }
+  const crawls = await prisma.websiteCrawl.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+  });
+  return crawls.map((c) => ({
+    id: c.id,
+    workspaceId: c.workspaceId,
+    url: c.url,
+    title: c.title,
+    description: c.description,
+    logoUrl: c.logoUrl,
+    useCase: c.useCase,
+    trainingContent: c.trainingContent,
+    metadata: (c.metadata as Record<string, unknown>) || {},
+    createdAt: c.createdAt,
+  }));
+}
+
+/**
+ * Delete a crawl by id; verifies workspace ownership.
+ */
+export async function deleteCrawl(crawlId: number, workspaceId: number): Promise<boolean> {
+  const result = await prisma.websiteCrawl.deleteMany({
+    where: { id: crawlId, workspaceId },
+  });
+  return result.count > 0;
+}
+
+/**
+ * Assign a crawl to an agent (e.g. after onboarding: link the crawl from the Link step to the newly created agent).
+ */
+export async function assignCrawlToAgent(
+  crawlId: number,
+  workspaceId: number,
+  agentId: number
+): Promise<boolean> {
+  const result = await prisma.websiteCrawl.updateMany({
+    where: { id: crawlId, workspaceId },
+    data: { agentId },
+  });
+  return result.count > 0;
+}
+
+/**
+ * Get all crawl training content for an agent (for chat context).
+ */
+export async function getCrawlTrainingContentForAgent(agentId: number): Promise<string> {
+  const crawls = await prisma.websiteCrawl.findMany({
+    where: { agentId },
+    orderBy: { createdAt: 'desc' },
+    select: { trainingContent: true, url: true, title: true },
+  });
+  if (crawls.length === 0) return '';
+  const parts = crawls.map((c) => {
+    const header = c.title ? `[${c.title}] (${c.url})` : c.url;
+    return `${header}\n\n${c.trainingContent}`;
+  });
+  return parts.join('\n\n---\n\n');
 }
 
 /**

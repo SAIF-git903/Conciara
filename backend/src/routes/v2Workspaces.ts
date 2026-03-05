@@ -13,10 +13,26 @@ import {
   createAgent,
   canManageAgent,
 } from '../services/workspaceService.js';
-import { crawlAndStore, getLatestCrawlForWorkspace } from '../services/crawlService.js';
+import {
+  crawlAndStore,
+  getLatestCrawlForWorkspace,
+  listCrawlsByWorkspace,
+  deleteCrawl,
+  assignCrawlToAgent,
+  getCrawlTrainingContentForAgent,
+} from '../services/crawlService.js';
 import { generatePrePromptFromWebsiteContent, chatCompletion, chatCompletionStream } from '../services/llmService.js';
 import { createAndProcessDocument, listDocumentsByAgent, deleteDocument, trainPendingDocuments } from '../services/agentDocumentService.js';
 import { retrieveChunks } from '../services/agentRagService.js';
+import {
+  listQaByAgent,
+  createQa,
+  updateQa,
+  deleteQa,
+  retrieveQa,
+  recordQaUsage,
+  getQaUsageStats,
+} from '../services/agentQaService.js';
 import { prisma } from '../db/prisma.js';
 import { isSupportedMimeType, resolveMimeType } from '../services/documentParserService.js';
 
@@ -134,17 +150,79 @@ router.post('/:workspaceId/crawl', async (req, res) => {
       return res.status(403).json({ error: 'Access denied to this workspace' });
     }
 
-    const { url, useCase } = req.body;
+    const { url, useCase, agentId } = req.body;
     if (!url || typeof url !== 'string' || !url.trim()) {
       return res.status(400).json({ error: 'URL is required' });
     }
+    const agentIdNum = agentId != null ? parseInt(String(agentId), 10) : undefined;
+    if (agentId != null && (isNaN(agentIdNum as number) || agentIdNum === 0)) {
+      return res.status(400).json({ error: 'Invalid agentId' });
+    }
 
-    const crawl = await crawlAndStore(workspaceId, url.trim(), useCase);
+    const crawl = await crawlAndStore(workspaceId, url.trim(), useCase ?? 'general', agentIdNum);
     return res.status(201).json({ crawl });
   } catch (error: any) {
     console.error('Crawl error:', error);
     const message = error?.message?.includes('fetch') ? 'Could not reach the URL. Check the link and try again.' : 'Failed to crawl website';
     res.status(500).json({ error: message, details: error?.message });
+  }
+});
+
+/**
+ * DELETE /api/v2/workspaces/:workspaceId/crawls/:crawlId
+ * Delete a website crawl. User must have access to the workspace.
+ */
+router.delete('/:workspaceId/crawls/:crawlId', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const crawlId = parseInt(req.params.crawlId, 10);
+    if (isNaN(workspaceId) || isNaN(crawlId)) {
+      return res.status(400).json({ error: 'Invalid workspace or crawl ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgentsInWorkspace(userId, workspaceId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied to this workspace' });
+
+    const deleted = await deleteCrawl(crawlId, workspaceId);
+    if (!deleted) return res.status(404).json({ error: 'Crawl not found' });
+    return res.status(204).send();
+  } catch (error: any) {
+    console.error('Delete crawl error:', error);
+    res.status(500).json({ error: 'Failed to delete crawl', details: error?.message });
+  }
+});
+
+/**
+ * PATCH /api/v2/workspaces/:workspaceId/crawls/:crawlId
+ * Assign a crawl to an agent (e.g. onboarding: link website crawl to the new agent). Body: { agentId }.
+ */
+router.patch('/:workspaceId/crawls/:crawlId', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const crawlId = parseInt(req.params.crawlId, 10);
+    const agentId = req.body?.agentId != null ? parseInt(String(req.body.agentId), 10) : NaN;
+    if (isNaN(workspaceId) || isNaN(crawlId) || isNaN(agentId) || agentId < 1) {
+      return res.status(400).json({ error: 'Invalid workspace, crawl, or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgentsInWorkspace(userId, workspaceId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied to this workspace' });
+
+    const agent = await prisma.agent.findUnique({ where: { id: agentId } });
+    if (!agent || agent.workspaceId !== workspaceId) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const updated = await assignCrawlToAgent(crawlId, workspaceId, agentId);
+    if (!updated) return res.status(404).json({ error: 'Crawl not found' });
+    return res.status(200).json({ ok: true });
+  } catch (error: any) {
+    console.error('Assign crawl error:', error);
+    res.status(500).json({ error: 'Failed to assign crawl', details: error?.message });
   }
 });
 
@@ -335,6 +413,178 @@ router.delete('/:workspaceId/agents/:agentId/documents/:documentId', async (req,
 });
 
 /**
+ * GET /api/v2/workspaces/:workspaceId/agents/:agentId/crawls
+ * List website crawls for the agent (crawls linked to this agent or workspace-level).
+ */
+router.get('/:workspaceId/agents/:agentId/crawls', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const agent = await prisma.agent.findUnique({ where: { id: agentId } });
+    if (!agent || agent.workspaceId !== workspaceId) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const crawls = await listCrawlsByWorkspace(workspaceId, agentId);
+    return res.json({ crawls });
+  } catch (error: any) {
+    console.error('List crawls error:', error);
+    res.status(500).json({ error: 'Failed to list crawls', details: error?.message });
+  }
+});
+
+/**
+ * GET /api/v2/workspaces/:workspaceId/agents/:agentId/qa
+ * List all Q&A entries for the agent.
+ */
+router.get('/:workspaceId/agents/:agentId/qa', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const agent = await prisma.agent.findUnique({ where: { id: agentId } });
+    if (!agent || agent.workspaceId !== workspaceId) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const entries = await listQaByAgent(agentId);
+    return res.json({ entries });
+  } catch (error: any) {
+    console.error('List Q&A error:', error);
+    res.status(500).json({ error: 'Failed to list Q&A' });
+  }
+});
+
+/**
+ * POST /api/v2/workspaces/:workspaceId/agents/:agentId/qa
+ * Create a Q&A entry. Body: { question: string, answer: string }
+ */
+router.post('/:workspaceId/agents/:agentId/qa', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const agent = await prisma.agent.findUnique({ where: { id: agentId } });
+    if (!agent || agent.workspaceId !== workspaceId) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const { question, answer } = req.body;
+    const entry = await createQa(agentId, workspaceId, question ?? '', answer ?? '');
+    return res.status(201).json({ entry });
+  } catch (error: any) {
+    console.error('Create Q&A error:', error);
+    res.status(500).json({ error: error.message || 'Failed to create Q&A' });
+  }
+});
+
+/**
+ * GET /api/v2/workspaces/:workspaceId/agents/:agentId/qa/:qaId/usage
+ * Usage stats for chart (count per day). Query: days=30
+ * Must be defined before PUT/DELETE .../qa/:qaId so /usage is matched.
+ */
+router.get('/:workspaceId/agents/:agentId/qa/:qaId/usage', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    const qaId = parseInt(req.params.qaId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId) || isNaN(qaId)) {
+      return res.status(400).json({ error: 'Invalid ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const days = Math.min(90, Math.max(7, parseInt(String(req.query.days), 10) || 30));
+    const stats = await getQaUsageStats(qaId, agentId, days);
+    return res.json({ usage: Array.isArray(stats) ? stats : [] });
+  } catch (error: any) {
+    console.error('Q&A usage error:', error);
+    res.status(500).json({ error: 'Failed to get usage' });
+  }
+});
+
+/**
+ * PUT /api/v2/workspaces/:workspaceId/agents/:agentId/qa/:qaId
+ * Update a Q&A entry. Body: { question?: string, answer?: string }
+ */
+router.put('/:workspaceId/agents/:agentId/qa/:qaId', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    const qaId = parseInt(req.params.qaId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId) || isNaN(qaId)) {
+      return res.status(400).json({ error: 'Invalid ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const entry = await updateQa(qaId, agentId, req.body);
+    if (!entry) return res.status(404).json({ error: 'Q&A not found' });
+    return res.json({ entry });
+  } catch (error: any) {
+    console.error('Update Q&A error:', error);
+    res.status(500).json({ error: error.message || 'Failed to update Q&A' });
+  }
+});
+
+/**
+ * DELETE /api/v2/workspaces/:workspaceId/agents/:agentId/qa/:qaId
+ */
+router.delete('/:workspaceId/agents/:agentId/qa/:qaId', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    const qaId = parseInt(req.params.qaId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId) || isNaN(qaId)) {
+      return res.status(400).json({ error: 'Invalid ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const deleted = await deleteQa(qaId, agentId);
+    if (!deleted) return res.status(404).json({ error: 'Q&A not found' });
+    return res.status(204).send();
+  } catch (error: any) {
+    console.error('Delete Q&A error:', error);
+    res.status(500).json({ error: 'Failed to delete Q&A' });
+  }
+});
+
+/**
  * POST /api/v2/workspaces/:workspaceId/agents/:agentId/chat
  * Send a message and get an AI response using agent's model, prePrompt, and RAG context.
  * Body: { message: string, history?: { role: 'user'|'assistant', content: string }[] }
@@ -369,19 +619,34 @@ router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
           .map((m: any) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
       : [];
 
-    const chunks = await retrieveChunks(agentId, userMessage, 10);
+    const [chunks, qaMatches, crawlContent] = await Promise.all([
+      retrieveChunks(agentId, userMessage, 10),
+      retrieveQa(agentId, userMessage, 5),
+      getCrawlTrainingContentForAgent(agentId),
+    ]);
+    const qaBlock =
+      qaMatches.length > 0
+        ? `\n\nPRIORITY – Use these exact answers when the user's question matches. Prefer them over other context.\n${qaMatches.map((q) => `Q: ${q.question}\nA: ${q.answer}`).join('\n\n')}\n\n`
+        : '';
     const contextBlock =
       chunks.length > 0
         ? `\n\nUse the following relevant excerpts from the agent's training data to answer. If the answer is not in the context, say so.\n\n${chunks.map((c) => c.content).join('\n\n---\n\n')}`
         : '';
+    const websiteBlock =
+      crawlContent && crawlContent.trim()
+        ? `\n\nWebsite context (from crawled pages the agent can use to answer):\n\n${crawlContent.trim()}\n\n`
+        : '';
 
-    const systemContent = `${agent.prePrompt || 'You are a helpful assistant.'}${contextBlock}`;
+    const systemContent = `${agent.prePrompt || 'You are a helpful assistant.'}${qaBlock}${contextBlock}${websiteBlock}`;
     const modelId = agent.model || 'gpt-4o-mini';
     const reply = await chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
       maxTokens: 1024,
       temperature: 0.7,
     });
 
+    if (qaMatches.length > 0) {
+      await recordQaUsage(qaMatches.map((q) => q.id)).catch((err) => console.error('Record Q&A usage:', err));
+    }
     return res.json({ message: reply });
   } catch (error: any) {
     console.error('Agent chat error:', error);
@@ -423,14 +688,30 @@ router.post('/:workspaceId/agents/:agentId/chat/stream', async (req, res) => {
           .map((m: any) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
       : [];
 
-    const chunks = await retrieveChunks(agentId, userMessage, 10);
+    const [chunks, qaMatches, crawlContent] = await Promise.all([
+      retrieveChunks(agentId, userMessage, 10),
+      retrieveQa(agentId, userMessage, 5),
+      getCrawlTrainingContentForAgent(agentId),
+    ]);
+    const qaBlock =
+      qaMatches.length > 0
+        ? `\n\nPRIORITY – Use these exact answers when the user's question matches. Prefer them over other context.\n${qaMatches.map((q) => `Q: ${q.question}\nA: ${q.answer}`).join('\n\n')}\n\n`
+        : '';
     const contextBlock =
       chunks.length > 0
         ? `\n\nUse the following relevant excerpts from the agent's training data to answer. If the answer is not in the context, say so.\n\n${chunks.map((c) => c.content).join('\n\n---\n\n')}`
         : '';
+    const websiteBlock =
+      crawlContent && crawlContent.trim()
+        ? `\n\nWebsite context (from crawled pages the agent can use to answer):\n\n${crawlContent.trim()}\n\n`
+        : '';
 
-    const systemContent = `${agent.prePrompt || 'You are a helpful assistant.'}${contextBlock}`;
+    const systemContent = `${agent.prePrompt || 'You are a helpful assistant.'}${qaBlock}${contextBlock}${websiteBlock}`;
     const modelId = agent.model || 'gpt-4o-mini';
+
+    if (qaMatches.length > 0) {
+      await recordQaUsage(qaMatches.map((q) => q.id)).catch((err) => console.error('Record Q&A usage:', err));
+    }
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');

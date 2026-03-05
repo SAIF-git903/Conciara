@@ -7,7 +7,7 @@ import { Loader2 } from 'lucide-react'
 import V2Select from '@/components/v2/Select'
 import v2Api from '@/lib/v2-api'
 import { useV2Auth } from '@/contexts/V2AuthContext'
-import { getOnboardingWorkspaceId, setOnboardingLinkDone, setOnboardingAgentName, setOnboardingAgentLogoUrl } from '@/lib/v2-onboarding'
+import { getOnboardingWorkspaceId, setOnboardingLinkDone, setOnboardingCrawlId, setOnboardingAgentName, setOnboardingAgentLogoUrl } from '@/lib/v2-onboarding'
 
 export interface LinkStepProps {
   nextPath: string
@@ -161,6 +161,7 @@ export default function LinkStep({ nextPath, router, onForbidden }: LinkStepProp
       setCrawlStepIndex(CRAWL_STEPS.length - 1)
       await new Promise((r) => setTimeout(r, CRAWL_COMPLETE_DELAY_MS))
       setCrawlData(data.crawl)
+      setOnboardingCrawlId(data.crawl.id)
       setOnboardingAgentName(data.crawl.title?.trim() || 'ConversaTree')
       setOnboardingAgentLogoUrl(data.crawl.logoUrl?.trim() || '')
       setOnboardingLinkDone()

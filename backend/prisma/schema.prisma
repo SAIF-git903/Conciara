@@ -43,6 +43,7 @@ model Workspace {
   agents    Agent[]
   websiteCrawls WebsiteCrawl[]
   agentDocuments AgentDocument[]
+  agentQaEntries AgentQa[]
 
   @@map("workspaces")
 }
@@ -76,6 +77,7 @@ model Agent {
   websiteCrawls  WebsiteCrawl[]
   documents      AgentDocument[]
   documentChunks AgentDocumentChunk[]
+  qaEntries      AgentQa[]
 
   @@map("agents")
 }
@@ -114,6 +116,34 @@ model AgentDocumentChunk {
   agent    Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
   @@map("agent_document_chunks")
+}
+
+model AgentQa {
+  id           Int       @id @default(autoincrement())
+  agentId      Int       @map("agent_id")
+  workspaceId  Int       @map("workspace_id")
+  question     String    @db.Text
+  answer       String    @db.Text
+  timesAsked   Int       @default(0) @map("times_asked")
+  lastAskedAt  DateTime? @map("last_asked_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @default(now()) @map("updated_at")
+
+  agent   Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  usageEvents AgentQaUsage[]
+
+  @@map("agent_qa")
+}
+
+model AgentQaUsage {
+  id      Int      @id @default(autoincrement())
+  qaId    Int      @map("qa_id")
+  askedAt DateTime @default(now()) @map("asked_at")
+
+  qa AgentQa @relation(fields: [qaId], references: [id], onDelete: Cascade)
+
+  @@map("agent_qa_usage")
 }
 
 model WebsiteCrawl {

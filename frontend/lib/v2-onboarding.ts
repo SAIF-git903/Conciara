@@ -3,6 +3,7 @@
 export const ONBOARDING_WORKSPACE_KEY = 'v2_onboarding_workspace_id'
 export const ONBOARDING_AGENT_KEY = 'v2_onboarding_agent_id'
 export const ONBOARDING_LINK_DONE_KEY = 'v2_onboarding_link_done'
+export const ONBOARDING_CRAWL_ID_KEY = 'v2_onboarding_crawl_id'
 export const ONBOARDING_AGENT_NAME_KEY = 'v2_onboarding_agent_name'
 export const ONBOARDING_AGENT_LOGO_KEY = 'v2_onboarding_agent_logo_url'
 
@@ -35,6 +36,16 @@ export function setOnboardingLinkDone(): void {
   if (typeof window !== 'undefined') sessionStorage.setItem(ONBOARDING_LINK_DONE_KEY, '1')
 }
 
+export function getOnboardingCrawlId(): number | null {
+  if (typeof window === 'undefined') return null
+  const id = sessionStorage.getItem(ONBOARDING_CRAWL_ID_KEY)
+  return id ? parseInt(id, 10) : null
+}
+
+export function setOnboardingCrawlId(id: number): void {
+  if (typeof window !== 'undefined') sessionStorage.setItem(ONBOARDING_CRAWL_ID_KEY, String(id))
+}
+
 export function getOnboardingAgentName(): string | null {
   if (typeof window === 'undefined') return null
   return sessionStorage.getItem(ONBOARDING_AGENT_NAME_KEY)
@@ -58,6 +69,7 @@ export function clearOnboardingKeys(): void {
     sessionStorage.removeItem(ONBOARDING_WORKSPACE_KEY)
     sessionStorage.removeItem(ONBOARDING_AGENT_KEY)
     sessionStorage.removeItem(ONBOARDING_LINK_DONE_KEY)
+    sessionStorage.removeItem(ONBOARDING_CRAWL_ID_KEY)
     sessionStorage.removeItem(ONBOARDING_AGENT_NAME_KEY)
     sessionStorage.removeItem(ONBOARDING_AGENT_LOGO_KEY)
   }
@@ -74,6 +86,7 @@ export function startNewAgentFlow(workspaceId: number): void {
   if (typeof window === 'undefined') return
   sessionStorage.setItem(ONBOARDING_WORKSPACE_KEY, String(workspaceId))
   sessionStorage.removeItem(ONBOARDING_LINK_DONE_KEY)
+  sessionStorage.removeItem(ONBOARDING_CRAWL_ID_KEY)
   sessionStorage.removeItem(ONBOARDING_AGENT_NAME_KEY)
   sessionStorage.removeItem(ONBOARDING_AGENT_LOGO_KEY)
 }
