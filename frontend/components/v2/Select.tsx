@@ -37,7 +37,7 @@ export default function V2Select({
   segment = false,
 }: Props) {
   return (
-    <div className={cn('w-full font-[var(--v2-font-sans)]', className)}>
+    <div className={cn('w-full font-[var(--v2-font-sans)]', segment && 'flex h-full min-h-0 flex-col', className)}>
       {label && (
         <label
           id={id ? `${id}-label` : undefined}
@@ -55,7 +55,8 @@ export default function V2Select({
           className={cn(
             !value && 'text-slate-500',
             compact && 'text-sm',
-            !compact && 'text-base'
+            !compact && 'text-base',
+            segment && 'flex-1'
           )}
         >
           <SelectValue placeholder={placeholder} />

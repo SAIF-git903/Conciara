@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Palette, Layout, ChevronDown, ChevronRight, Monitor, Save, Copy, Check } from 'lucide-react'
 import type { SkinConfig, ThemeColors, ComponentsConfig, StatesConfig } from '@/types/skinConfig'
 import SkinRenderer from '@/components/SkinRenderer'
@@ -38,6 +38,7 @@ function defaultConfig(): SkinConfig {
         show: true,
         showTitle: true,
         title: 'Chat Assistant',
+        showAvatar: true,
         showMinimize: true,
         showClose: true,
       },
@@ -240,7 +241,21 @@ export default function ChatbotCustomizationsPage() {
     input: false,
   })
 
+  const headerImageInputRef = useRef<HTMLInputElement>(null)
   const toggle = (key: string) => setExpanded((p) => ({ ...p, [key]: !p[key] }))
+
+  const handleHeaderImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !file.type.startsWith('image/')) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result
+      if (typeof dataUrl === 'string') updateComponents('header', { avatarIcon: dataUrl })
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
   const updateTheme = (u: Partial<ThemeColors>) =>
     setConfig((c) => ({ ...c, theme: { ...c.theme, ...u } }))
   const updateComponents = (component: keyof ComponentsConfig, u: object) =>
@@ -387,6 +402,66 @@ export default function ChatbotCustomizationsPage() {
                               />
                             </div>
                           )}
+                          <div className="col-span-2">
+                            <CheckboxInput
+                              label="Show image alongside title"
+                              checked={comp.header?.showAvatar !== false}
+                              onChange={(v) => updateComponents('header', { showAvatar: v })}
+                            />
+                          </div>
+                          {comp.header?.showAvatar !== false && (
+                            <div className="col-span-2">
+                              <label className="block text-sm font-medium text-slate-700 mb-1.5">Header image</label>
+                              <input
+                                ref={headerImageInputRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={handleHeaderImageFile}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => headerImageInputRef.current?.click()}
+                                className="flex items-center gap-3 w-full rounded-lg border border-slate-200 bg-slate-50/50 p-3 text-left transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--v2-primary)] focus:ring-offset-1"
+                              >
+                                {comp.header?.avatarIcon ? (
+                                  <>
+                                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full border border-slate-200 bg-white">
+                                      <img
+                                        src={comp.header.avatarIcon}
+                                        alt=""
+                                        className="h-full w-full object-cover"
+                                        onError={() => updateComponents('header', { avatarIcon: '' })}
+                                      />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <span className="text-sm font-medium text-slate-700">Change image</span>
+                                      <p className="text-xs text-slate-500 mt-0.5">Shown in header next to title</p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); updateComponents('header', { avatarIcon: '' }) }}
+                                      className="shrink-0 text-xs font-medium text-slate-500 hover:text-red-600"
+                                    >
+                                      Remove
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-slate-200 bg-white text-slate-400">
+                                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14" />
+                                      </svg>
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <span className="text-sm font-medium text-slate-700">Upload image</span>
+                                      <p className="text-xs text-slate-500 mt-0.5">Leave empty to use the default icon</p>
+                                    </div>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          )}
                           <CheckboxInput
                             label="Show minimize"
                             checked={comp.header?.showMinimize !== false}
@@ -430,6 +505,20 @@ export default function ChatbotCustomizationsPage() {
                           onChange={(v) => updateComponents('messages', { showAvatars: v })}
                         />
                       </div>
+                      {comp.messages?.showAvatars !== false && (
+                        <div className="col-span-2 pl-3 border-l-2 border-slate-100 space-y-2">
+                          <CheckboxInput
+                            label="Show chatbot icon"
+                            checked={comp.messages?.showBotAvatar !== false}
+                            onChange={(v) => updateComponents('messages', { showBotAvatar: v })}
+                          />
+                          <CheckboxInput
+                            label="Show user icon"
+                            checked={comp.messages?.showUserAvatar !== false}
+                            onChange={(v) => updateComponents('messages', { showUserAvatar: v })}
+                          />
+                        </div>
+                      )}
                       <div className="col-span-2">
                         <CheckboxInput
                           label="Show timestamps"

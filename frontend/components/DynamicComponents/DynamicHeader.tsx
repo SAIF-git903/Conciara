@@ -1,6 +1,6 @@
 'use client'
 
-import { Bot, Minimize2, Maximize2, X, Settings } from 'lucide-react'
+import { Minimize2, Maximize2, X, Settings } from 'lucide-react'
 import { MergedSkinConfig } from '../../types/skinConfig'
 
 interface DynamicHeaderProps {
@@ -42,17 +42,14 @@ export default function DynamicHeader({
         borderTopRightRadius: `${windowRadius}px`,
       }}
     >
-      <div className="flex items-center gap-2">
-        {headerConfig.showAvatar && (
-          <div
-            className="w-6 h-6 rounded-full flex items-center justify-center"
-            style={{ backgroundColor: 'rgba(255, 255, 255, 0.2)' }}
-          >
-            <Bot className="w-4 h-4" />
+      <div className="flex items-center gap-2 min-w-0">
+        {headerConfig.showAvatar !== false && headerConfig.avatarIcon && (
+          <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden bg-white/20">
+            <img src={headerConfig.avatarIcon} alt="" className="w-full h-full object-cover" />
           </div>
         )}
         {headerConfig.showTitle && (
-          <span className="font-semibold ml-2">{title}</span>
+          <span className="font-semibold truncate">{title}</span>
         )}
       </div>
       <div className="flex items-center gap-2">

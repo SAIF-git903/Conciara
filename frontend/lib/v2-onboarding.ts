@@ -68,3 +68,18 @@ export function resetOnboardingAndGoToWorkspace(router: { replace: (url: string)
   clearOnboardingKeys()
   router.replace('/v2/onboarding/workspace?session=reset')
 }
+
+/** Start "new agent" flow from dashboard: set workspace and clear step keys so Link → Configure → Personality run fresh. */
+export function startNewAgentFlow(workspaceId: number): void {
+  if (typeof window === 'undefined') return
+  sessionStorage.setItem(ONBOARDING_WORKSPACE_KEY, String(workspaceId))
+  sessionStorage.removeItem(ONBOARDING_LINK_DONE_KEY)
+  sessionStorage.removeItem(ONBOARDING_AGENT_NAME_KEY)
+  sessionStorage.removeItem(ONBOARDING_AGENT_LOGO_KEY)
+}
+
+/** Redirect to dashboard when new-agent flow has no/invalid workspace (e.g. 403). */
+export function redirectNewAgentToDashboard(router: { replace: (url: string) => void }): void {
+  clearOnboardingKeys()
+  router.replace('/v2/dashboard')
+}

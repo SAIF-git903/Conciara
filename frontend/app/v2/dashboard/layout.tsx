@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useV2Auth } from '@/contexts/V2AuthContext'
@@ -26,6 +26,7 @@ import {
 import type { ReactNode } from 'react'
 import { DashboardProvider } from '@/contexts/DashboardContext'
 import { getSelectedWorkspaceId, setSelectedWorkspaceId } from '@/lib/v2-workspace-selection'
+import { startNewAgentFlow } from '@/lib/v2-onboarding'
 
 // Sidebar when on dashboard (Agents list). Members cannot access workspace settings or billing.
 const dashboardNavItemsOwner = [
@@ -123,6 +124,84 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     setSelectedWorkspaceId(workspace.id)
   }
 
+  // Load agents for the current workspace (must be before any early return to satisfy Rules of Hooks)
+  useEffect(() => {
+    if (currentWorkspace.id === 0) return
+    v2Api.get<{ agents: Array<{ id: number; workspaceId: number; name: string }> }>(`/v2/workspaces/${currentWorkspace.id}/agents`)
+      .then((res) => {
+        const list = (res.data.agents ?? []).map((a) => ({
+          id: String(a.id),
+          name: a.name,
+          workspaceId: a.workspaceId,
+        }))
+        setAgents(list)
+      })
+      .catch(() => setAgents([]))
+  }, [currentWorkspace.id])
+
+  useEffect(() => {
+    const inWorkspace = agents.filter((a) => a.workspaceId === currentWorkspace.id)
+    if (inWorkspace.length > 0 && (!currentAgent || !inWorkspace.find((a) => a.id === currentAgent?.id))) {
+      setCurrentAgent(inWorkspace[0])
+    }
+  }, [currentWorkspace.id, agents, currentAgent?.id])
+
+  // When ?agent= is set but not in list (e.g. just created from new-agent flow), refetch agents
+  useEffect(() => {
+    if (!agentIdFromUrl || currentWorkspace.id === 0) return
+    const inWorkspace = agents.filter((a) => a.workspaceId === currentWorkspace.id)
+    const found = inWorkspace.find((a) => a.id === agentIdFromUrl)
+    if (!found) {
+      v2Api.get<{ agents: Array<{ id: number; workspaceId: number; name: string }> }>(`/v2/workspaces/${currentWorkspace.id}/agents`)
+        .then((res) => {
+          const list = (res.data.agents ?? []).map((a) => ({
+            id: String(a.id),
+            name: a.name,
+            workspaceId: a.workspaceId,
+          }))
+          setAgents(list)
+        })
+        .catch(() => { })
+    }
+  }, [agentIdFromUrl, currentWorkspace.id, agents])
+
+  // After onboarding / new-agent: select the newly created agent from ?agent= and go to playground
+  useEffect(() => {
+    if (!agentIdFromUrl || agents.length === 0) return
+    const inWorkspace = agents.filter((a) => a.workspaceId === currentWorkspace.id)
+    const found = inWorkspace.find((a) => a.id === agentIdFromUrl)
+    if (found) {
+      setCurrentAgent(found)
+      router.replace('/v2/dashboard/playground')
+    }
+  }, [agentIdFromUrl, agents, currentWorkspace.id, router])
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node
+      if (workspaceRef.current?.contains(target) || agentRef.current?.contains(target)) return
+      setOpenDropdown(null)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const createAgent = useCallback(async (name?: string): Promise<{ id: string; name: string; workspaceId: number } | null> => {
+    if (currentWorkspace.id === 0) return null
+    try {
+      const res = await v2Api.post<{ agent: { id: number; workspaceId: number; name: string } }>(
+        `/v2/workspaces/${currentWorkspace.id}/agents`,
+        { name: (name?.trim() || 'My Agent') }
+      )
+      const agent = res.data.agent
+      const newAgent = { id: String(agent.id), name: agent.name, workspaceId: agent.workspaceId }
+      setAgents((prev) => [...prev, newAgent])
+      return newAgent
+    } catch {
+      return null
+    }
+  }, [currentWorkspace.id])
+
   if (loading || !user) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-white">
@@ -151,49 +230,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     )
   }
 
-  // Load agents for the current workspace
-  useEffect(() => {
-    if (currentWorkspace.id === 0) return
-    v2Api.get<{ agents: Array<{ id: number; workspaceId: number; name: string }> }>(`/v2/workspaces/${currentWorkspace.id}/agents`)
-      .then((res) => {
-        const list = (res.data.agents ?? []).map((a) => ({
-          id: String(a.id),
-          name: a.name,
-          workspaceId: a.workspaceId,
-        }))
-        setAgents(list)
-      })
-      .catch(() => setAgents([]))
-  }, [currentWorkspace.id])
-
-  useEffect(() => {
-    const inWorkspace = agents.filter((a) => a.workspaceId === currentWorkspace.id)
-    if (inWorkspace.length > 0 && (!currentAgent || !inWorkspace.find((a) => a.id === currentAgent?.id))) {
-      setCurrentAgent(inWorkspace[0])
-    }
-  }, [currentWorkspace.id, agents, currentAgent?.id])
-
-  // After onboarding: select the newly created agent from ?agent= and go to playground
-  useEffect(() => {
-    if (!agentIdFromUrl || agents.length === 0) return
-    const inWorkspace = agents.filter((a) => a.workspaceId === currentWorkspace.id)
-    const found = inWorkspace.find((a) => a.id === agentIdFromUrl)
-    if (found) {
-      setCurrentAgent(found)
-      router.replace('/v2/dashboard/playground')
-    }
-  }, [agentIdFromUrl, agents, currentWorkspace.id, router])
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as Node
-      if (workspaceRef.current?.contains(target) || agentRef.current?.contains(target)) return
-      setOpenDropdown(null)
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
   const toggleExpanded = (label: string) => {
     setExpanded((prev) => ({ ...prev, [label]: !prev[label] }))
   }
@@ -208,6 +244,22 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   const isDashboardHome = pathname === '/v2/dashboard'
   const navItems = isDashboardHome ? dashboardNavItems : agentNavItems
+  const isNewAgentFlow = pathname.startsWith('/v2/dashboard/new-agent')
+
+  if (isNewAgentFlow) {
+    return (
+      <div
+        className="flex h-[100vh] min-h-0 w-full flex-col overflow-hidden bg-white px-6 sm:px-8 lg:px-10"
+        style={{
+          paddingTop: 'max(2rem, env(safe-area-inset-top, 2rem))',
+        }}
+      >
+        <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} createAgent={createAgent}>
+          {children}
+        </DashboardProvider>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full w-full min-h-0 flex-col bg-white">
@@ -256,9 +308,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                     key={w.id}
                     type="button"
                     onClick={() => handleWorkspaceSelect(w)}
-                    className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs ${
-                      currentWorkspace.id === w.id ? 'bg-slate-200 text-slate-900 font-medium' : 'text-slate-700 hover:bg-slate-50'
-                    }`}
+                    className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs ${currentWorkspace.id === w.id ? 'bg-slate-200 text-slate-900 font-medium' : 'text-slate-700 hover:bg-slate-50'
+                      }`}
                   >
                     <span>{w.name}</span>
                     {currentWorkspace.id === w.id && <Check className="h-3.5 w-3.5 shrink-0" />}
@@ -287,43 +338,50 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${openDropdown === 'agent' ? 'rotate-180' : ''}`} />
               </button>
               {openDropdown === 'agent' && (
-            <div className="absolute left-0 top-full z-50 mt-0.5 w-64 rounded-lg border border-slate-200 bg-white py-1.5 shadow-lg">
-              <div className="border-b border-slate-100 px-1.5 pb-1.5">
-                <button type="button" className="flex w-full items-center justify-center gap-1 rounded border border-[var(--v2-primary)] py-1.5 text-xs font-medium text-[var(--v2-primary)] hover:bg-[var(--v2-primary)]/10">
-                  <Plus className="h-3 w-3" /> Create agent
-                </button>
-              </div>
-              <div className="px-1.5 pt-1.5">
-                <div className="relative">
-                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    value={agentSearch}
-                    onChange={(e) => setAgentSearch(e.target.value)}
-                    placeholder="Search..."
-                    className="w-full rounded border border-slate-200 bg-slate-50 py-1.5 pl-7 pr-2 text-xs placeholder:text-slate-400 focus:border-[var(--v2-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--v2-primary)]"
-                  />
+                <div className="absolute left-0 top-full z-50 mt-0.5 w-64 rounded-lg border border-slate-200 bg-white py-1.5 shadow-lg">
+                  <div className="border-b border-slate-100 px-1.5 pb-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        startNewAgentFlow(currentWorkspace.id)
+                        setOpenDropdown(null)
+                        router.push('/v2/dashboard/new-agent/link')
+                      }}
+                      className="flex w-full items-center justify-center gap-1 rounded border border-[var(--v2-primary)] py-1.5 text-xs font-medium text-[var(--v2-primary)] hover:bg-[var(--v2-primary)]/10"
+                    >
+                      <Plus className="h-3 w-3" /> Create agent
+                    </button>
+                  </div>
+                  <div className="px-1.5 pt-1.5">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        value={agentSearch}
+                        onChange={(e) => setAgentSearch(e.target.value)}
+                        placeholder="Search..."
+                        className="w-full rounded border border-slate-200 bg-slate-50 py-1.5 pl-7 pr-2 text-xs placeholder:text-slate-400 focus:border-[var(--v2-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--v2-primary)]"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-1 max-h-36 overflow-auto px-0.5">
+                    {filteredAgents.map((a) => (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => { setCurrentAgent(a); setOpenDropdown(null) }}
+                        className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs ${currentAgent?.id === a.id ? 'bg-slate-200 text-slate-900 font-medium' : 'text-slate-700 hover:bg-slate-50'
+                          }`}
+                      >
+                        <span>{a.name}</span>
+                        {currentAgent?.id === a.id && <Check className="h-3.5 w-3.5 shrink-0" />}
+                      </button>
+                    ))}
+                    {filteredAgents.length === 0 && (
+                      <p className="px-2 py-3 text-center text-xs text-slate-500">No agents found</p>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div className="mt-1 max-h-36 overflow-auto px-0.5">
-                {filteredAgents.map((a) => (
-                  <button
-                    key={a.id}
-                    type="button"
-                    onClick={() => { setCurrentAgent(a); setOpenDropdown(null) }}
-                    className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs ${
-                      currentAgent?.id === a.id ? 'bg-slate-200 text-slate-900 font-medium' : 'text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    <span>{a.name}</span>
-                    {currentAgent?.id === a.id && <Check className="h-3.5 w-3.5 shrink-0" />}
-                  </button>
-                ))}
-                {filteredAgents.length === 0 && (
-                  <p className="px-2 py-3 text-center text-xs text-slate-500">No agents found</p>
-                )}
-              </div>
-            </div>
               )}
             </div>
           </>
@@ -377,58 +435,56 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                   ) : (
                     <Link
                       href={item.href}
-                      className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition ${
-                        isActive
+                      className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition ${isActive
                           ? 'bg-slate-200 text-slate-900'
                           : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                      }`}
+                        }`}
                     >
                       <item.Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-slate-900' : 'text-slate-500'}`} strokeWidth={2} />
                       {item.label}
                     </Link>
                   )}
-                {hasChildren && isExpanded && (
-                  <div className="ml-6 mt-1 space-y-0.5 border-l border-slate-200 pl-3">
-                    {(item as { children: string[] }).children.map((child) => {
-                      const childHref =
-                        childHrefMap[item.label]?.[child] ?? '#'
-                      const isChildActive = pathname === childHref
-                      return (
-                        <Link
-                          key={child}
-                          href={childHref}
-                          className={`block py-1.5 text-xs ${
-                            isChildActive
-                              ? 'font-medium text-slate-900'
-                              : 'text-slate-500 hover:text-slate-700'
-                          }`}
-                        >
-                          {child}
-                        </Link>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </nav>
-        <div className="border-t border-slate-200 bg-slate-50 p-4">
-          <p className="text-xs font-medium text-slate-500">Credits 0 / 50</p>
-          <p className="mt-0.5 text-xs text-slate-400">Resets on Apr 1, 2026 at 5:00 AM</p>
-          <Link
-            href="/v2/pricing"
-            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-          >
-            <span>↑</span> Upgrade
-          </Link>
-        </div>
-      </aside>
+                  {hasChildren && isExpanded && (
+                    <div className="ml-6 mt-1 space-y-0.5 border-l border-slate-200 pl-3">
+                      {(item as { children: string[] }).children.map((child) => {
+                        const childHref =
+                          childHrefMap[item.label]?.[child] ?? '#'
+                        const isChildActive = pathname === childHref
+                        return (
+                          <Link
+                            key={child}
+                            href={childHref}
+                            className={`block py-1.5 text-xs ${isChildActive
+                                ? 'font-medium text-slate-900'
+                                : 'text-slate-500 hover:text-slate-700'
+                              }`}
+                          >
+                            {child}
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </nav>
+          <div className="border-t border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-medium text-slate-500">Credits 0 / 50</p>
+            <p className="mt-0.5 text-xs text-slate-400">Resets on Apr 1, 2026 at 5:00 AM</p>
+            <Link
+              href="/v2/pricing"
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+            >
+              <span>↑</span> Upgrade
+            </Link>
+          </div>
+        </aside>
 
         {/* Main content area */}
         <div className="flex min-h-0 flex-1 flex-col">
           <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace}>
+            <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} createAgent={createAgent}>
               {children}
             </DashboardProvider>
           </main>

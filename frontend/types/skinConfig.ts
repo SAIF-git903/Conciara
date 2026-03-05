@@ -16,6 +16,8 @@ export interface ButtonConfig {
   type?: 'circular' | 'rounded' | 'square';
   size?: 'small' | 'medium' | 'large';
   icon?: 'bot' | 'chat' | 'message' | 'custom' | null;
+  /** URL to image for chat icon when icon is 'custom' */
+  customIconUrl?: string;
   position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
   showLabel?: boolean;
   label?: string;
@@ -49,6 +51,10 @@ export interface MessagesConfig {
   userAlignment?: 'left' | 'right';
   botAlignment?: 'left' | 'right';
   showAvatars?: boolean;
+  /** When false, hide the chatbot avatar in messages. Defaults to same as showAvatars. */
+  showBotAvatar?: boolean;
+  /** When false, hide the user avatar in messages. Defaults to same as showAvatars. */
+  showUserAvatar?: boolean;
   userAvatar?: string;
   botAvatar?: string;
   bubbleStyle?: 'rounded' | 'square' | 'minimal';

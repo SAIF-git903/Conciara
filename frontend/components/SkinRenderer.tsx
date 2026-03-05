@@ -90,8 +90,9 @@ export default function SkinRenderer({
   }, [isOpen])
 
   useEffect(() => {
+    if (previewMode) return
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, previewMode])
 
   // When onLanguageSelect is provided, only start conversation after user selects a language
   const hasLanguagePicker = typeof onLanguageSelect === 'function'

@@ -1,6 +1,5 @@
 'use client'
 
-import { Bot, User } from 'lucide-react'
 import { MergedSkinConfig } from '../../types/skinConfig'
 import { useState, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
@@ -65,12 +64,14 @@ export default function DynamicMessages({
   const userAlignment = messagesConfig.userAlignment || 'right'
   const botAlignment = messagesConfig.botAlignment || 'left'
   const showAvatars = messagesConfig.showAvatars !== false
+  const showBotAvatar = messagesConfig.showBotAvatar ?? showAvatars
+  const showUserAvatar = messagesConfig.showUserAvatar ?? showAvatars
   const bubbleStyle = messagesConfig.bubbleStyle || 'rounded'
 
   const borderRadiusMap = {
-    rounded: 'rounded-lg',
+    rounded: 'rounded-2xl',
     square: 'rounded-none',
-    minimal: 'rounded-sm'
+    minimal: 'rounded-lg'
   } as const
 
   const alignmentMap = {
@@ -88,7 +89,7 @@ export default function DynamicMessages({
   const messageRowClass = (isUser: boolean) =>
     `flex gap-2 ${isUser ? userJustify : botJustify}`
 
-  const bubbleRadius = borderRadiusMap[bubbleStyle] ?? 'rounded-lg'
+  const bubbleRadius = borderRadiusMap[bubbleStyle] ?? 'rounded-2xl'
   const bubbleMaxWidth = isList ? 'max-w-full' : isCards ? 'max-w-full' : 'max-w-[80%]'
   const bubbleLayoutClasses = isCards
     ? 'border border-slate-200 shadow-sm'
@@ -111,27 +112,24 @@ export default function DynamicMessages({
           key={message.id}
           className={messageRowClass(message.type === 'user')}
         >
-          {message.type === 'bot' && showAvatars && (
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ backgroundColor: primaryColor }}
-            >
-              <Bot className="w-4 h-4 text-white" />
+          {message.type === 'bot' && showBotAvatar && messagesConfig.botAvatar && (
+            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden bg-slate-200">
+              <img src={messagesConfig.botAvatar} alt="" className="w-full h-full object-cover" />
             </div>
           )}
           <div
             className={`${bubbleMaxWidth} ${bubbleRadius} px-3 py-2 ${bubbleLayoutClasses} ${
               message.type === 'user'
-                ? 'bg-gray-100 text-gray-900'
-                : 'text-white'
+                ? 'text-white'
+                : ''
             }`}
             style={
-              message.type === 'bot'
+              message.type === 'user'
                 ? { backgroundColor: primaryColor }
-                : undefined
+                : { backgroundColor: '#f1f5f9', color: textColor }
             }
           >
-            <div className="text-sm ct-message-body" style={{ color: message.type === 'user' ? textColor : 'white' }}>
+            <div className="text-sm ct-message-body" style={{ color: message.type === 'user' ? 'white' : textColor }}>
               {message.type === 'bot' ? (
                 <ReactMarkdown
                   components={{
@@ -196,9 +194,9 @@ export default function DynamicMessages({
               </span>
             )}
           </div>
-          {message.type === 'user' && showAvatars && (
-            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-              <User className="w-4 h-4 text-gray-600" />
+          {message.type === 'user' && showUserAvatar && messagesConfig.userAvatar && (
+            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden bg-slate-200">
+              <img src={messagesConfig.userAvatar} alt="" className="w-full h-full object-cover" />
             </div>
           )}
         </div>
@@ -206,13 +204,12 @@ export default function DynamicMessages({
 
       {isLoading && (
         <div className="flex gap-2 justify-start">
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center"
-            style={{ backgroundColor: primaryColor }}
-          >
-            <Bot className="w-4 h-4 text-white" />
-          </div>
-          <div className="bg-gray-100 rounded-lg px-3 py-2">
+          {showBotAvatar && messagesConfig.botAvatar && (
+            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden bg-slate-200">
+              <img src={messagesConfig.botAvatar} alt="" className="w-full h-full object-cover" />
+            </div>
+          )}
+          <div className="bg-gray-100 rounded-2xl px-3 py-2">
             <LoadingIndicator config={config} />
           </div>
         </div>

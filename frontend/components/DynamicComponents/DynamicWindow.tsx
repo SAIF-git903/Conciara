@@ -14,11 +14,12 @@ interface DynamicWindowProps {
 export default function DynamicWindow({ config, children, isMinimized, fillContainer = false }: DynamicWindowProps) {
   const windowConfig = config.components?.window || {}
   const backgroundColor = config.theme?.backgroundColor || '#ffffff'
-  
+  const borderColor = config.theme?.borderColor || '#e2e8f0'
+
   const width = windowConfig.width || 384
   const height = windowConfig.height || 600
   const borderRadius = Math.min(30, Math.max(0, windowConfig.borderRadius ?? 8))
-  
+
   const shadowMap = {
     none: 'shadow-none',
     small: 'shadow-sm',
@@ -29,11 +30,12 @@ export default function DynamicWindow({ config, children, isMinimized, fillConta
 
   return (
     <div
-      className={`bg-white ${shadow} flex flex-col transition-all overflow-hidden ${
+      className={`bg-white border ${shadow} flex flex-col transition-all overflow-hidden ${
         isMinimized ? 'w-80 h-12' : fillContainer ? 'w-full h-full min-h-0' : ''
       }`}
       style={{
         backgroundColor,
+        borderColor,
         ...(fillContainer && !isMinimized
           ? { borderRadius: `${borderRadius}px` }
           : {
