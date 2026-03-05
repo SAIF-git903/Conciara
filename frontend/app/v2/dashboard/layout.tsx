@@ -24,6 +24,7 @@ import {
   BookOpen,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { Suspense } from 'react'
 import { DashboardProvider } from '@/contexts/DashboardContext'
 import { getSelectedWorkspaceId, setSelectedWorkspaceId } from '@/lib/v2-workspace-selection'
 import { startNewAgentFlow } from '@/lib/v2-onboarding'
@@ -73,7 +74,7 @@ const agentNavItems = [
   { href: '#', label: 'Settings', Icon: Settings, children: ['General', 'API keys'] },
 ]
 
-export default function DashboardLayout({ children }: { children: ReactNode }) {
+function DashboardLayoutInner({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -491,5 +492,19 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </div>
       </div>
     </div>
+  )
+}
+
+const dashboardLayoutFallback = (
+  <div className="flex h-screen w-full items-center justify-center bg-white">
+    <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--v2-primary)] border-t-transparent" />
+  </div>
+)
+
+export default function DashboardLayout({ children }: { children: ReactNode }) {
+  return (
+    <Suspense fallback={dashboardLayoutFallback}>
+      <DashboardLayoutInner>{children}</DashboardLayoutInner>
+    </Suspense>
   )
 }
