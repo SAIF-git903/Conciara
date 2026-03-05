@@ -416,3 +416,124 @@ export async function translateLinesToLanguage(
     return lines;
   }
 }
+
+export type ChatMessageRole = 'user' | 'assistant' | 'system';
+
+/**
+ * Agent chat: model + system prompt + conversation history.
+ * Used by v2 playground with RAG context in system prompt.
+ */
+export async function chatCompletion(
+  modelId: string,
+  systemContent: string,
+  messages: { role: 'user' | 'assistant'; content: string }[],
+  options?: { maxTokens?: number; temperature?: number }
+): Promise<string> {
+  if (!openai || !apiKey) {
+    return "I'm not configured to respond yet. Please add an API key for the chat model.";
+  }
+
+  const model = SUPPORTED_LLM_MODELS.some((m) => m.id === modelId) ? modelId : 'gpt-4o-mini';
+  const maxTokens = options?.maxTokens ?? 1024;
+  const temperature = options?.temperature ?? 0.7;
+
+  const openaiMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+    { role: 'system', content: systemContent || 'You are a helpful assistant.' },
+    ...messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+  ];
+
+  const response = await openai.chat.completions.create({
+    model,
+    messages: openaiMessages,
+    max_tokens: maxTokens,
+    temperature,
+  });
+
+  return response.choices[0]?.message?.content?.trim() || "I couldn't generate a response.";
+}
+
+/**
+ * Agent chat streaming: same as chatCompletion but yields content deltas.
+ * Used by v2 playground for streaming responses.
+ */
+export async function* chatCompletionStream(
+  modelId: string,
+  systemContent: string,
+  messages: { role: 'user' | 'assistant'; content: string }[],
+  options?: { maxTokens?: number; temperature?: number }
+): AsyncGenerator<string> {
+  if (!openai || !apiKey) {
+    yield "I'm not configured to respond yet. Please add an API key for the chat model.";
+    return;
+  }
+
+  const model = SUPPORTED_LLM_MODELS.some((m) => m.id === modelId) ? modelId : 'gpt-4o-mini';
+  const maxTokens = options?.maxTokens ?? 1024;
+  const temperature = options?.temperature ?? 0.7;
+
+  const openaiMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+    { role: 'system', content: systemContent || 'You are a helpful assistant.' },
+    ...messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+  ];
+
+  const stream = await openai.chat.completions.create({
+    model,
+    messages: openaiMessages,
+    max_tokens: maxTokens,
+    temperature,
+    stream: true,
+  });
+
+  for await (const chunk of stream) {
+    const delta = chunk.choices[0]?.delta?.content;
+    if (typeof delta === 'string' && delta) {
+      yield delta;
+    }
+  }
+}
+
+/** Models supported by the backend (OpenAI). Used by v2 onboarding Agent step. */
+export const SUPPORTED_LLM_MODELS = [
+  { id: 'gpt-4o', label: 'GPT-4o' },
+  { id: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+  { id: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+  { id: 'gpt-4', label: 'GPT-4' },
+  { id: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
+] as const;
+
+/**
+ * Generate a pre-prompt for an AI agent based on website/crawl content.
+ * Uses the LLM to write a concise system prompt that reflects the site's purpose and tone.
+ */
+export async function generatePrePromptFromWebsiteContent(websiteContent: string): Promise<string> {
+  if (!openai || !apiKey || !websiteContent?.trim()) {
+    return '';
+  }
+  const truncated = websiteContent.slice(0, 12000);
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `You are an expert at writing system prompts for customer-facing AI chatbots. Given information about a website (title, description, and content summary), write a single, clear pre-prompt (2-5 sentences) that will guide the AI agent. The pre-prompt should:
+- Define the agent's role (e.g. helpful assistant for [company/product])
+- Reflect the tone and purpose of the website
+- Tell the agent to answer based on the provided website content and to be concise and helpful
+- Not include meta instructions (e.g. "Output in JSON") — just the agent's persona and behavior
+Write only the pre-prompt text, no quotes or preamble.`,
+        },
+        {
+          role: 'user',
+          content: `Website information:\n\n${truncated}`,
+        },
+      ],
+      max_tokens: 400,
+      temperature: 0.5,
+    });
+    return response.choices[0]?.message?.content?.trim() || '';
+  } catch (err: any) {
+    console.warn('[LLM] generatePrePromptFromWebsiteContent failed:', err?.message || err);
+    return '';
+  }
+}

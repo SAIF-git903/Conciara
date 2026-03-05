@@ -34,7 +34,7 @@ export async function setDomainFilter(
     }
 
     const user = req.user;
-    const isAdmin = user.role === 'admin';
+    const isAdmin = user.role === 'owner';
 
     if (isAdmin) {
       // Admin can access everything

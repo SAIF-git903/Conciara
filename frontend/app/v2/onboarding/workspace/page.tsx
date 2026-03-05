@@ -1,10 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { LayoutDashboard, CheckCircle2, Link2, Settings, Bot } from 'lucide-react'
+import v2Api from '@/lib/v2-api'
+import { useV2Auth } from '@/contexts/V2AuthContext'
+import { setOnboardingWorkspaceId } from '@/lib/v2-onboarding'
 
 const container = {
   hidden: { opacity: 0 },
@@ -27,18 +29,35 @@ const stepsPreview = [
 
 export default function OnboardingWorkspacePage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const { refreshUser } = useV2Auth()
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState('')
+  const sessionReset = searchParams.get('session') === 'reset'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
+    setError('')
     setIsSubmitting(true)
-    // TODO: call API to create workspace when backend is ready
-    await new Promise((r) => setTimeout(r, 600))
-    setIsSubmitting(false)
-    router.push('/v2/onboarding/link')
+    try {
+      const { data } = await v2Api.post<{ workspace: { id: number; name: string; plan: string } }>('/v2/workspaces', {
+        name: name.trim(),
+        ...(slug.trim() && { slug: slug.trim() }),
+      })
+      setOnboardingWorkspaceId(data.workspace.id)
+      await refreshUser()
+      router.push('/v2/onboarding/link')
+    } catch (err: unknown) {
+      const message = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
+        : 'Failed to create workspace'
+      setError(message || 'Failed to create workspace')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const slugFromName = (value: string) =>
@@ -82,6 +101,16 @@ export default function OnboardingWorkspacePage() {
           Your workspace is where you&apos;ll manage chatbots, data sources, and team settings. Name it and get started.
         </motion.p>
 
+        {sessionReset && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+          >
+            Your session was reset. Please create a workspace to continue.
+          </motion.div>
+        )}
+
         <motion.form
           onSubmit={handleSubmit}
           className="mt-10 space-y-6"
@@ -121,6 +150,11 @@ export default function OnboardingWorkspacePage() {
             </div>
           </motion.div>
 
+          {error && (
+            <motion.p variants={item} className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+              {error}
+            </motion.p>
+          )}
           <motion.div variants={item} className="pt-2">
             <button
               type="submit"

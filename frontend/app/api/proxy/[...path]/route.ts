@@ -11,9 +11,11 @@ export async function GET(
   const url = `${BACKEND_URL}/api/${path}${searchParams ? `?${searchParams}` : ''}`;
 
   try {
+    const auth = request.headers.get('authorization');
     const response = await fetch(url, {
       headers: {
         'Content-Type': 'application/json',
+        ...(auth ? { Authorization: auth } : {}),
       },
     });
 
@@ -47,10 +49,12 @@ export async function POST(
     // Forward multipart/form-data (file uploads) as-is so the backend receives raw multipart body
     if (contentType.toLowerCase().includes('multipart/form-data')) {
       const body = await request.arrayBuffer();
+      const auth = request.headers.get('authorization');
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': contentType,
+          ...(auth ? { Authorization: auth } : {}),
         },
         body: body,
       });
@@ -68,11 +72,13 @@ export async function POST(
 
     // JSON or other body
     const body = await request.text();
+    const auth = request.headers.get('authorization');
 
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': contentType || 'application/json',
+        ...(auth ? { Authorization: auth } : {}),
       },
       body: body,
     });
@@ -104,11 +110,13 @@ export async function PUT(
 
   try {
     const body = await request.text();
-    
+    const auth = request.headers.get('authorization');
+
     const response = await fetch(url, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
+        ...(auth ? { Authorization: auth } : {}),
       },
       body: body,
     });
@@ -138,10 +146,13 @@ export async function DELETE(
   const url = `${BACKEND_URL}/api/${path}`;
 
   try {
+    const auth = request.headers.get('authorization');
+
     const response = await fetch(url, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
+        ...(auth ? { Authorization: auth } : {}),
       },
     });
 

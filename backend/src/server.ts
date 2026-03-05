@@ -20,7 +20,10 @@ import mediaRoutes from './routes/media.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import apiKeyRoutes from './routes/apiKeys.js';
-import { getBypassUsers, getUserById, getUserWebsites, updateLastLogin } from './services/userService.js';
+import v2WorkspaceRoutes from './routes/v2Workspaces.js';
+import { SUPPORTED_LLM_MODELS } from './services/llmService.js';
+import { getBypassUsers, getUserById, updateLastLogin } from './services/userService.js';
+import { getWorkspacesForUser } from './services/workspaceService.js';
 import { generateJWT, generateRefreshToken } from './services/authService.js';
 
 dotenv.config();
@@ -74,13 +77,13 @@ app.post('/api/auth/bypass', async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (!user.isActive) return res.status(403).json({ error: 'User is disabled' });
     await updateLastLogin(user.id);
-    const websites = await getUserWebsites(user.id);
+    const workspaces = await getWorkspacesForUser(user.id);
     const token = generateJWT({ id: user.id, email: user.email, role: user.role, fullName: user.fullName });
     const refreshToken = generateRefreshToken({ id: user.id, email: user.email, role: user.role, fullName: user.fullName });
     return res.json({
       token,
       refreshToken,
-      user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role, websites },
+      user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role, workspaces },
     });
   } catch (error: any) {
     console.error('Bypass login error:', error);
@@ -109,6 +112,11 @@ app.use('/api/conversations', conversationRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/api-keys', apiKeyRoutes);
+app.use('/api/v2/workspaces', v2WorkspaceRoutes);
+
+app.get('/api/v2/models', (_req, res) => {
+  res.json({ models: SUPPORTED_LLM_MODELS.map((m) => ({ id: m.id, label: m.label })) });
+});
 
 /**
  * @swagger

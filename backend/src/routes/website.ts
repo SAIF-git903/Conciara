@@ -220,9 +220,9 @@ router.post('/', requireAdmin, async (req, res) => {
     // If editor_user_id is provided, assign that user as manager for this website
     if (editor_user_id && typeof editor_user_id === 'number') {
       try {
-        await assignUserToWebsite(editor_user_id, website.id, 'manager');
+        await assignUserToWebsite(editor_user_id, website.id, 'member');
       } catch (error: any) {
-        console.warn('Failed to assign manager to website:', error.message);
+        console.warn('Failed to assign member to website:', error.message);
         // Don't fail website creation if assignment fails
       }
     }

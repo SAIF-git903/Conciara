@@ -11,7 +11,11 @@ import {
   Bot,
   ArrowLeft,
   RefreshCw,
+  Pencil,
+  X,
 } from 'lucide-react'
+import { useDashboard } from '@/contexts/DashboardContext'
+import v2Api from '@/lib/v2-api'
 
 type Message = { id: string; role: 'user' | 'assistant'; content: string; at: string }
 
@@ -114,14 +118,44 @@ function formatMessageTime(iso: string) {
 }
 
 export default function ChatLogsPage() {
+  const { currentWorkspace, currentAgent } = useDashboard()
   const [search, setSearch] = useState('')
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [reviseMessage, setReviseMessage] = useState<{ question: string; answer: string } | null>(null)
+  const [reviseAnswer, setReviseAnswer] = useState('')
+  const [savingRevise, setSavingRevise] = useState(false)
+  const [reviseError, setReviseError] = useState<string | null>(null)
 
   const handleRefresh = () => {
     setIsRefreshing(true)
-    // TODO: replace with real API refetch
     setTimeout(() => setIsRefreshing(false), 800)
+  }
+
+  const handleRevise = (question: string, answer: string) => {
+    setReviseMessage({ question, answer })
+    setReviseAnswer(answer)
+    setReviseError(null)
+  }
+
+  const handleSaveAsQa = async () => {
+    if (!currentWorkspace?.id || !currentAgent?.id || !reviseMessage) return
+    const answer = reviseAnswer.trim()
+    if (!answer) return
+    setSavingRevise(true)
+    setReviseError(null)
+    try {
+      await v2Api.post(
+        `/v2/workspaces/${currentWorkspace.id}/agents/${currentAgent.id}/qa`,
+        { question: reviseMessage.question.trim(), answer }
+      )
+      setReviseMessage(null)
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'response' in e && (e as { response?: { data?: { error?: string } } }).response?.data?.error
+      setReviseError(msg || (e instanceof Error ? e.message : 'Failed to save as Q&A'))
+    } finally {
+      setSavingRevise(false)
+    }
   }
 
   const filtered = MOCK_SESSIONS.filter((s) =>
@@ -253,38 +287,56 @@ export default function ChatLogsPage() {
             </div>
             <div className="flex-1 overflow-auto p-4">
               <div className="mx-auto max-w-2xl space-y-4">
-                {selectedSession.messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
-                  >
+                {selectedSession.messages.map((msg, idx) => {
+                  const prevUser = msg.role === 'assistant'
+                    ? selectedSession.messages[idx - 1]
+                    : null
+                  const canRevise = msg.role === 'assistant' && prevUser?.role === 'user' && currentAgent && currentWorkspace
+                  return (
                     <div
-                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-                        msg.role === 'user'
-                          ? 'bg-slate-200 text-slate-600'
-                          : 'bg-[var(--v2-primary)]/10 text-[var(--v2-primary)]'
-                      }`}
+                      key={msg.id}
+                      className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
                     >
-                      {msg.role === 'user' ? (
-                        <User className="h-4 w-4" />
-                      ) : (
-                        <Bot className="h-4 w-4" />
-                      )}
+                      <div
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                          msg.role === 'user'
+                            ? 'bg-slate-200 text-slate-600'
+                            : 'bg-[var(--v2-primary)]/10 text-[var(--v2-primary)]'
+                        }`}
+                      >
+                        {msg.role === 'user' ? (
+                          <User className="h-4 w-4" />
+                        ) : (
+                          <Bot className="h-4 w-4" />
+                        )}
+                      </div>
+                      <div
+                        className={`min-w-0 flex-1 rounded-2xl px-4 py-2.5 ${
+                          msg.role === 'user'
+                            ? 'rounded-tr-md bg-slate-100 text-slate-900'
+                            : 'rounded-tl-md bg-[var(--v2-primary)]/5 text-slate-900'
+                        }`}
+                      >
+                        <p className="text-sm">{msg.content}</p>
+                        <div className="mt-1 flex items-center justify-between gap-2">
+                          <p className="text-xs text-slate-400">
+                            {formatMessageTime(msg.at)}
+                          </p>
+                          {canRevise && (
+                            <button
+                              type="button"
+                              onClick={() => handleRevise(prevUser!.content, msg.content)}
+                              className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-[var(--v2-primary)] hover:bg-[var(--v2-primary)]/10"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              Revise
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div
-                      className={`min-w-0 flex-1 rounded-2xl px-4 py-2.5 ${
-                        msg.role === 'user'
-                          ? 'rounded-tr-md bg-slate-100 text-slate-900'
-                          : 'rounded-tl-md bg-[var(--v2-primary)]/5 text-slate-900'
-                      }`}
-                    >
-                      <p className="text-sm">{msg.content}</p>
-                      <p className="mt-1 text-xs text-slate-400">
-                        {formatMessageTime(msg.at)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           </div>
@@ -302,6 +354,59 @@ export default function ChatLogsPage() {
           </div>
         )}
       </div>
+
+      {/* Revise → Save as Q&A modal */}
+      {reviseMessage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setReviseMessage(null)}>
+          <div
+            className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-900">Save as Q&A</h3>
+              <button type="button" onClick={() => setReviseMessage(null)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label="Close">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="text-sm text-slate-500 mb-4">
+              The edited answer will be saved as a Q&A entry so the agent uses it next time someone asks something similar.
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Question (from user)</label>
+                <p className="mt-1 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm text-slate-900">
+                  {reviseMessage.question}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Answer (edit if needed)</label>
+                <textarea
+                  value={reviseAnswer}
+                  onChange={(e) => setReviseAnswer(e.target.value)}
+                  rows={4}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900"
+                />
+              </div>
+              {reviseError && (
+                <p className="text-sm text-red-600">{reviseError}</p>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setReviseMessage(null)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAsQa}
+                  disabled={!reviseAnswer.trim() || savingRevise}
+                  className="rounded-lg bg-[var(--v2-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  {savingRevise ? 'Saving…' : 'Save as Q&A'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

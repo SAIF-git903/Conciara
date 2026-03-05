@@ -15,7 +15,8 @@
     "setup-db": "tsx src/db/setup.ts",
     "seed": "tsx src/db/seed.ts",
     "seed-admin": "tsx src/db/seedAdmin.ts",
-    "regenerate-embeddings": "tsx src/regenerateEmbeddings.ts"
+    "regenerate-embeddings": "tsx src/regenerateEmbeddings.ts",
+    "postinstall": "prisma generate"
   },
   "keywords": [
     "dialog",
@@ -27,17 +28,22 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.490.0",
     "@aws-sdk/s3-request-presigner": "^3.490.0",
+    "@prisma/client": "^5.22.0",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
     "bcrypt": "^6.0.0",
+    "cheerio": "^1.2.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.3",
+    "mammoth": "^1.11.0",
     "multer": "^1.4.5-lts.1",
     "openai": "^4.20.1",
+    "pdf-parse": "^2.4.5",
     "pg": "^8.11.3",
     "pgvector": "^0.1.8",
+    "prisma": "^5.22.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "zod": "^3.22.4"

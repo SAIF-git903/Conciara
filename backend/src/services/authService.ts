@@ -6,7 +6,7 @@
 import bcrypt from 'bcrypt';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import crypto from 'crypto';
-import { pool } from '../db/connection.js';
+import { prisma } from '../db/prisma.js';
 
 const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || '12');
 const JWT_SECRET: string = process.env.JWT_SECRET || 'change-this-secret-in-production';
@@ -116,28 +116,18 @@ export async function verifyRefreshToken(token: string): Promise<{ id: number; e
     }
 
     // Check if token is revoked (exists in database)
-    const sessionResult = await pool.query(
-      `SELECT id FROM user_sessions WHERE refresh_token = $1`,
-      [token]
-    );
+    const session = await prisma.userSession.findFirst({
+      where: { refreshToken: token },
+      select: { id: true, expiresAt: true },
+    });
 
-    if (sessionResult.rows.length === 0) {
+    if (!session) {
       throw new Error('Refresh token revoked or invalid');
     }
 
-    // Check if session is expired
-    const sessionCheck = await pool.query(
-      `SELECT expires_at FROM user_sessions WHERE refresh_token = $1`,
-      [token]
-    );
-
-    if (sessionCheck.rows.length > 0) {
-      const expiresAt = new Date(sessionCheck.rows[0].expires_at);
-      if (expiresAt < new Date()) {
-        // Clean up expired session
-        await pool.query(`DELETE FROM user_sessions WHERE refresh_token = $1`, [token]);
-        throw new Error('Refresh token expired');
-      }
+    if (session.expiresAt < new Date()) {
+      await prisma.userSession.deleteMany({ where: { refreshToken: token } });
+      throw new Error('Refresh token expired');
     }
 
     return {
@@ -163,11 +153,11 @@ export async function verifyRefreshToken(token: string): Promise<{ id: number; e
  * Check if a refresh token is revoked
  */
 export async function isRefreshTokenRevoked(refreshToken: string): Promise<boolean> {
-  const result = await pool.query(
-    `SELECT id FROM user_sessions WHERE refresh_token = $1`,
-    [refreshToken]
-  );
-  return result.rows.length === 0;
+  const session = await prisma.userSession.findFirst({
+    where: { refreshToken },
+    select: { id: true },
+  });
+  return !session;
 }
 
 /**
@@ -175,22 +165,14 @@ export async function isRefreshTokenRevoked(refreshToken: string): Promise<boole
  */
 export async function revokeRefreshToken(refreshToken: string, userId?: number): Promise<void> {
   if (userId) {
-    // Verify the token belongs to the user
-    const result = await pool.query(
-      `DELETE FROM user_sessions 
-       WHERE refresh_token = $1 AND user_id = $2`,
-      [refreshToken, userId]
-    );
-    
-    if (result.rowCount === 0) {
+    const result = await prisma.userSession.deleteMany({
+      where: { refreshToken, userId },
+    });
+    if (result.count === 0) {
       throw new Error('Refresh token not found or does not belong to user');
     }
   } else {
-    // Admin can revoke any token
-    await pool.query(
-      `DELETE FROM user_sessions WHERE refresh_token = $1`,
-      [refreshToken]
-    );
+    await prisma.userSession.deleteMany({ where: { refreshToken } });
   }
 }
 
@@ -198,11 +180,8 @@ export async function revokeRefreshToken(refreshToken: string, userId?: number):
  * Revoke all refresh tokens for a user
  */
 export async function revokeAllUserRefreshTokens(userId: number): Promise<number> {
-  const result = await pool.query(
-    `DELETE FROM user_sessions WHERE user_id = $1`,
-    [userId]
-  );
-  return result.rowCount || 0;
+  const result = await prisma.userSession.deleteMany({ where: { userId } });
+  return result.count;
 }
 
 /**
@@ -210,20 +189,14 @@ export async function revokeAllUserRefreshTokens(userId: number): Promise<number
  */
 export async function revokeSession(sessionToken: string, userId?: number): Promise<void> {
   if (userId) {
-    const result = await pool.query(
-      `DELETE FROM user_sessions 
-       WHERE session_token = $1 AND user_id = $2`,
-      [sessionToken, userId]
-    );
-    
-    if (result.rowCount === 0) {
+    const result = await prisma.userSession.deleteMany({
+      where: { sessionToken, userId },
+    });
+    if (result.count === 0) {
       throw new Error('Session not found or does not belong to user');
     }
   } else {
-    await pool.query(
-      `DELETE FROM user_sessions WHERE session_token = $1`,
-      [sessionToken]
-    );
+    await prisma.userSession.deleteMany({ where: { sessionToken } });
   }
 }
 
@@ -238,21 +211,25 @@ export async function getUserSessions(userId: number): Promise<Array<{
   createdAt: Date;
   expiresAt: Date;
 }>> {
-  const result = await pool.query(
-    `SELECT id, session_token, ip_address, user_agent, created_at, expires_at
-     FROM user_sessions
-     WHERE user_id = $1 AND expires_at > NOW()
-     ORDER BY created_at DESC`,
-    [userId]
-  );
-
-  return result.rows.map(row => ({
-    id: row.id,
-    sessionToken: row.session_token,
-    ipAddress: row.ip_address,
-    userAgent: row.user_agent,
-    createdAt: row.created_at,
-    expiresAt: row.expires_at,
+  const sessions = await prisma.userSession.findMany({
+    where: { userId, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      sessionToken: true,
+      ipAddress: true,
+      userAgent: true,
+      createdAt: true,
+      expiresAt: true,
+    },
+  });
+  return sessions.map((s) => ({
+    id: s.id,
+    sessionToken: s.sessionToken,
+    ipAddress: s.ipAddress,
+    userAgent: s.userAgent,
+    createdAt: s.createdAt,
+    expiresAt: s.expiresAt,
   }));
 }
 
@@ -260,10 +237,56 @@ export async function getUserSessions(userId: number): Promise<Array<{
  * Cleanup expired sessions (should be run periodically)
  */
 export async function cleanupExpiredSessions(): Promise<number> {
-  const result = await pool.query(
-    `DELETE FROM user_sessions WHERE expires_at < NOW()`
-  );
-  return result.rowCount || 0;
+  const result = await prisma.userSession.deleteMany({
+    where: { expiresAt: { lt: new Date() } },
+  });
+  return result.count;
+}
+
+/**
+ * Create a new user session (used on login)
+ */
+export async function createSession(params: {
+  userId: number;
+  sessionToken: string;
+  refreshToken: string;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  expiresInDays?: number;
+}): Promise<void> {
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + (params.expiresInDays ?? 7));
+  await prisma.userSession.create({
+    data: {
+      userId: params.userId,
+      sessionToken: params.sessionToken,
+      refreshToken: params.refreshToken,
+      expiresAt,
+      ipAddress: params.ipAddress ?? null,
+      userAgent: params.userAgent ?? null,
+    },
+  });
+}
+
+/**
+ * Update session with new tokens (used on refresh)
+ */
+export async function updateSessionRefresh(
+  oldRefreshToken: string,
+  newSessionToken: string,
+  newRefreshToken: string,
+  expiresInDays: number = 7
+): Promise<void> {
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + expiresInDays);
+  await prisma.userSession.updateMany({
+    where: { refreshToken: oldRefreshToken },
+    data: {
+      sessionToken: newSessionToken,
+      refreshToken: newRefreshToken,
+      expiresAt,
+    },
+  });
 }
 
 /**
@@ -292,16 +315,14 @@ export async function createAPIKey(
   const key = generateAPIKey();
   const keyHash = await hashAPIKey(key);
 
-  const result = await pool.query(
-    `INSERT INTO api_keys (user_id, key_hash, name, permissions)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id`,
-    [userId, keyHash, name, permissions]
-  );
+  const apiKey = await prisma.apiKey.create({
+    data: { userId, keyHash, name, permissions },
+    select: { id: true },
+  });
 
   return {
-    key, // Return the plain key only once - it won't be stored
-    apiKeyId: result.rows[0].id,
+    key,
+    apiKeyId: apiKey.id,
   };
 }
 
@@ -309,38 +330,30 @@ export async function createAPIKey(
  * Verify an API key and return its information
  */
 export async function verifyAPIKey(key: string): Promise<APIKeyInfo | null> {
-  // Get all active API keys
-  const result = await pool.query(
-    `SELECT id, user_id, key_hash, name, permissions, expires_at
-     FROM api_keys
-     WHERE is_active = true`
-  );
+  const apiKeys = await prisma.apiKey.findMany({
+    where: { isActive: true },
+    select: { id: true, userId: true, keyHash: true, name: true, permissions: true, expiresAt: true },
+  });
 
-  // Check each key hash (we need to check all because we can't reverse the hash)
-  for (const row of result.rows) {
-    const isValid = await bcrypt.compare(key, row.key_hash);
+  for (const row of apiKeys) {
+    const isValid = await bcrypt.compare(key, row.keyHash);
     if (isValid) {
-      // Check expiration
-      if (row.expires_at && new Date(row.expires_at) < new Date()) {
-        continue; // Expired
-      }
+      if (row.expiresAt && row.expiresAt < new Date()) continue;
 
-      // Update last_used_at
-      await pool.query(
-        `UPDATE api_keys SET last_used_at = NOW() WHERE id = $1`,
-        [row.id]
-      );
+      await prisma.apiKey.update({
+        where: { id: row.id },
+        data: { lastUsedAt: new Date() },
+      });
 
       return {
         id: row.id,
-        userId: row.user_id,
+        userId: row.userId,
         name: row.name,
-        permissions: row.permissions || [],
-        expiresAt: row.expires_at ? new Date(row.expires_at) : undefined,
+        permissions: row.permissions ?? [],
+        expiresAt: row.expiresAt ?? undefined,
       };
     }
   }
-
   return null;
 }
 
@@ -349,17 +362,15 @@ export async function verifyAPIKey(key: string): Promise<APIKeyInfo | null> {
  */
 export async function revokeAPIKey(apiKeyId: number, userId?: number): Promise<void> {
   if (userId) {
-    // User can only revoke their own keys (unless admin)
-    await pool.query(
-      `UPDATE api_keys SET is_active = false WHERE id = $1 AND user_id = $2`,
-      [apiKeyId, userId]
-    );
+    await prisma.apiKey.updateMany({
+      where: { id: apiKeyId, userId },
+      data: { isActive: false },
+    });
   } else {
-    // Admin can revoke any key
-    await pool.query(
-      `UPDATE api_keys SET is_active = false WHERE id = $1`,
-      [apiKeyId]
-    );
+    await prisma.apiKey.update({
+      where: { id: apiKeyId },
+      data: { isActive: false },
+    });
   }
 }
 
@@ -367,9 +378,9 @@ export async function revokeAPIKey(apiKeyId: number, userId?: number): Promise<v
  * Check if a user has a specific permission
  */
 export function hasPermission(userRole: string, requiredPermission: string): boolean {
-  const roleHierarchy: Record<string, string[]> = {
-    admin: ['*'], // Admin has all permissions
-    manager: [
+  const rolePermissions: Record<string, string[]> = {
+    owner: ['*'],
+    member: [
       'tree:read',
       'tree:write',
       'node:read',
@@ -381,22 +392,9 @@ export function hasPermission(userRole: string, requiredPermission: string): boo
       'conversation:read',
       'trace:read',
     ],
-    viewer: [
-      'tree:read',
-      'node:read',
-      'skin:read',
-      'website:read',
-      'conversation:read',
-      'trace:read',
-    ],
   };
 
-  const userPermissions = roleHierarchy[userRole] || [];
-  
-  // Admin has all permissions
-  if (userPermissions.includes('*')) {
-    return true;
-  }
-
+  const userPermissions = rolePermissions[userRole] || [];
+  if (userPermissions.includes('*')) return true;
   return userPermissions.includes(requiredPermission);
 }

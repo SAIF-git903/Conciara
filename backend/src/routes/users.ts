@@ -1,6 +1,6 @@
 /**
  * User Management Routes
- * CRUD operations for users (admin only)
+ * CRUD operations for users (owner only for list/create/delete/assign)
  */
 
 import express from 'express';
@@ -26,7 +26,7 @@ router.use(requireAuth);
  * /api/users:
  *   get:
  *     summary: Get all users
- *     description: Retrieve all users with their assigned websites (admin only)
+ *     description: Retrieve all users with their assigned websites (owner only)
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -53,7 +53,7 @@ router.use(requireAuth);
  *               items:
  *                 $ref: '#/components/schemas/User'
  *       403:
- *         description: Insufficient permissions (admin only)
+ *         description: Insufficient permissions (owner only)
  *       500:
  *         description: Server error
  */
@@ -94,7 +94,7 @@ router.get('/', requireAdmin, async (req, res) => {
  * /api/users/{id}:
  *   get:
  *     summary: Get user by ID
- *     description: Retrieve a specific user by ID, including assigned websites. Users can view their own profile, admins can view any.
+ *     description: Retrieve a specific user by ID. Users can view their own profile, owners can view any.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -124,8 +124,7 @@ router.get('/:id', async (req, res) => {
     const userId = parseInt(req.params.id);
     const currentUser = req.user!;
 
-    // Users can view their own profile, admins can view any
-    if (currentUser.role !== 'admin' && currentUser.id !== userId) {
+    if (currentUser.role !== 'owner' && currentUser.id !== userId) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
 
@@ -161,7 +160,7 @@ router.get('/:id', async (req, res) => {
  * /api/users:
  *   post:
  *     summary: Create a new user
- *     description: Create a new user with optional website assignment (admin only). Admin users cannot be created via API.
+ *     description: Create a new user with optional website assignment (owner only). Only members can be created via API.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -181,8 +180,8 @@ router.get('/:id', async (req, res) => {
  *                 type: string
  *               role:
  *                 type: string
- *                 enum: [manager]
- *                 default: manager
+ *                 enum: [member]
+ *                 default: member
  *               websiteId:
  *                 type: integer
  *                 description: Single website ID to assign (alternative to websiteIds)
@@ -204,7 +203,7 @@ router.get('/:id', async (req, res) => {
  *       400:
  *         description: Invalid input or user already exists
  *       403:
- *         description: Insufficient permissions or cannot create admin users
+ *         description: Insufficient permissions or cannot create owner via API
  *       500:
  *         description: Server error
  */
@@ -216,10 +215,9 @@ router.post('/', requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    // Validate role - cannot create admin users via API
-    const userRole = role || 'manager';
-    if (userRole === 'admin') {
-      return res.status(403).json({ error: 'Admin users can only be created via database' });
+    const userRole = role || 'member';
+    if (userRole === 'owner') {
+      return res.status(403).json({ error: 'Owners can only be created via signup' });
     }
 
     const user = await createUser({
@@ -269,7 +267,7 @@ router.post('/', requireAdmin, async (req, res) => {
  * /api/users/{id}:
  *   put:
  *     summary: Update user
- *     description: Update user information. Users can update their own profile (except role), admins can update any.
+ *     description: Update user information. Users can update their own profile (except role), owners can update any.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -294,11 +292,11 @@ router.post('/', requireAdmin, async (req, res) => {
  *                 type: string
  *               role:
  *                 type: string
- *                 enum: [admin, manager]
- *                 description: Only admins can change role
+ *                 enum: [owner, member]
+ *                 description: Only owners can change role
  *               isActive:
  *                 type: boolean
- *                 description: Only admins can change active status
+ *                 description: Only owners can change active status
  *     responses:
  *       200:
  *         description: User updated successfully
@@ -318,18 +316,13 @@ router.put('/:id', async (req, res) => {
     const userId = parseInt(req.params.id);
     const currentUser = req.user!;
 
-    // Users can update their own profile (except role), admins can update any
-    if (currentUser.role !== 'admin' && currentUser.id !== userId) {
+    if (currentUser.role !== 'owner' && currentUser.id !== userId) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
-
-    // Non-admins cannot change role
-    if (currentUser.role !== 'admin' && req.body.role) {
+    if (currentUser.role !== 'owner' && req.body.role) {
       return res.status(403).json({ error: 'Cannot change role' });
     }
-
-    // Non-admins cannot change isActive
-    if (currentUser.role !== 'admin' && req.body.isActive !== undefined) {
+    if (currentUser.role !== 'owner' && req.body.isActive !== undefined) {
       return res.status(403).json({ error: 'Cannot change active status' });
     }
 
@@ -360,7 +353,7 @@ router.put('/:id', async (req, res) => {
  * /api/users/{id}/websites:
  *   put:
  *     summary: Assign user to websites
- *     description: Update website assignments for a user (admin only). Replaces all existing assignments.
+ *     description: Update website assignments for a user (owner only). Replaces all existing assignments.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -450,7 +443,7 @@ router.put('/:id/websites', requireAdmin, async (req, res) => {
  * /api/users/{id}:
  *   delete:
  *     summary: Delete user
- *     description: Delete a user by ID (admin only). Cannot delete your own account.
+ *     description: Delete a user by ID (owner only). Cannot delete your own account.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []

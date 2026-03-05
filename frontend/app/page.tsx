@@ -1,16 +1,28 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import DialogTreeManager from '@/components/DialogTreeManager'
 import MultiTenantNavigator from '@/components/MultiTenantNavigator'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AppHeader from '@/components/AppHeader'
+import { useV2Auth } from '@/contexts/V2AuthContext'
 import { DialogTree, Website } from '@/lib/api'
 
 export default function Home() {
+  const router = useRouter()
+  const { user: v2User, loading: v2Loading } = useV2Auth()
   const [selectedTree, setSelectedTree] = useState<DialogTree | null>(null)
   const [selectedWebsite, setSelectedWebsite] = useState<Website | null>(null)
   const isMountedRef = useRef(true)
+
+  // If v2 signed in but no workspaces, onboarding must be done → redirect to onboarding
+  useEffect(() => {
+    if (v2Loading) return
+    if (v2User && (!v2User.workspaces || v2User.workspaces.length === 0)) {
+      router.replace('/v2/onboarding')
+    }
+  }, [v2Loading, v2User, router])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -19,6 +31,14 @@ export default function Home() {
       isMountedRef.current = false
     }
   }, [])
+
+  if (v2User && (!v2User.workspaces || v2User.workspaces.length === 0)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-white">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" aria-hidden />
+      </div>
+    )
+  }
 
   return (
     <ProtectedRoute>

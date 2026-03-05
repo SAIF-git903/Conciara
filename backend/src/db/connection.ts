@@ -48,6 +48,11 @@ function getConnectionString(): string {
 
 const connectionString = getConnectionString();
 
+// Ensure Prisma can use the same URL when only DB_* vars are set
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = connectionString;
+}
+
 export const pool = new Pool({
   connectionString,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
