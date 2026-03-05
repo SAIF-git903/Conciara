@@ -1,13 +1,29 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
-import { FileText, Trash2 } from 'lucide-react'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { FileText, Trash2, Loader2, AlertCircle } from 'lucide-react'
 import { DataSourcesTrainingCard, type TrainingStatus } from '../DataSourcesTrainingCard'
+import { useDashboard } from '@/contexts/DashboardContext'
+import v2Api from '@/lib/v2-api'
 
 const ACCEPT_TYPES = '.pdf,.docx,.doc,.txt,.md'
 const MAX_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB
 
-type FileItem = { id: string; name: string; size: string; addedAt: string }
+type DocumentStatus = 'pending' | 'processing' | 'ready' | 'failed'
+
+interface AgentDocument {
+  id: number
+  agentId: number
+  workspaceId: number
+  fileName: string
+  fileSize: number
+  mimeType: string
+  status: DocumentStatus
+  errorMessage: string | null
+  chunkCount: number
+  createdAt: string
+  updatedAt: string
+}
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -15,53 +31,137 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function fileToItem(file: File): FileItem | null {
-  if (file.size > MAX_SIZE_BYTES) return null
-  const ext = file.name.split('.').pop()?.toLowerCase()
-  const allowed = ['pdf', 'docx', 'doc', 'txt', 'md']
-  if (!ext || !allowed.includes(ext)) return null
-  return {
-    id: `${file.name}-${file.size}-${Date.now()}`,
-    name: file.name,
-    size: formatSize(file.size),
-    addedAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-  }
-}
-
-function processFileList(fileList: FileList | null): FileItem[] {
-  if (!fileList?.length) return []
-  const items: FileItem[] = []
-  for (let i = 0; i < fileList.length; i++) {
-    const item = fileToItem(fileList[i])
-    if (item) items.push(item)
-  }
-  return items
+function formatDate(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 export default function DataSourcesFilesPage() {
-  const [files, setFiles] = useState<FileItem[]>([])
-  const [trainingStatus, setTrainingStatus] = useState<TrainingStatus>('trained')
-  const [lastTrainedAt, setLastTrainedAt] = useState<string | null>('2 min ago')
+  const { currentWorkspace, currentAgent } = useDashboard()
+  const [documents, setDocuments] = useState<AgentDocument[]>([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [training, setTraining] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [dragCounter, setDragCounter] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const handleTrain = () => {
-    setTrainingStatus('training')
-    setLastTrainedAt(null)
-    setTimeout(() => {
-      setTrainingStatus('trained')
-      setLastTrainedAt('Just now')
-    }, 2000)
-  }
+  const workspaceId = currentWorkspace?.id
+  const agentId = currentAgent?.id
 
-  const handleRemove = (id: string) => setFiles((p) => p.filter((f) => f.id !== id))
-  const hasData = files.length > 0
+  const fetchDocuments = useCallback(async () => {
+    if (!workspaceId || !agentId) return
+    setLoading(true)
+    setError(null)
+    try {
+      const { data } = await v2Api.get<{ documents: AgentDocument[] }>(
+        `/v2/workspaces/${workspaceId}/agents/${agentId}/documents`
+      )
+      setDocuments(data.documents ?? [])
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load documents')
+      setDocuments([])
+    } finally {
+      setLoading(false)
+    }
+  }, [workspaceId, agentId])
 
-  const addFiles = useCallback((newItems: FileItem[]) => {
-    if (newItems.length === 0) return
-    setFiles((prev) => [...newItems, ...prev])
-  }, [])
+  useEffect(() => {
+    fetchDocuments()
+    const t = setInterval(fetchDocuments, 5000)
+    return () => clearInterval(t)
+  }, [fetchDocuments])
+
+  const hasReady = documents.some((d) => d.status === 'ready')
+  const hasPending = documents.some((d) => d.status === 'pending')
+  const trainingStatus: TrainingStatus = training ? 'training' : hasReady ? 'trained' : hasPending ? 'idle' : 'idle'
+  const lastReady = documents.filter((d) => d.status === 'ready').sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0]
+  const lastTrainedAt = lastReady
+    ? (() => {
+        const d = new Date(lastReady.updatedAt)
+        const diff = (Date.now() - d.getTime()) / 1000
+        if (diff < 60) return 'Just now'
+        if (diff < 3600) return `${Math.floor(diff / 60)} min ago`
+        if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`
+        if (diff < 604800) return `${Math.floor(diff / 86400)} days ago`
+        return formatDate(lastReady.updatedAt)
+      })()
+    : null
+  const canTrain = hasPending && !training
+
+  const uploadFile = useCallback(
+    async (file: File) => {
+      if (!workspaceId || !agentId) return
+      if (file.size > MAX_SIZE_BYTES) {
+        setError('File too large. Max 10 MB.')
+        return
+      }
+      const ext = file.name.split('.').pop()?.toLowerCase()
+      const allowed = ['pdf', 'docx', 'doc', 'txt', 'md']
+      if (!ext || !allowed.includes(ext)) {
+        setError('Unsupported type. Use PDF, DOCX, TXT, or MD.')
+        return
+      }
+      setUploading(true)
+      setError(null)
+      try {
+        const form = new FormData()
+        form.append('file', file)
+        await v2Api.post(
+          `/v2/workspaces/${workspaceId}/agents/${agentId}/documents`,
+          form,
+          { headers: { 'Content-Type': undefined } as Record<string, string | undefined> }
+        )
+        await fetchDocuments()
+      } catch (e: unknown) {
+        const msg = e && typeof e === 'object' && 'response' in e && (e as { response?: { data?: { error?: string } } }).response?.data?.error
+        setError(msg || (e instanceof Error ? e.message : 'Upload failed'))
+      } finally {
+        setUploading(false)
+      }
+    },
+    [workspaceId, agentId, fetchDocuments]
+  )
+
+  const handleTrain = useCallback(async () => {
+    if (!workspaceId || !agentId || !canTrain) return
+    setTraining(true)
+    setError(null)
+    try {
+      await v2Api.post<{ trained: number }>(`/v2/workspaces/${workspaceId}/agents/${agentId}/documents/train`)
+      await fetchDocuments()
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'response' in e && (e as { response?: { data?: { error?: string } } }).response?.data?.error
+      setError(msg || (e instanceof Error ? e.message : 'Training failed'))
+    } finally {
+      setTraining(false)
+    }
+  }, [workspaceId, agentId, canTrain, fetchDocuments])
+
+  const handleRemove = useCallback(
+    async (documentId: number) => {
+      if (!workspaceId || !agentId) return
+      try {
+        await v2Api.delete(`/v2/workspaces/${workspaceId}/agents/${agentId}/documents/${documentId}`)
+        setDocuments((prev) => prev.filter((d) => d.id !== documentId))
+      } catch {
+        setError('Failed to delete document')
+      }
+    },
+    [workspaceId, agentId]
+  )
+
+  const addFiles = useCallback(
+    (fileList: FileList | null) => {
+      if (!fileList?.length) return
+      for (let i = 0; i < fileList.length; i++) {
+        const file = fileList[i]
+        if (file.size <= MAX_SIZE_BYTES) uploadFile(file)
+      }
+    },
+    [uploadFile]
+  )
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -69,8 +169,7 @@ export default function DataSourcesFilesPage() {
       e.stopPropagation()
       setDragCounter(0)
       setIsDragging(false)
-      const items = processFileList(e.dataTransfer.files)
-      addFiles(items)
+      addFiles(e.dataTransfer.files)
     },
     [addFiles]
   )
@@ -100,12 +199,19 @@ export default function DataSourcesFilesPage() {
 
   const handleFileInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const items = processFileList(e.target.files)
-      addFiles(items)
+      addFiles(e.target.files)
       e.target.value = ''
     },
     [addFiles]
   )
+
+  if (!currentAgent) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center p-6 text-center">
+        <p className="text-sm text-slate-600">Select an agent from the header to manage files.</p>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
@@ -123,15 +229,22 @@ export default function DataSourcesFilesPage() {
           className="hidden"
           accept={ACCEPT_TYPES}
           onChange={handleFileInputChange}
+          disabled={uploading}
         />
         <div className="mt-4">
           <DataSourcesTrainingCard
             status={trainingStatus}
             lastTrainedAt={lastTrainedAt}
             onTrain={handleTrain}
-            disabled={!hasData}
+            disabled={!canTrain}
           />
         </div>
+        {error && (
+          <div className="mt-3 flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            {error}
+          </div>
+        )}
       </div>
 
       <div
@@ -158,38 +271,47 @@ export default function DataSourcesFilesPage() {
             </div>
           )}
           <div
-            onClick={() => inputRef.current?.click()}
+            onClick={() => !uploading && inputRef.current?.click()}
             className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed py-12 transition ${
-              isDragging
-                ? 'border-slate-200 bg-slate-50/50'
-                : 'border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-50'
-            }`}
+              uploading ? 'cursor-not-allowed opacity-60' : ''
+            } ${isDragging ? 'border-slate-200 bg-slate-50/50' : 'border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-50'}`}
           >
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-slate-500">
-              <FileText className="h-6 w-6" />
+              {uploading ? <Loader2 className="h-6 w-6 animate-spin" /> : <FileText className="h-6 w-6" />}
             </div>
             <p className="mt-3 text-sm font-medium text-slate-700">
-              Drag files here or click to select and upload
+              {uploading ? 'Uploading…' : 'Drag files here or click to upload'}
             </p>
             <p className="mt-1 text-xs text-slate-500">PDF, DOCX, TXT, MD · max 10 MB</p>
           </div>
 
-          {hasData && (
+          {loading && documents.length === 0 ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+            </div>
+          ) : documents.length > 0 ? (
             <div className="rounded-lg border border-slate-200 bg-white">
               <div className="divide-y divide-slate-100">
-                {files.map((file) => (
+                {documents.map((doc) => (
                   <div
-                    key={file.id}
+                    key={doc.id}
                     className="flex items-center gap-4 px-4 py-3 first:rounded-t-lg last:rounded-b-lg hover:bg-slate-50/80"
                   >
                     <FileText className="h-5 w-5 shrink-0 text-slate-400" />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-900">{file.name}</p>
-                      <p className="text-xs text-slate-500">{file.size} · {file.addedAt}</p>
+                      <p className="truncate text-sm font-medium text-slate-900">{doc.fileName}</p>
+                      <p className="text-xs text-slate-500">
+                        {formatSize(doc.fileSize)} · {formatDate(doc.createdAt)}
+                        {doc.status === 'ready' && doc.chunkCount > 0 && ` · ${doc.chunkCount} chunks`}
+                        {doc.status === 'processing' && ' · Processing…'}
+                        {doc.status === 'pending' && ' · Queued'}
+                        {doc.status === 'failed' && doc.errorMessage && ` · ${doc.errorMessage}`}
+                      </p>
                     </div>
+                    {doc.status === 'processing' && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" />}
                     <button
                       type="button"
-                      onClick={() => handleRemove(file.id)}
+                      onClick={() => handleRemove(doc.id)}
                       className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                       aria-label="Remove"
                     >
@@ -199,7 +321,7 @@ export default function DataSourcesFilesPage() {
                 ))}
               </div>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

@@ -417,6 +417,41 @@ export async function translateLinesToLanguage(
   }
 }
 
+export type ChatMessageRole = 'user' | 'assistant' | 'system';
+
+/**
+ * Agent chat: model + system prompt + conversation history.
+ * Used by v2 playground with RAG context in system prompt.
+ */
+export async function chatCompletion(
+  modelId: string,
+  systemContent: string,
+  messages: { role: 'user' | 'assistant'; content: string }[],
+  options?: { maxTokens?: number; temperature?: number }
+): Promise<string> {
+  if (!openai || !apiKey) {
+    return "I'm not configured to respond yet. Please add an API key for the chat model.";
+  }
+
+  const model = SUPPORTED_LLM_MODELS.some((m) => m.id === modelId) ? modelId : 'gpt-4o-mini';
+  const maxTokens = options?.maxTokens ?? 1024;
+  const temperature = options?.temperature ?? 0.7;
+
+  const openaiMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+    { role: 'system', content: systemContent || 'You are a helpful assistant.' },
+    ...messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+  ];
+
+  const response = await openai.chat.completions.create({
+    model,
+    messages: openaiMessages,
+    max_tokens: maxTokens,
+    temperature,
+  });
+
+  return response.choices[0]?.message?.content?.trim() || "I couldn't generate a response.";
+}
+
 /** Models supported by the backend (OpenAI). Used by v2 onboarding Agent step. */
 export const SUPPORTED_LLM_MODELS = [
   { id: 'gpt-4o', label: 'GPT-4o' },

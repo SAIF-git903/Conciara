@@ -40,7 +40,10 @@ export interface SkinRendererProps {
   onLanguageSelect?: (lang: string) => void
   /** When true, user must select a language before the conversation starts (picker shown first) */
   requireLanguageSelection?: boolean
-  onMessage?: (message: string) => Promise<void>
+  /** Custom send handler. If returns string or { content, media? }, that is added as the bot reply. When provided, treeId can be null (e.g. playground with v2 agent chat). */
+  onMessage?: (message: string) => Promise<string | { content: string; media?: MediaItem[] } | void>
+  /** When provided, called with the current messages after each update (so parent can build history for API). */
+  onMessagesChange?: (messages: Message[]) => void
   initialMessages?: Message[]
   sessionId?: string | null
   /** When true, only the chat window is shown (no floating button); window starts open. For embed/preview. */
@@ -57,6 +60,7 @@ export default function SkinRenderer({
   onLanguageSelect,
   requireLanguageSelection = false,
   onMessage,
+  onMessagesChange,
   initialMessages = [],
   sessionId: initialSessionId = null,
   previewMode = false
@@ -64,6 +68,21 @@ export default function SkinRenderer({
   const [isOpen, setIsOpen] = useState(previewMode)
   const [isMinimized, setIsMinimized] = useState(false)
   const [messages, setMessages] = useState<Message[]>(initialMessages)
+
+  const addMessage = (type: 'user' | 'bot', content: string, media?: MediaItem[]) => {
+    const newMessage: Message = {
+      id: `${Date.now()}_${Math.random()}`,
+      type,
+      content,
+      timestamp: new Date(),
+      media
+    }
+    setMessages(prev => [...prev, newMessage])
+  }
+
+  useEffect(() => {
+    onMessagesChange?.(messages)
+  }, [messages, onMessagesChange])
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(initialSessionId)
@@ -156,19 +175,9 @@ export default function SkinRenderer({
     }
   }
 
-  const addMessage = (type: 'user' | 'bot', content: string, media?: MediaItem[]) => {
-    const newMessage: Message = {
-      id: `${Date.now()}_${Math.random()}`,
-      type,
-      content,
-      timestamp: new Date(),
-      media
-    }
-    setMessages(prev => [...prev, newMessage])
-  }
-
   const sendMessage = async (message: string) => {
-    if (!message.trim() || isLoading || !treeId) return
+    if (!message.trim() || isLoading) return
+    if (!treeId && !onMessage) return
 
     const userMessage = message.trim()
     addMessage('user', userMessage)
@@ -178,7 +187,13 @@ export default function SkinRenderer({
 
     try {
       if (onMessage) {
-        await onMessage(userMessage)
+        const result = await onMessage(userMessage)
+        if (typeof result === 'string' && result.trim()) {
+          addMessage('bot', result.trim())
+        } else if (result && typeof result === 'object' && typeof (result as { content?: string }).content === 'string') {
+          const { content, media } = result as { content: string; media?: MediaItem[] }
+          addMessage('bot', content.trim(), media)
+        }
       } else {
         const response = await fetch(`${apiUrl}/chat/message`, {
           method: 'POST',
@@ -231,8 +246,8 @@ export default function SkinRenderer({
     setSettingsOpen(false)
   }
 
-  // Show error message if no treeId instead of hiding widget (skip in preview mode – use initialMessages only)
-  if (!treeId && !previewMode) {
+  // Show error message if no treeId and no custom onMessage (skip in preview mode – use initialMessages only)
+  if (!treeId && !onMessage && !previewMode) {
     return (
       <div className={`fixed ${positionClasses[position]} z-50`}>
         <DynamicButton

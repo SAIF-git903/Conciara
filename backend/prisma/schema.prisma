@@ -38,10 +38,11 @@ model Workspace {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @map("updated_at")
 
-  owner   User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  members WorkspaceMember[]
-  agents  Agent[]
+  owner     User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members   WorkspaceMember[]
+  agents    Agent[]
   websiteCrawls WebsiteCrawl[]
+  agentDocuments AgentDocument[]
 
   @@map("workspaces")
 }
@@ -70,11 +71,49 @@ model Agent {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @default(now()) @map("updated_at")
 
-  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  members   AgentMember[]
-  websiteCrawls WebsiteCrawl[]
+  workspace      Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  members        AgentMember[]
+  websiteCrawls  WebsiteCrawl[]
+  documents      AgentDocument[]
+  documentChunks AgentDocumentChunk[]
 
   @@map("agents")
+}
+
+model AgentDocument {
+  id           Int       @id @default(autoincrement())
+  agentId      Int       @map("agent_id")
+  workspaceId  Int       @map("workspace_id")
+  fileName     String    @map("file_name")
+  fileSize     BigInt    @map("file_size")
+  mimeType     String    @map("mime_type")
+  status       String    @default("pending") // pending | processing | ready | failed
+  errorMessage String?   @map("error_message")
+  chunkCount   Int       @default(0) @map("chunk_count")
+  content      String?   @db.Text
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @default(now()) @map("updated_at")
+
+  agent   Agent               @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  chunks  AgentDocumentChunk[]
+
+  @@map("agent_documents")
+}
+
+model AgentDocumentChunk {
+  id         Int      @id @default(autoincrement())
+  documentId Int      @map("document_id")
+  agentId    Int      @map("agent_id")
+  chunkIndex Int      @map("chunk_index")
+  content    String   @db.Text
+  tokenCount Int      @default(0) @map("token_count")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  document AgentDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  agent    Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@map("agent_document_chunks")
 }
 
 model WebsiteCrawl {

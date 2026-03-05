@@ -254,7 +254,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           paddingTop: 'max(2rem, env(safe-area-inset-top, 2rem))',
         }}
       >
-        <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} createAgent={createAgent}>
+        <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent}>
           {children}
         </DashboardProvider>
       </div>
@@ -484,7 +484,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         {/* Main content area */}
         <div className="flex min-h-0 flex-1 flex-col">
           <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} createAgent={createAgent}>
+            <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent}>
               {children}
             </DashboardProvider>
           </main>

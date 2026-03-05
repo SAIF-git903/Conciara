@@ -18,6 +18,7 @@ export interface DashboardAgent {
 interface DashboardContextType {
   currentWorkspace: DashboardWorkspace
   agents: DashboardAgent[]
+  currentAgent: DashboardAgent | null
   createAgent: (name?: string) => Promise<DashboardAgent | null>
 }
 
@@ -26,16 +27,18 @@ const DashboardContext = createContext<DashboardContextType | undefined>(undefin
 export function DashboardProvider({
   currentWorkspace,
   agents,
+  currentAgent,
   createAgent,
   children,
 }: {
   currentWorkspace: DashboardWorkspace
   agents: DashboardAgent[]
+  currentAgent: DashboardAgent | null
   createAgent: (name?: string) => Promise<DashboardAgent | null>
   children: ReactNode
 }) {
   return (
-    <DashboardContext.Provider value={{ currentWorkspace, agents, createAgent }}>
+    <DashboardContext.Provider value={{ currentWorkspace, agents, currentAgent, createAgent }}>
       {children}
     </DashboardContext.Provider>
   )
