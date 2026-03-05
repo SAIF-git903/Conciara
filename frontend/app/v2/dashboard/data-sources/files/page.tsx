@@ -116,7 +116,8 @@ export default function DataSourcesFilesPage() {
         await fetchDocuments()
       } catch (e: unknown) {
         const msg = e && typeof e === 'object' && 'response' in e && (e as { response?: { data?: { error?: string } } }).response?.data?.error
-        setError(msg || (e instanceof Error ? e.message : 'Upload failed'))
+        const errorStr: string = typeof msg === 'string' ? msg : (e instanceof Error ? e.message : 'Upload failed')
+        setError(errorStr)
       } finally {
         setUploading(false)
       }
@@ -133,7 +134,8 @@ export default function DataSourcesFilesPage() {
       await fetchDocuments()
     } catch (e: unknown) {
       const msg = e && typeof e === 'object' && 'response' in e && (e as { response?: { data?: { error?: string } } }).response?.data?.error
-      setError(msg || (e instanceof Error ? e.message : 'Training failed'))
+      const errorStr: string = typeof msg === 'string' ? msg : (e instanceof Error ? e.message : 'Training failed')
+      setError(errorStr)
     } finally {
       setTraining(false)
     }
