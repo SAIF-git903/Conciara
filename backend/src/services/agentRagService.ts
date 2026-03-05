@@ -14,7 +14,7 @@ async function checkVectorExtension(): Promise<boolean> {
       SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'vector') as has_vector;
     `);
     hasVectorExtension = result.rows[0]?.has_vector ?? false;
-    return hasVectorExtension;
+    return hasVectorExtension ?? false;
   } catch {
     hasVectorExtension = false;
     return false;
