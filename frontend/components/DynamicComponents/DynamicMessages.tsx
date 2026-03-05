@@ -1,8 +1,9 @@
 'use client'
 
 import { MergedSkinConfig } from '../../types/skinConfig'
-import { useState, useEffect, useCallback } from 'react'
-import ReactMarkdown from 'react-markdown'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
+import ReactMarkdown, { type Components } from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 interface MediaItem {
   id: number
@@ -25,6 +26,34 @@ interface DynamicMessagesProps {
   config: MergedSkinConfig
   messages: Message[]
   isLoading: boolean
+}
+
+function CodeBlockWithCopy({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLPreElement>(null)
+  const [copied, setCopied] = useState(false)
+  const copy = () => {
+    const el = ref.current
+    const text = el?.querySelector('code')?.textContent ?? el?.textContent ?? ''
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+  return (
+    <div className="relative group my-2 rounded-lg overflow-hidden bg-slate-800">
+      <button
+        type="button"
+        onClick={copy}
+        className="absolute top-2 right-2 px-2 py-1 text-xs font-medium rounded bg-slate-600 hover:bg-slate-500 text-slate-200 opacity-0 group-hover:opacity-100 transition-opacity"
+        aria-label="Copy code"
+      >
+        {copied ? 'Copied!' : 'Copy'}
+      </button>
+      <pre ref={ref} className="p-3 pr-16 overflow-x-auto text-sm text-slate-100 font-mono">
+        {children}
+      </pre>
+    </div>
+  )
 }
 
 export default function DynamicMessages({ 
@@ -95,6 +124,47 @@ export default function DynamicMessages({
     ? 'border border-slate-200 shadow-sm'
     : ''
 
+  const markdownComponents: Components = {
+    p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
+    ul: ({ children }) => <ul className="list-disc list-outside ml-4 mb-2 space-y-0.5">{children}</ul>,
+    ol: ({ children }) => <ol className="list-decimal list-outside ml-4 mb-2 space-y-0.5">{children}</ol>,
+    li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+    strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+    em: ({ children }) => <em className="italic">{children}</em>,
+    h1: ({ children }) => <h1 className="text-lg font-bold mt-3 mb-1 first:mt-0">{children}</h1>,
+    h2: ({ children }) => <h2 className="text-base font-bold mt-3 mb-1 first:mt-0">{children}</h2>,
+    h3: ({ children }) => <h3 className="text-sm font-bold mt-2 mb-0.5 first:mt-0">{children}</h3>,
+    blockquote: ({ children }) => (
+      <blockquote className="border-l-4 border-slate-300 pl-3 py-0.5 my-2 bg-slate-100/80 rounded-r text-slate-700">
+        {children}
+      </blockquote>
+    ),
+    a: ({ href, children }) => (
+      <a href={href ?? '#'} target="_blank" rel="noopener noreferrer" className="underline font-medium" style={{ color: primaryColor }}>
+        {children}
+      </a>
+    ),
+    hr: () => <hr className="my-3 border-slate-200" />,
+    code: ({ className, children, ...props }) => {
+      const isBlock = className != null
+      if (isBlock) {
+        return (
+          <code className={className} {...props}>
+            {children}
+          </code>
+        )
+      }
+      return <code className="bg-slate-200/80 dark:bg-slate-700 px-1.5 py-0.5 rounded text-[0.9em] font-mono" {...props}>{children}</code>
+    },
+    pre: ({ children }) => <CodeBlockWithCopy>{children}</CodeBlockWithCopy>,
+    table: ({ children }) => <div className="overflow-x-auto my-2"><table className="min-w-full border border-slate-200 rounded">{children}</table></div>,
+    thead: ({ children }) => <thead className="bg-slate-100">{children}</thead>,
+    tbody: ({ children }) => <tbody>{children}</tbody>,
+    tr: ({ children }) => <tr className="border-b border-slate-200">{children}</tr>,
+    th: ({ children }) => <th className="text-left px-3 py-1.5 text-sm font-semibold border-b border-slate-200">{children}</th>,
+    td: ({ children }) => <td className="px-3 py-1.5 text-sm border-b border-slate-100">{children}</td>,
+  }
+
   return (
     <div
       className={`flex-1 overflow-y-auto p-4 ${isList ? 'space-y-2' : isCards ? 'space-y-3' : 'space-y-4'}`}
@@ -131,17 +201,7 @@ export default function DynamicMessages({
           >
             <div className="text-sm ct-message-body" style={{ color: message.type === 'user' ? 'white' : textColor }}>
               {message.type === 'bot' ? (
-                <ReactMarkdown
-                  components={{
-                    p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                    ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-0.5">{children}</ul>,
-                    ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-0.5">{children}</ol>,
-                    li: ({ children }) => <li className="ml-0">{children}</li>,
-                    strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                    code: ({ children }) => <code className="bg-black/20 px-1 py-0.5 rounded text-xs">{children}</code>,
-                    pre: ({ children }) => <pre className="bg-black/20 p-2 rounded text-xs overflow-x-auto mb-2">{children}</pre>,
-                  }}
-                >
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                   {message.content}
                 </ReactMarkdown>
               ) : (

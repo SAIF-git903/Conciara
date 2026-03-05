@@ -32,6 +32,21 @@ export function isSupportedMimeType(mime: string): boolean {
   return supported.includes(mime?.toLowerCase());
 }
 
+/** When browser sends application/octet-stream, infer mime from file extension. */
+export function resolveMimeType(mimetype: string, fileName: string): string {
+  const mime = (mimetype || '').toLowerCase().split(';')[0].trim();
+  if (mime && isSupportedMimeType(mime)) return mime;
+  const ext = (fileName || '').toLowerCase().replace(/^.*\./, '') || '';
+  const byExt: Record<string, string> = {
+    md: 'text/markdown',
+    txt: 'text/plain',
+    pdf: 'application/pdf',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    doc: 'application/msword',
+  };
+  return byExt[ext] || mimetype || 'application/octet-stream';
+}
+
 /**
  * Extract text from buffer by mime type.
  */
@@ -56,12 +71,18 @@ export async function extractText(buffer: Buffer, mimeType: string): Promise<str
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
   try {
-    const pdfParse = await import('pdf-parse').catch(() => null);
-    if (!pdfParse?.default) {
+    const mod = await import('pdf-parse').catch(() => null);
+    const PDFParse = mod?.PDFParse;
+    if (!PDFParse) {
       throw new Error('pdf-parse not installed. Run: npm install pdf-parse');
     }
-    const data = await pdfParse.default(buffer);
-    return (data?.text || '').trim();
+    const parser = new PDFParse({ data: buffer });
+    try {
+      const result = await parser.getText();
+      return (result?.text ?? '').trim();
+    } finally {
+      await parser.destroy();
+    }
   } catch (err: any) {
     throw new Error(`PDF extraction failed: ${err?.message || 'Unknown error'}`);
   }

@@ -4,7 +4,7 @@ import { useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { ChevronDown, Bot, FileText } from 'lucide-react'
 import { useDashboard } from '@/contexts/DashboardContext'
-import v2Api from '@/lib/v2-api'
+import { getApiBaseUrl } from '@/lib/api'
 import SkinRenderer from '@/components/SkinRenderer'
 import type { MergedSkinConfig } from '@/types/skinConfig'
 
@@ -64,7 +64,10 @@ export default function PlaygroundPage() {
   }, [])
 
   const handleMessage = useCallback(
-    async (userMessage: string): Promise<string> => {
+    async (
+      userMessage: string,
+      ctx?: { onChunk: (chunk: string) => void }
+    ): Promise<string> => {
       if (!currentAgent || !currentWorkspace) return "No agent selected."
 
       const prev = messagesRef.current || []
@@ -72,15 +75,76 @@ export default function PlaygroundPage() {
         .filter((m) => m.type === 'user' || m.type === 'bot')
         .map((m) => ({ role: m.type as 'user' | 'assistant', content: m.content }))
 
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
+      const url = `${getApiBaseUrl()}/v2/workspaces/${currentWorkspace.id}/agents/${currentAgent.id}/chat/stream`
       try {
-        const { data } = await v2Api.post<{ message: string }>(
-          `/v2/workspaces/${currentWorkspace.id}/agents/${currentAgent.id}/chat`,
-          { message: userMessage.trim(), history }
-        )
-        return data.message ?? ''
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ message: userMessage.trim(), history }),
+        })
+        if (res.status === 401 && typeof window !== 'undefined') {
+          localStorage.removeItem('auth_token')
+          localStorage.removeItem('auth_refresh_token')
+          localStorage.removeItem('auth_user')
+          window.location.href = '/v2/signin'
+          return ''
+        }
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data?.error || res.statusText || 'Request failed')
+        }
+        const reader = res.body?.getReader()
+        if (!reader) throw new Error('No response body')
+        const decoder = new TextDecoder()
+        let full = ''
+        let buffer = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const payload = line.slice(6).trim()
+              if (payload === '[DONE]') continue
+              try {
+                const data = JSON.parse(payload) as { content?: string; error?: string }
+                if (data.error) throw new Error(data.error)
+                if (typeof data.content === 'string') {
+                  full += data.content
+                  ctx?.onChunk(data.content)
+                }
+              } catch (e) {
+                if (e instanceof SyntaxError) continue
+                throw e
+              }
+            }
+          }
+        }
+        if (buffer.trim().startsWith('data: ')) {
+          const payload = buffer.trim().slice(6).trim()
+          if (payload !== '[DONE]') {
+            try {
+              const data = JSON.parse(payload) as { content?: string; error?: string }
+              if (data.error) throw new Error(data.error)
+              if (typeof data.content === 'string') {
+                full += data.content
+                ctx?.onChunk(data.content)
+              }
+            } catch (e) {
+              if (!(e instanceof SyntaxError)) throw e
+            }
+          }
+        }
+        return full.trim() || ''
       } catch (e: unknown) {
-        const err = e && typeof e === 'object' && 'response' in e && (e as { response?: { data?: { error?: string } } }).response?.data?.error
-        return typeof err === 'string' ? err : (e instanceof Error ? e.message : 'Failed to get reply.')
+        const msg = e instanceof Error ? e.message : 'Failed to get reply.'
+        return msg
       }
     },
     [currentWorkspace, currentAgent]

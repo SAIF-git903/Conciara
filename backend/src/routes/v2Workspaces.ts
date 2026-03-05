@@ -14,19 +14,22 @@ import {
   canManageAgent,
 } from '../services/workspaceService.js';
 import { crawlAndStore, getLatestCrawlForWorkspace } from '../services/crawlService.js';
-import { generatePrePromptFromWebsiteContent, chatCompletion } from '../services/llmService.js';
+import { generatePrePromptFromWebsiteContent, chatCompletion, chatCompletionStream } from '../services/llmService.js';
 import { createAndProcessDocument, listDocumentsByAgent, deleteDocument, trainPendingDocuments } from '../services/agentDocumentService.js';
 import { retrieveChunks } from '../services/agentRagService.js';
 import { prisma } from '../db/prisma.js';
-import { getSupportedMimeTypes } from '../services/documentParserService.js';
+import { isSupportedMimeType, resolveMimeType } from '../services/documentParserService.js';
 
 const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB
   fileFilter: (_req, file, cb) => {
-    const allowed = getSupportedMimeTypes();
-    if (allowed.includes(file.mimetype)) cb(null, true);
+    const mime = (file.mimetype || '').toLowerCase().split(';')[0].trim();
+    const ext = (file.originalname || '').toLowerCase().replace(/^.*\./, '') || '';
+    const allowedExts = ['pdf', 'docx', 'doc', 'txt', 'md'];
+    const ok = isSupportedMimeType(mime) || (ext && allowedExts.includes(ext));
+    if (ok) cb(null, true);
     else cb(new Error('Unsupported file type. Use PDF, DOCX, TXT, or MD.'));
   },
 });
@@ -260,12 +263,13 @@ router.post('/:workspaceId/agents/:agentId/documents', upload.single('file'), as
       return res.status(400).json({ error: 'No file uploaded. Use form field "file".' });
     }
 
+    const mimeType = resolveMimeType(file.mimetype || '', file.originalname || '');
     const doc = await createAndProcessDocument(
       agentId,
       workspaceId,
       file.buffer,
       file.originalname || 'document',
-      file.mimetype || 'application/octet-stream'
+      mimeType
     );
     return res.status(201).json({ document: doc });
   } catch (error: any) {
@@ -382,6 +386,79 @@ router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
   } catch (error: any) {
     console.error('Agent chat error:', error);
     res.status(500).json({ error: error.message || 'Chat failed' });
+  }
+});
+
+/**
+ * POST /api/v2/workspaces/:workspaceId/agents/:agentId/chat/stream
+ * Same as /chat but streams the reply as SSE (data: {"content":"..."} then data: [DONE]).
+ */
+router.post('/:workspaceId/agents/:agentId/chat/stream', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const agent = await prisma.agent.findUnique({ where: { id: agentId } });
+    if (!agent || agent.workspaceId !== workspaceId) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const { message, history } = req.body;
+    const userMessage = typeof message === 'string' ? message.trim() : '';
+    if (!userMessage) {
+      return res.status(400).json({ error: 'message is required' });
+    }
+
+    const historyList = Array.isArray(history)
+      ? history
+          .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+          .map((m: any) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
+      : [];
+
+    const chunks = await retrieveChunks(agentId, userMessage, 10);
+    const contextBlock =
+      chunks.length > 0
+        ? `\n\nUse the following relevant excerpts from the agent's training data to answer. If the answer is not in the context, say so.\n\n${chunks.map((c) => c.content).join('\n\n---\n\n')}`
+        : '';
+
+    const systemContent = `${agent.prePrompt || 'You are a helpful assistant.'}${contextBlock}`;
+    const modelId = agent.model || 'gpt-4o-mini';
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    try {
+      for await (const chunk of chatCompletionStream(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
+        maxTokens: 1024,
+        temperature: 0.7,
+      })) {
+        res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
+        if (typeof (res as any).flush === 'function') (res as any).flush();
+      }
+      res.write('data: [DONE]\n\n');
+    } catch (streamErr: any) {
+      console.error('Agent chat stream error:', streamErr);
+      res.write(`data: ${JSON.stringify({ error: streamErr.message || 'Stream failed' })}\n\n`);
+    }
+    res.end();
+  } catch (error: any) {
+    console.error('Agent chat stream error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || 'Chat failed' });
+    } else {
+      res.end();
+    }
   }
 });
 

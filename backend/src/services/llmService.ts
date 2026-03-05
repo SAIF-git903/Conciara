@@ -452,6 +452,46 @@ export async function chatCompletion(
   return response.choices[0]?.message?.content?.trim() || "I couldn't generate a response.";
 }
 
+/**
+ * Agent chat streaming: same as chatCompletion but yields content deltas.
+ * Used by v2 playground for streaming responses.
+ */
+export async function* chatCompletionStream(
+  modelId: string,
+  systemContent: string,
+  messages: { role: 'user' | 'assistant'; content: string }[],
+  options?: { maxTokens?: number; temperature?: number }
+): AsyncGenerator<string> {
+  if (!openai || !apiKey) {
+    yield "I'm not configured to respond yet. Please add an API key for the chat model.";
+    return;
+  }
+
+  const model = SUPPORTED_LLM_MODELS.some((m) => m.id === modelId) ? modelId : 'gpt-4o-mini';
+  const maxTokens = options?.maxTokens ?? 1024;
+  const temperature = options?.temperature ?? 0.7;
+
+  const openaiMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+    { role: 'system', content: systemContent || 'You are a helpful assistant.' },
+    ...messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+  ];
+
+  const stream = await openai.chat.completions.create({
+    model,
+    messages: openaiMessages,
+    max_tokens: maxTokens,
+    temperature,
+    stream: true,
+  });
+
+  for await (const chunk of stream) {
+    const delta = chunk.choices[0]?.delta?.content;
+    if (typeof delta === 'string' && delta) {
+      yield delta;
+    }
+  }
+}
+
 /** Models supported by the backend (OpenAI). Used by v2 onboarding Agent step. */
 export const SUPPORTED_LLM_MODELS = [
   { id: 'gpt-4o', label: 'GPT-4o' },

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { MergedSkinConfig } from '../types/skinConfig'
 import { WIDGET_LANGUAGES, getWidgetTranslations } from '@/lib/widgetTranslations'
 import DynamicButton from './DynamicComponents/DynamicButton'
@@ -40,8 +40,8 @@ export interface SkinRendererProps {
   onLanguageSelect?: (lang: string) => void
   /** When true, user must select a language before the conversation starts (picker shown first) */
   requireLanguageSelection?: boolean
-  /** Custom send handler. If returns string or { content, media? }, that is added as the bot reply. When provided, treeId can be null (e.g. playground with v2 agent chat). */
-  onMessage?: (message: string) => Promise<string | { content: string; media?: MediaItem[] } | void>
+  /** Custom send handler. If returns string or { content, media? }, that is added as the bot reply. When provided, treeId can be null (e.g. playground with v2 agent chat). Use ctx.onChunk for streaming. */
+  onMessage?: (message: string, ctx?: { onChunk: (chunk: string) => void }) => Promise<string | { content: string; media?: MediaItem[] } | void>
   /** When provided, called with the current messages after each update (so parent can build history for API). */
   onMessagesChange?: (messages: Message[]) => void
   initialMessages?: Message[]
@@ -89,8 +89,23 @@ export default function SkinRenderer({
   const [quickReplies, setQuickReplies] = useState<string[]>([])
   const [settingsOpen, setSettingsOpen] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const atBottomRef = useRef(true)
   const inputRef = useRef<HTMLInputElement>(null)
   const initializingRef = useRef(false)
+
+  const checkAtBottom = (el: HTMLElement | null) => {
+    if (!el) return true
+    const { scrollTop, scrollHeight, clientHeight } = el
+    const threshold = 80
+    return scrollHeight - clientHeight - scrollTop <= threshold
+  }
+
+  const handleScroll = useCallback(() => {
+    if (scrollContainerRef.current) {
+      atBottomRef.current = checkAtBottom(scrollContainerRef.current)
+    }
+  }, [])
 
   const buttonConfig = config.components?.button || {}
   const position = buttonConfig.position || 'bottom-right'
@@ -108,10 +123,12 @@ export default function SkinRenderer({
     }
   }, [isOpen])
 
+  // Auto-scroll only when user is at bottom (ChatGPT-style: follow stream, but allow scrolling up)
   useEffect(() => {
-    if (previewMode) return
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, previewMode])
+    if (atBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' })
+    }
+  }, [messages])
 
   // When onLanguageSelect is provided, only start conversation after user selects a language
   const hasLanguagePicker = typeof onLanguageSelect === 'function'
@@ -180,6 +197,7 @@ export default function SkinRenderer({
     if (!treeId && !onMessage) return
 
     const userMessage = message.trim()
+    atBottomRef.current = true
     addMessage('user', userMessage)
     setInputValue('')
     setQuickReplies([])
@@ -187,13 +205,29 @@ export default function SkinRenderer({
 
     try {
       if (onMessage) {
-        const result = await onMessage(userMessage)
-        if (typeof result === 'string' && result.trim()) {
-          addMessage('bot', result.trim())
-        } else if (result && typeof result === 'object' && typeof (result as { content?: string }).content === 'string') {
-          const { content, media } = result as { content: string; media?: MediaItem[] }
-          addMessage('bot', content.trim(), media)
+        addMessage('bot', '')
+        const onChunk = (chunk: string) => {
+          setMessages(prev => {
+            const p = [...prev]
+            const last = p[p.length - 1]
+            if (last.type !== 'bot') return prev
+            p[p.length - 1] = { ...last, content: last.content + chunk }
+            return p
+          })
         }
+        const result = await onMessage(userMessage, { onChunk })
+        setMessages(prev => {
+          const p = [...prev]
+          const last = p[p.length - 1]
+          if (last.type !== 'bot') return prev
+          if (typeof result === 'string' && result.trim()) {
+            p[p.length - 1] = { ...last, content: result.trim() }
+          } else if (result && typeof result === 'object' && typeof (result as { content?: string }).content === 'string') {
+            const { content, media } = result as { content: string; media?: MediaItem[] }
+            p[p.length - 1] = { ...last, content: content.trim(), media }
+          }
+          return p
+        })
       } else {
         const response = await fetch(`${apiUrl}/chat/message`, {
           method: 'POST',
@@ -380,12 +414,18 @@ export default function SkinRenderer({
                 </div>
               ) : (
                 <>
-                  <DynamicMessages
-                    config={config}
-                    messages={messages}
-                    isLoading={isLoading}
-                  />
-                  <div ref={messagesEndRef} />
+                  <div
+                    ref={scrollContainerRef}
+                    className="flex-1 min-h-0 overflow-y-auto flex flex-col"
+                    onScroll={handleScroll}
+                  >
+                    <DynamicMessages
+                      config={config}
+                      messages={messages}
+                      isLoading={isLoading}
+                    />
+                    <div ref={messagesEndRef} />
+                  </div>
 
                   <DynamicQuickReplies
                     config={config}
