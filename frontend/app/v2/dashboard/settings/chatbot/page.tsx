@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Palette, Layout, ChevronDown, ChevronRight, Monitor, Save, Copy, Check, Loader2 } from 'lucide-react'
+import ChatWidgetPreviewSkeleton from '@/components/v2/ChatWidgetPreviewSkeleton'
 import type { SkinConfig, ThemeColors, ComponentsConfig, StatesConfig } from '@/types/skinConfig'
 import SkinRenderer from '@/components/SkinRenderer'
 import V2Select from '@/components/v2/Select'
@@ -771,23 +772,29 @@ export default function ChatbotCustomizationsPage() {
               backgroundSize: '64px 64px',
             }}
           >
-            <div
-              className="flex-1 min-h-0 w-full overflow-visible m-auto"
-              style={{
-                minWidth: CHAT_WIDGET_PREVIEW_MIN_WIDTH,
-                maxWidth: CHAT_WIDGET_PREVIEW_MAX_WIDTH,
-                borderRadius: `${Math.min(30, Math.max(0, config.components?.window?.borderRadius ?? 8))}px`,
-              }}
-            >
-              <SkinRenderer
-                config={config}
-                apiUrl=""
-                treeId={null}
-                initialMessages={PREVIEW_INITIAL_MESSAGES}
-                previewMode
-                onMessage={async () => { }}
-              />
-            </div>
+            {loading ? (
+              <div className="flex flex-1 min-h-0 flex-col">
+                <ChatWidgetPreviewSkeleton />
+              </div>
+            ) : (
+              <div
+                className="flex-1 min-h-0 w-full overflow-visible m-auto"
+                style={{
+                  minWidth: CHAT_WIDGET_PREVIEW_MIN_WIDTH,
+                  maxWidth: CHAT_WIDGET_PREVIEW_MAX_WIDTH,
+                  borderRadius: `${Math.min(30, Math.max(0, config.components?.window?.borderRadius ?? 8))}px`,
+                }}
+              >
+                <SkinRenderer
+                  config={config}
+                  apiUrl=""
+                  treeId={null}
+                  initialMessages={PREVIEW_INITIAL_MESSAGES}
+                  previewMode
+                  onMessage={async () => { }}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>

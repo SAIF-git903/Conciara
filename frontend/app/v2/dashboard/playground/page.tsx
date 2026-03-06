@@ -2,7 +2,7 @@
 
 import { useRef, useCallback, useState, useEffect } from 'react'
 import Link from 'next/link'
-import { ChevronDown, Bot, FileText, Loader2 } from 'lucide-react'
+import { ChevronDown, Bot, FileText } from 'lucide-react'
 import { useDashboard } from '@/contexts/DashboardContext'
 import { getApiBaseUrl } from '@/lib/api'
 import SkinRenderer from '@/components/SkinRenderer'
@@ -10,6 +10,7 @@ import type { MergedSkinConfig } from '@/types/skinConfig'
 import type { SkinConfig } from '@/types/skinConfig'
 import v2Api from '@/lib/v2-api'
 import { DEFAULT_WINDOW, DEFAULT_THEME, CHAT_WIDGET_PREVIEW_MIN_WIDTH, CHAT_WIDGET_PREVIEW_MAX_WIDTH } from '@/lib/v2-chat-widget-layout'
+import ChatWidgetPreviewSkeleton from '@/components/v2/ChatWidgetPreviewSkeleton'
 
 /** Fallback when no saved widget config – uses same default theme as Chat Widget (hex so colors show) */
 function buildPlaygroundConfig(agentName: string, agentLogoUrl?: string | null): MergedSkinConfig {
@@ -267,8 +268,8 @@ export default function PlaygroundPage() {
           }}
         >
           {configLoading ? (
-            <div className="flex flex-1 items-center justify-center">
-              <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+            <div className="flex flex-1 min-h-0 flex-col">
+              <ChatWidgetPreviewSkeleton />
             </div>
           ) : (
             <div
