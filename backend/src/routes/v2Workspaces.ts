@@ -44,8 +44,64 @@ import {
   createOrGetSession,
   appendMessage,
 } from '../services/agentChatLogService.js';
+import {
+  classifyIntent,
+  isConversationalIntent,
+  deriveSessionState,
+  type AgentSessionState,
+} from '../services/agentIntentService.js';
 
 const router = express.Router();
+
+/** Role-specific tone for system prompt (General, Support, Sales). */
+const AGENT_ROLE_PROMPTS: Record<string, string> = {
+  general: 'You are a helpful, informative assistant. Answer questions clearly and broadly. Be friendly and concise.',
+  support:
+    'You are a calm, reassuring customer support agent. Focus on helping with issues, orders, refunds, tracking, and problems. Be empathetic and solution-oriented.',
+  sales:
+    'You are a friendly, persuasive sales agent. Encourage purchase naturally without being pushy. Highlight benefits and offer clear next steps (e.g. order link, add to cart).',
+};
+
+/** Conversation rules appended to system prompt to avoid repetition and sound human. */
+const CONVERSATION_RULES = `
+
+Conversation rules (always follow):
+- Do NOT repeat product details, prices, or support information that was already given earlier in the conversation.
+- If the user is acknowledging or thanking (e.g. "thanks", "ok thanks"), respond in ONE short, friendly sentence (e.g. "You're welcome!", "Glad I could help!") and do not repeat recommendations.
+- Keep responses short and natural: 1–2 sentences when possible. Behave like a human support or sales agent.
+- Use conversation history to keep context; do not ask for information the user already provided.`;
+
+function getRolePrompt(role: string | null | undefined): string {
+  const r = (role || 'general').toLowerCase();
+  return AGENT_ROLE_PROMPTS[r] || AGENT_ROLE_PROMPTS.general;
+}
+
+interface AgentChatSystemParams {
+  prePrompt: string | null;
+  role: string | null;
+  qaBlock: string;
+  contextBlock: string;
+  websiteBlock: string;
+  sessionState: AgentSessionState;
+  isConversational: boolean;
+}
+
+function buildAgentChatSystemContent(params: AgentChatSystemParams): string {
+  const { prePrompt, role, qaBlock, contextBlock, websiteBlock, sessionState, isConversational } = params;
+  const rolePrompt = getRolePrompt(role);
+  const base = prePrompt?.trim() ? `${prePrompt}\n\n${rolePrompt}` : rolePrompt;
+
+  if (isConversational) {
+    const stateHint =
+      sessionState.lastProductViewed && (sessionState.userIntent === 'thanks' || sessionState.userIntent === 'goodbye')
+        ? `\n\nOptional: You may briefly mention they can ask again if they need help with "${sessionState.lastProductViewed}"—but keep it to one short sentence.`
+        : '';
+    return `${base}${CONVERSATION_RULES}${stateHint}`;
+  }
+
+  return `${base}${qaBlock}${contextBlock}${websiteBlock}${CONVERSATION_RULES}`;
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB
@@ -831,32 +887,54 @@ router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
           .map((m: any) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
       : [];
 
-    const [chunks, qaMatches, crawlContent] = await Promise.all([
-      retrieveChunks(agentId, userMessage, 10),
-      retrieveQa(agentId, userMessage, 5),
-      getCrawlTrainingContentForAgent(agentId),
-    ]);
-    const qaBlock =
-      qaMatches.length > 0
-        ? `\n\nPRIORITY – Use these exact answers when the user's question matches. Prefer them over other context.\n${qaMatches.map((q) => `Q: ${q.question}\nA: ${q.answer}`).join('\n\n')}\n\n`
-        : '';
-    const contextBlock =
-      chunks.length > 0
-        ? `\n\nUse the following relevant excerpts from the agent's training data to answer. If the answer is not in the context, say so.\n\n${chunks.map((c) => c.content).join('\n\n---\n\n')}`
-        : '';
-    const websiteBlock =
-      crawlContent && crawlContent.trim()
-        ? `\n\nWebsite context (from crawled pages the agent can use to answer):\n\n${crawlContent.trim()}\n\n`
-        : '';
+    const intent = classifyIntent(userMessage);
+    const sessionState = deriveSessionState(historyList, intent);
+    const isConversational = isConversationalIntent(intent);
 
-    const systemContent = `${agent.prePrompt || 'You are a helpful assistant.'}${qaBlock}${contextBlock}${websiteBlock}`;
+    let qaBlock = '';
+    let contextBlock = '';
+    let websiteBlock = '';
+    let qaMatches: { id: number }[] = [];
+
+    if (!isConversational) {
+      const [chunks, qa, crawlContent] = await Promise.all([
+        retrieveChunks(agentId, userMessage, 10),
+        retrieveQa(agentId, userMessage, 5),
+        getCrawlTrainingContentForAgent(agentId),
+      ]);
+      qaMatches = qa;
+      qaBlock =
+        qa.length > 0
+          ? `\n\nPRIORITY – Use these exact answers when the user's question matches. Prefer them over other context.\n${qa.map((q) => `Q: ${q.question}\nA: ${q.answer}`).join('\n\n')}\n\n`
+          : '';
+      contextBlock =
+        chunks.length > 0
+          ? `\n\nUse the following relevant excerpts from the agent's training data to answer. If the answer is not in the context, say so.\n\n${chunks.map((c) => c.content).join('\n\n---\n\n')}`
+          : '';
+      websiteBlock =
+        crawlContent && crawlContent.trim()
+          ? `\n\nWebsite context (from crawled pages the agent can use to answer):\n\n${crawlContent.trim()}\n\n`
+          : '';
+    }
+
+    const agentRole = (agent as { role?: string | null }).role ?? 'general';
+    const systemContent = buildAgentChatSystemContent({
+      prePrompt: agent.prePrompt,
+      role: agentRole,
+      qaBlock,
+      contextBlock,
+      websiteBlock,
+      sessionState,
+      isConversational,
+    });
+
     const modelId = agent.model || 'gpt-4o-mini';
     const reply = await chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
       maxTokens: 1024,
       temperature: 0.7,
     });
 
-    if (qaMatches.length > 0) {
+    if (!isConversational && qaMatches.length > 0) {
       await recordQaUsage(qaMatches.map((q) => q.id)).catch((err) => console.error('Record Q&A usage:', err));
     }
 
@@ -905,28 +983,50 @@ router.post('/:workspaceId/agents/:agentId/chat/stream', async (req, res) => {
           .map((m: any) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
       : [];
 
-    const [chunks, qaMatches, crawlContent] = await Promise.all([
-      retrieveChunks(agentId, userMessage, 10),
-      retrieveQa(agentId, userMessage, 5),
-      getCrawlTrainingContentForAgent(agentId),
-    ]);
-    const qaBlock =
-      qaMatches.length > 0
-        ? `\n\nPRIORITY – Use these exact answers when the user's question matches. Prefer them over other context.\n${qaMatches.map((q) => `Q: ${q.question}\nA: ${q.answer}`).join('\n\n')}\n\n`
-        : '';
-    const contextBlock =
-      chunks.length > 0
-        ? `\n\nUse the following relevant excerpts from the agent's training data to answer. If the answer is not in the context, say so.\n\n${chunks.map((c) => c.content).join('\n\n---\n\n')}`
-        : '';
-    const websiteBlock =
-      crawlContent && crawlContent.trim()
-        ? `\n\nWebsite context (from crawled pages the agent can use to answer):\n\n${crawlContent.trim()}\n\n`
-        : '';
+    const intent = classifyIntent(userMessage);
+    const sessionState = deriveSessionState(historyList, intent);
+    const isConversational = isConversationalIntent(intent);
 
-    const systemContent = `${agent.prePrompt || 'You are a helpful assistant.'}${qaBlock}${contextBlock}${websiteBlock}`;
+    let qaBlock = '';
+    let contextBlock = '';
+    let websiteBlock = '';
+    let qaMatches: { id: number }[] = [];
+
+    if (!isConversational) {
+      const [chunks, qa, crawlContent] = await Promise.all([
+        retrieveChunks(agentId, userMessage, 10),
+        retrieveQa(agentId, userMessage, 5),
+        getCrawlTrainingContentForAgent(agentId),
+      ]);
+      qaMatches = qa;
+      qaBlock =
+        qa.length > 0
+          ? `\n\nPRIORITY – Use these exact answers when the user's question matches. Prefer them over other context.\n${qa.map((q) => `Q: ${q.question}\nA: ${q.answer}`).join('\n\n')}\n\n`
+          : '';
+      contextBlock =
+        chunks.length > 0
+          ? `\n\nUse the following relevant excerpts from the agent's training data to answer. If the answer is not in the context, say so.\n\n${chunks.map((c) => c.content).join('\n\n---\n\n')}`
+          : '';
+      websiteBlock =
+        crawlContent && crawlContent.trim()
+          ? `\n\nWebsite context (from crawled pages the agent can use to answer):\n\n${crawlContent.trim()}\n\n`
+          : '';
+    }
+
+    const agentRole = (agent as { role?: string | null }).role ?? 'general';
+    const systemContent = buildAgentChatSystemContent({
+      prePrompt: agent.prePrompt,
+      role: agentRole,
+      qaBlock,
+      contextBlock,
+      websiteBlock,
+      sessionState,
+      isConversational,
+    });
+
     const modelId = agent.model || 'gpt-4o-mini';
 
-    if (qaMatches.length > 0) {
+    if (!isConversational && qaMatches.length > 0) {
       await recordQaUsage(qaMatches.map((q) => q.id)).catch((err) => console.error('Record Q&A usage:', err));
     }
 
