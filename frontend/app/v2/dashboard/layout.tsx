@@ -22,6 +22,8 @@ import {
   Plug,
   Palette,
   BookOpen,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Suspense } from 'react'
@@ -88,6 +90,9 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   const [currentWorkspace, setCurrentWorkspace] = useState(workspaces[0])
   const [agents, setAgents] = useState<{ id: string; name: string; workspaceId: number }[]>([])
   const [currentAgent, setCurrentAgent] = useState<{ id: string; name: string; workspaceId: number } | null>(null)
+  const [agentToDelete, setAgentToDelete] = useState<{ id: string; name: string } | null>(null)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deleteLoading, setDeleteLoading] = useState(false)
   const workspaceRef = useRef<HTMLDivElement>(null)
   const agentRef = useRef<HTMLDivElement>(null)
   const isOwner = user?.role === 'owner'
@@ -203,6 +208,32 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     }
   }, [currentWorkspace.id])
 
+  useEffect(() => {
+    if (agentToDelete) setDeleteConfirmText('')
+  }, [agentToDelete])
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!agentToDelete || !currentWorkspace?.id || deleteConfirmText.trim() !== agentToDelete.name.trim()) return
+    setDeleteLoading(true)
+    try {
+      await v2Api.delete(`/v2/workspaces/${currentWorkspace.id}/agents/${agentToDelete.id}`)
+      setAgents((prev) => prev.filter((a) => a.id !== agentToDelete.id))
+      if (currentAgent?.id === agentToDelete.id) {
+        const remaining = agents.filter((a) => a.workspaceId === currentWorkspace.id && a.id !== agentToDelete.id)
+        setCurrentAgent(remaining[0] ?? null)
+        setOpenDropdown(null)
+        if (remaining.length > 0) router.push(`/v2/dashboard/playground?agent=${remaining[0].id}`)
+        else router.push('/v2/dashboard')
+      }
+      setAgentToDelete(null)
+      setDeleteConfirmText('')
+    } catch {
+      // keep modal open on error; could set error state
+    } finally {
+      setDeleteLoading(false)
+    }
+  }, [agentToDelete, currentWorkspace?.id, currentAgent?.id, agents, deleteConfirmText, router])
+
   if (loading || !user) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-white">
@@ -255,7 +286,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
           paddingTop: 'max(2rem, env(safe-area-inset-top, 2rem))',
         }}
       >
-        <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent}>
+        <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete}>
           {children}
         </DashboardProvider>
       </div>
@@ -367,16 +398,30 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                   </div>
                   <div className="mt-1 max-h-36 overflow-auto px-0.5">
                     {filteredAgents.map((a) => (
-                      <button
+                      <div
                         key={a.id}
-                        type="button"
-                        onClick={() => { setCurrentAgent(a); setOpenDropdown(null) }}
-                        className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs ${currentAgent?.id === a.id ? 'bg-slate-200 text-slate-900 font-medium' : 'text-slate-700 hover:bg-slate-50'
-                          }`}
+                        className={`flex w-full items-center justify-between gap-1 rounded px-2 py-1.5 text-left text-xs ${currentAgent?.id === a.id ? 'bg-slate-200 text-slate-900 font-medium' : 'text-slate-700 hover:bg-slate-50'}`}
                       >
-                        <span>{a.name}</span>
-                        {currentAgent?.id === a.id && <Check className="h-3.5 w-3.5 shrink-0" />}
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => { setCurrentAgent(a); setOpenDropdown(null) }}
+                          className="min-w-0 flex-1 text-left truncate"
+                        >
+                          {a.name}
+                        </button>
+                        <div className="flex shrink-0 items-center gap-0.5">
+                          {currentAgent?.id === a.id && <Check className="h-3.5 w-3.5 text-slate-600" />}
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setAgentToDelete({ id: a.id, name: a.name }); setOpenDropdown(null) }}
+                            className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                            aria-label={`Delete ${a.name}`}
+                            title="Delete agent"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
                     ))}
                     {filteredAgents.length === 0 && (
                       <p className="px-2 py-3 text-center text-xs text-slate-500">No agents found</p>
@@ -485,12 +530,61 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         {/* Main content area */}
         <div className="flex min-h-0 flex-1 flex-col">
           <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent}>
+            <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete}>
               {children}
             </DashboardProvider>
           </main>
         </div>
       </div>
+
+      {/* Delete agent confirmation modal */}
+      {agentToDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4" onClick={() => !deleteLoading && setAgentToDelete(null)}>
+          <div
+            className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-lg font-semibold text-slate-900">Delete &quot;{agentToDelete.name}&quot;?</h3>
+                <p className="mt-2 text-sm text-slate-600">
+                  This action cannot be undone. This will permanently delete this agent and all its data, including training files, Q&A, website crawls, and chat widget settings.
+                </p>
+                <p className="mt-3 text-sm font-medium text-slate-700">Type the agent name to confirm:</p>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder={agentToDelete.name}
+                  className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                  autoFocus
+                />
+                <div className="mt-6 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setAgentToDelete(null); setDeleteConfirmText('') }}
+                    disabled={deleteLoading}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmDelete}
+                    disabled={deleteLoading || deleteConfirmText.trim() !== agentToDelete.name.trim()}
+                    className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:pointer-events-none"
+                  >
+                    {deleteLoading ? 'Deleting…' : 'Delete permanently'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

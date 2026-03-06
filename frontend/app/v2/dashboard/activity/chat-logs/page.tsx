@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Search,
   MessageSquare,
@@ -13,92 +13,21 @@ import {
   RefreshCw,
   Pencil,
   X,
+  Loader2,
 } from 'lucide-react'
 import { useDashboard } from '@/contexts/DashboardContext'
 import v2Api from '@/lib/v2-api'
 
 type Message = { id: string; role: 'user' | 'assistant'; content: string; at: string }
 
-type Session = {
+type SessionSummary = {
   id: string
+  sessionId: string
   preview: string
   startedAt: string
   messageCount: number
-  messages: Message[]
 }
 
-// Mock sessions with messages - replace with real API later
-const MOCK_SESSIONS: Session[] = [
-  {
-    id: '1',
-    preview: 'How do I reset my password for the portal?',
-    startedAt: '2026-03-04T10:32:00Z',
-    messageCount: 8,
-    messages: [
-      { id: 'm1', role: 'user', content: 'How do I reset my password for the portal?', at: '2026-03-04T10:32:00Z' },
-      { id: 'm2', role: 'assistant', content: 'You can reset your password from the login page. Click "Forgot password?" and enter your email to receive a reset link.', at: '2026-03-04T10:32:15Z' },
-      { id: 'm3', role: 'user', content: 'I didn\'t get the email.', at: '2026-03-04T10:33:00Z' },
-      { id: 'm4', role: 'assistant', content: 'Check your spam folder first. If it\'s not there, make sure you’re using the same email you signed up with. I can resend the link if you’d like.', at: '2026-03-04T10:33:20Z' },
-      { id: 'm5', role: 'user', content: 'Yes please, alex.j@company.com', at: '2026-03-04T10:34:00Z' },
-      { id: 'm6', role: 'assistant', content: 'I’ve triggered a new reset email to alex.j@company.com. It should arrive within a few minutes.', at: '2026-03-04T10:34:10Z' },
-      { id: 'm7', role: 'user', content: 'Got it, thanks!', at: '2026-03-04T10:35:00Z' },
-      { id: 'm8', role: 'assistant', content: 'You’re welcome. If you need anything else, just ask.', at: '2026-03-04T10:35:05Z' },
-    ],
-  },
-  {
-    id: '2',
-    preview: 'I need help with the dialog tree configuration...',
-    startedAt: '2026-03-04T09:15:00Z',
-    messageCount: 12,
-    messages: [
-      { id: 'm9', role: 'user', content: 'I need help with the dialog tree configuration.', at: '2026-03-04T09:15:00Z' },
-      { id: 'm10', role: 'assistant', content: 'I can help with that. Are you setting up a new tree or editing an existing one?', at: '2026-03-04T09:15:12Z' },
-      { id: 'm11', role: 'user', content: 'Editing. I added a new node but it’s not showing in the flow.', at: '2026-03-04T09:16:00Z' },
-      { id: 'm12', role: 'assistant', content: 'Nodes need to be connected to the tree. In the editor, drag from the parent node’s handle to the new node. If it’s still missing, try saving and refreshing the page.', at: '2026-03-04T09:16:25Z' },
-      { id: 'm13', role: 'user', content: 'That worked, thanks!', at: '2026-03-04T09:17:00Z' },
-      { id: 'm14', role: 'assistant', content: 'Glad it’s working. Anything else?', at: '2026-03-04T09:17:08Z' },
-    ],
-  },
-  {
-    id: '3',
-    preview: 'What are the different user roles?',
-    startedAt: '2026-03-03T16:45:00Z',
-    messageCount: 5,
-    messages: [
-      { id: 'm15', role: 'user', content: 'What are the different user roles?', at: '2026-03-03T16:45:00Z' },
-      { id: 'm16', role: 'assistant', content: 'ConversaTree has three roles: System Administrator (full access), Manager (can manage agents and users in their workspace), and User (can use assigned agents and view their own activity).', at: '2026-03-03T16:45:10Z' },
-      { id: 'm17', role: 'user', content: 'How do I change someone’s role?', at: '2026-03-03T16:46:00Z' },
-      { id: 'm18', role: 'assistant', content: 'Only admins and managers can change roles. Go to Workspace settings → Members, find the user, and use the role dropdown to update it.', at: '2026-03-03T16:46:15Z' },
-      { id: 'm19', role: 'user', content: 'Got it.', at: '2026-03-03T16:46:30Z' },
-    ],
-  },
-  {
-    id: '4',
-    preview: 'Thanks, that fixed it!',
-    startedAt: '2026-03-03T14:20:00Z',
-    messageCount: 4,
-    messages: [
-      { id: 'm20', role: 'user', content: 'The embed widget isn’t loading on our site.', at: '2026-03-03T14:20:00Z' },
-      { id: 'm21', role: 'assistant', content: 'Usually that’s a script or CSP issue. Can you confirm the embed script is in the page and that your CSP allows our domain?', at: '2026-03-03T14:20:20Z' },
-      { id: 'm22', role: 'user', content: 'We added the script to the allowlist. Testing now.', at: '2026-03-03T14:22:00Z' },
-      { id: 'm23', role: 'user', content: 'Thanks, that fixed it!', at: '2026-03-03T14:23:00Z' },
-    ],
-  },
-  {
-    id: '5',
-    preview: 'Can the bot integrate with our CRM?',
-    startedAt: '2026-03-02T11:00:00Z',
-    messageCount: 6,
-    messages: [
-      { id: 'm24', role: 'user', content: 'Can the bot integrate with our CRM?', at: '2026-03-02T11:00:00Z' },
-      { id: 'm25', role: 'assistant', content: 'We support integrations via Actions and webhooks. You can send conversation data to your CRM when certain events occur. Do you use a specific CRM?', at: '2026-03-02T11:00:15Z' },
-      { id: 'm26', role: 'user', content: 'Salesforce.', at: '2026-03-02T11:01:00Z' },
-      { id: 'm27', role: 'assistant', content: 'You can use our webhook action to POST to Salesforce’s API or a middleware like Zapier. I can walk you through setting up an Action if you’d like.', at: '2026-03-02T11:01:20Z' },
-      { id: 'm28', role: 'user', content: 'I’ll check with our dev team and get back to you.', at: '2026-03-02T11:02:00Z' },
-      { id: 'm29', role: 'assistant', content: 'Sounds good. We have docs on webhook payloads in the Deploy section.', at: '2026-03-02T11:02:10Z' },
-    ],
-  },
-]
 
 function formatRelativeTime(iso: string) {
   const date = new Date(iso)
@@ -120,16 +49,60 @@ function formatMessageTime(iso: string) {
 export default function ChatLogsPage() {
   const { currentWorkspace, currentAgent } = useDashboard()
   const [search, setSearch] = useState('')
+  const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
+  const [sessionMessages, setSessionMessages] = useState<Message[]>([])
+  const [loadingSessions, setLoadingSessions] = useState(false)
+  const [loadingMessages, setLoadingMessages] = useState(false)
+  const [logsError, setLogsError] = useState<string | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [reviseMessage, setReviseMessage] = useState<{ question: string; answer: string } | null>(null)
   const [reviseAnswer, setReviseAnswer] = useState('')
   const [savingRevise, setSavingRevise] = useState(false)
   const [reviseError, setReviseError] = useState<string | null>(null)
 
+  const fetchSessions = useCallback(async () => {
+    if (!currentWorkspace?.id || !currentAgent?.id) return
+    setLoadingSessions(true)
+    setLogsError(null)
+    try {
+      const params = new URLSearchParams({ limit: '50', offset: '0' })
+      if (search.trim()) params.set('search', search.trim())
+      const { data } = await v2Api.get<{ sessions: SessionSummary[] }>(
+        `/v2/workspaces/${currentWorkspace.id}/agents/${currentAgent.id}/chat-logs?${params}`
+      )
+      setSessions(data.sessions ?? [])
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'response' in e && (e as { response?: { data?: { error?: string } } }).response?.data?.error
+      setLogsError(typeof msg === 'string' ? msg : (e instanceof Error ? e.message : 'Failed to load chat logs'))
+      setSessions([])
+    } finally {
+      setLoadingSessions(false)
+    }
+  }, [currentWorkspace?.id, currentAgent?.id, search])
+
+  useEffect(() => {
+    fetchSessions()
+  }, [fetchSessions])
+
+  useEffect(() => {
+    if (!selectedSessionId || !currentWorkspace?.id || !currentAgent?.id) {
+      setSessionMessages([])
+      return
+    }
+    setLoadingMessages(true)
+    v2Api
+      .get<{ messages: Message[] }>(
+        `/v2/workspaces/${currentWorkspace.id}/agents/${currentAgent.id}/chat-logs/${encodeURIComponent(selectedSessionId)}`
+      )
+      .then(({ data }) => setSessionMessages(data.messages ?? []))
+      .catch(() => setSessionMessages([]))
+      .finally(() => setLoadingMessages(false))
+  }, [selectedSessionId, currentWorkspace?.id, currentAgent?.id])
+
   const handleRefresh = () => {
     setIsRefreshing(true)
-    setTimeout(() => setIsRefreshing(false), 800)
+    fetchSessions().finally(() => setIsRefreshing(false))
   }
 
   const handleRevise = (question: string, answer: string) => {
@@ -159,12 +132,19 @@ export default function ChatLogsPage() {
     }
   }
 
-  const filtered = MOCK_SESSIONS.filter((s) =>
-    s.preview.toLowerCase().includes(search.toLowerCase())
-  )
-  const selectedSession = selectedSessionId
-    ? MOCK_SESSIONS.find((s) => s.id === selectedSessionId)
+  const selectedSummary = selectedSessionId ? sessions.find((s) => s.id === selectedSessionId) : null
+  const selectedSession = selectedSummary
+    ? { ...selectedSummary, messages: sessionMessages }
     : null
+
+  if (!currentWorkspace || !currentAgent) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center p-6 text-center text-slate-500">
+        <MessageSquare className="h-10 w-10 mb-2" />
+        <p className="text-sm">Select an agent from the header to view chat logs.</p>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -197,7 +177,7 @@ export default function ChatLogsPage() {
           <button
             type="button"
             onClick={handleRefresh}
-            disabled={isRefreshing}
+            disabled={isRefreshing || loadingSessions}
             className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
             aria-label="Refresh chat logs"
           >
@@ -216,7 +196,12 @@ export default function ChatLogsPage() {
         >
           <div className="flex-1 overflow-auto">
             <div className="p-4">
-              {filtered.length === 0 ? (
+              {loadingSessions ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+                  <p className="mt-2 text-sm text-slate-500">Loading sessions…</p>
+                </div>
+              ) : sessions.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-slate-500">
                     <MessageSquare className="h-6 w-6" />
@@ -232,7 +217,7 @@ export default function ChatLogsPage() {
                 </div>
               ) : (
                 <ul className="space-y-0.5">
-                  {filtered.map((session) => (
+                  {sessions.map((session) => (
                     <li key={session.id}>
                       <button
                         type="button"
@@ -288,7 +273,12 @@ export default function ChatLogsPage() {
             </div>
             <div className="flex-1 overflow-auto p-4">
               <div className="mx-auto max-w-2xl space-y-4">
-                {selectedSession.messages.map((msg, idx) => {
+                {loadingMessages ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+                  </div>
+                ) : (
+                selectedSession.messages.map((msg, idx) => {
                   const prevUser = msg.role === 'assistant'
                     ? selectedSession.messages[idx - 1]
                     : null
@@ -337,7 +327,8 @@ export default function ChatLogsPage() {
                       </div>
                     </div>
                   )
-                })}
+                })
+                )}
               </div>
             </div>
           </div>

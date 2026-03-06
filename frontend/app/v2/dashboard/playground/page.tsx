@@ -1,22 +1,22 @@
 'use client'
 
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { ChevronDown, Bot, FileText } from 'lucide-react'
 import { useDashboard } from '@/contexts/DashboardContext'
 import { getApiBaseUrl } from '@/lib/api'
 import SkinRenderer from '@/components/SkinRenderer'
 import type { MergedSkinConfig } from '@/types/skinConfig'
+import type { SkinConfig } from '@/types/skinConfig'
+import v2Api from '@/lib/v2-api'
+import { DEFAULT_WINDOW, DEFAULT_THEME, CHAT_WIDGET_PREVIEW_MIN_WIDTH, CHAT_WIDGET_PREVIEW_MAX_WIDTH } from '@/lib/v2-chat-widget-layout'
+import ChatWidgetPreviewSkeleton from '@/components/v2/ChatWidgetPreviewSkeleton'
 
-const DEFAULT_WINDOW = { width: 384, height: 600, minWidth: 320, minHeight: 400, borderRadius: 20 }
-
+/** Fallback when no saved widget config – uses same default theme as Chat Widget (hex so colors show) */
 function buildPlaygroundConfig(agentName: string, agentLogoUrl?: string | null): MergedSkinConfig {
   return {
     theme: {
-      primaryColor: 'var(--v2-primary)',
-      backgroundColor: '#ffffff',
-      textColor: '#1e293b',
-      borderColor: '#e2e8f0',
+      ...DEFAULT_THEME,
     },
     components: {
       window: {
@@ -51,6 +51,11 @@ function buildPlaygroundConfig(agentName: string, agentLogoUrl?: string | null):
   }
 }
 
+/** Cast saved SkinConfig to MergedSkinConfig (no _meta required for preview) */
+function toMergedConfig(c: SkinConfig): MergedSkinConfig {
+  return { ...c } as MergedSkinConfig
+}
+
 const PLAYGROUND_WELCOME: { id: string; type: 'bot'; content: string; timestamp: Date }[] = [
   { id: 'welcome', type: 'bot', content: "Hi! Ask me anything. I use your trained data when available.", timestamp: new Date() },
 ]
@@ -58,6 +63,56 @@ const PLAYGROUND_WELCOME: { id: string; type: 'bot'; content: string; timestamp:
 export default function PlaygroundPage() {
   const { currentWorkspace, currentAgent } = useDashboard()
   const messagesRef = useRef<{ id: string; type: 'user' | 'bot'; content: string; timestamp: Date }[]>([])
+  const sessionIdRef = useRef<string | null>(null)
+  const [config, setConfig] = useState<MergedSkinConfig | null>(null)
+  const [configLoading, setConfigLoading] = useState(true)
+
+  useEffect(() => {
+    sessionIdRef.current = null
+  }, [currentAgent?.id, currentWorkspace?.id])
+
+  useEffect(() => {
+    if (!currentWorkspace?.id || !currentAgent?.id) {
+      setConfig(null)
+      setConfigLoading(false)
+      return
+    }
+    let cancelled = false
+    setConfigLoading(true)
+    v2Api
+      .get<{ config: SkinConfig | null }>(
+        `/v2/workspaces/${currentWorkspace.id}/agents/${currentAgent.id}/widget-config`
+      )
+      .then(({ data }) => {
+        if (cancelled) return
+        if (data.config && typeof data.config === 'object') {
+          setConfig(toMergedConfig(data.config as SkinConfig))
+        } else {
+          setConfig(
+            buildPlaygroundConfig(
+              currentAgent.name,
+              (currentAgent as { logoUrl?: string | null }).logoUrl
+            )
+          )
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setConfig(
+            buildPlaygroundConfig(
+              currentAgent?.name ?? 'Agent',
+              (currentAgent as { logoUrl?: string | null })?.logoUrl
+            )
+          )
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setConfigLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [currentWorkspace?.id, currentAgent?.id, currentAgent?.name, (currentAgent as { logoUrl?: string | null })?.logoUrl])
 
   const handleMessagesChange = useCallback((messages: { id: string; type: 'user' | 'bot'; content: string; timestamp: Date }[]) => {
     messagesRef.current = messages
@@ -84,7 +139,11 @@ export default function PlaygroundPage() {
             'Content-Type': 'application/json',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ message: userMessage.trim(), history }),
+          body: JSON.stringify({
+            message: userMessage.trim(),
+            history,
+            ...(sessionIdRef.current ? { sessionId: sessionIdRef.current } : {}),
+          }),
         })
         if (res.status === 401 && typeof window !== 'undefined') {
           localStorage.removeItem('auth_token')
@@ -113,8 +172,9 @@ export default function PlaygroundPage() {
               const payload = line.slice(6).trim()
               if (payload === '[DONE]') continue
               try {
-                const data = JSON.parse(payload) as { content?: string; error?: string }
+                const data = JSON.parse(payload) as { content?: string; error?: string; sessionId?: string }
                 if (data.error) throw new Error(data.error)
+                if (typeof data.sessionId === 'string') sessionIdRef.current = data.sessionId
                 if (typeof data.content === 'string') {
                   full += data.content
                   ctx?.onChunk(data.content)
@@ -130,8 +190,9 @@ export default function PlaygroundPage() {
           const payload = buffer.trim().slice(6).trim()
           if (payload !== '[DONE]') {
             try {
-              const data = JSON.parse(payload) as { content?: string; error?: string }
+              const data = JSON.parse(payload) as { content?: string; error?: string; sessionId?: string }
               if (data.error) throw new Error(data.error)
+              if (typeof data.sessionId === 'string') sessionIdRef.current = data.sessionId
               if (typeof data.content === 'string') {
                 full += data.content
                 ctx?.onChunk(data.content)
@@ -158,15 +219,17 @@ export default function PlaygroundPage() {
     )
   }
 
-  const config = buildPlaygroundConfig(currentAgent.name, (currentAgent as { logoUrl?: string | null }).logoUrl)
+  const effectiveConfig =
+    config ??
+    buildPlaygroundConfig(currentAgent.name, (currentAgent as { logoUrl?: string | null }).logoUrl)
 
   return (
-    <div className="flex min-h-0 flex-1">
-      {/* Left: agent info + training CTA */}
-      <div className="flex-1 min-w-0 overflow-auto p-6">
+    <div className="flex min-h-0 flex-1 overflow-hidden">
+      {/* Left: agent info – same width as Chat Widget settings left column (400px) */}
+      <div className="flex min-w-0 shrink-0 flex-col overflow-auto border-r border-slate-200 bg-white p-6 lg:w-[400px]">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">Playground</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Chat with <span className="font-medium text-slate-700">{currentAgent.name}</span>. Answers use the agent&apos;s instructions and trained data.
+          Chat with <span className="font-medium text-slate-700">{currentAgent.name}</span>. The look matches your Chat widget settings.
         </p>
 
         <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3">
@@ -199,29 +262,48 @@ export default function PlaygroundPage() {
         </div>
       </div>
 
-      {/* Right: Skin Renderer – chat UI with configured data */}
-      <div className="flex min-h-0 w-[420px] shrink-0 flex-col border-l border-slate-200 bg-slate-100/80">
+      {/* Right: Live preview – same layout as Chat Widget (flex-1, same preview min/max width) */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-l border-slate-200 bg-slate-50">
+        <div className="shrink-0 flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
+          <span className="text-sm font-semibold text-slate-800">Preview</span>
+          <span className="text-sm text-slate-500">· Same as embed on your site</span>
+        </div>
         <div
-          className="flex-1 min-h-0 flex flex-col p-4"
+          className="flex flex-1 min-h-0 flex-col overflow-hidden p-6 bg-slate-100/80"
           style={{
             backgroundImage: `
-              linear-gradient(to right, rgb(148 163 184 / 0.25) 1px, transparent 1px),
-              linear-gradient(to bottom, rgb(148 163 184 / 0.25) 1px, transparent 1px)
+              linear-gradient(to right, rgb(148 163 184 / 0.4) 1px, transparent 1px),
+              linear-gradient(to bottom, rgb(148 163 184 / 0.4) 1px, transparent 1px)
             `,
-            backgroundSize: '24px 24px',
+            backgroundSize: '64px 64px',
           }}
         >
-          <div className="flex-1 min-h-0 w-full min-w-[320px] max-w-[400px] mx-auto flex flex-col overflow-hidden rounded-2xl shadow-lg bg-white" style={{ borderRadius: config.components?.window?.borderRadius ?? 20 }}>
-            <SkinRenderer
-              config={config}
-              apiUrl=""
-              treeId={null}
-              initialMessages={PLAYGROUND_WELCOME}
-              previewMode
-              onMessage={handleMessage}
-              onMessagesChange={handleMessagesChange}
-            />
-          </div>
+          {configLoading ? (
+            <div className="flex flex-1 min-h-0 flex-col">
+              <ChatWidgetPreviewSkeleton />
+            </div>
+          ) : (
+            <div
+              className="flex flex-1 min-h-0 w-full flex-col overflow-visible m-auto"
+              style={{
+                minWidth: CHAT_WIDGET_PREVIEW_MIN_WIDTH,
+                maxWidth: CHAT_WIDGET_PREVIEW_MAX_WIDTH,
+                borderRadius: `${effectiveConfig.components?.window?.borderRadius ?? 20}px`,
+              }}
+            >
+              <div className="flex-1 min-h-0 overflow-hidden rounded-2xl shadow-lg bg-white" style={{ borderRadius: effectiveConfig.components?.window?.borderRadius ?? 20 }}>
+                <SkinRenderer
+                  config={effectiveConfig}
+                  apiUrl=""
+                  treeId={null}
+                  initialMessages={PLAYGROUND_WELCOME}
+                  previewMode
+                  onMessage={handleMessage}
+                  onMessagesChange={handleMessagesChange}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

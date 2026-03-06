@@ -12,6 +12,7 @@ import {
   createWorkspace,
   createAgent,
   canManageAgent,
+  deleteAgent,
 } from '../services/workspaceService.js';
 import {
   crawlAndStore,
@@ -35,6 +36,14 @@ import {
 } from '../services/agentQaService.js';
 import { prisma } from '../db/prisma.js';
 import { isSupportedMimeType, resolveMimeType } from '../services/documentParserService.js';
+import { uploadWidgetHeaderToS3, getPresignedUrl, injectPresignedWidgetHeaderIcon } from '../services/s3Service.js';
+import {
+  listSessionsByAgent,
+  getSessionMessages,
+  sessionBelongsToAgent,
+  createOrGetSession,
+  appendMessage,
+} from '../services/agentChatLogService.js';
 
 const router = express.Router();
 const upload = multer({
@@ -47,6 +56,17 @@ const upload = multer({
     const ok = isSupportedMimeType(mime) || (ext && allowedExts.includes(ext));
     if (ok) cb(null, true);
     else cb(new Error('Unsupported file type. Use PDF, DOCX, TXT, or MD.'));
+  },
+});
+
+const uploadImage = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB for header image
+  fileFilter: (_req, file, cb) => {
+    const mime = (file.mimetype || '').toLowerCase().split(';')[0].trim();
+    const ok = /^image\/(jpeg|jpg|png|gif|webp)$/.test(mime);
+    if (ok) cb(null, true);
+    else cb(new Error('Invalid file type. Only JPEG, PNG, GIF, and WebP images are allowed.'));
   },
 });
 
@@ -281,6 +301,198 @@ router.post('/:workspaceId/agents', async (req, res) => {
   } catch (error: any) {
     console.error('Create agent error:', error);
     res.status(500).json({ error: 'Failed to create agent', details: error.message });
+  }
+});
+
+/**
+ * DELETE /api/v2/workspaces/:workspaceId/agents/:agentId
+ * Permanently delete an agent and all its data. Cannot be undone.
+ */
+router.delete('/:workspaceId/agents/:agentId', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgentsInWorkspace(userId, workspaceId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied to this workspace' });
+
+    const deleted = await deleteAgent(agentId, workspaceId);
+    if (!deleted) return res.status(404).json({ error: 'Agent not found' });
+    return res.status(204).send();
+  } catch (error: any) {
+    console.error('Delete agent error:', error);
+    res.status(500).json({ error: 'Failed to delete agent', details: error?.message });
+  }
+});
+
+/**
+ * GET /api/v2/workspaces/:workspaceId/agents/:agentId/widget-config
+ * Get the saved chat widget (skin) config for this agent. Returns null if not set.
+ */
+router.get('/:workspaceId/agents/:agentId/widget-config', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const agent = await prisma.agent.findUnique({
+      where: { id: agentId },
+      select: { workspaceId: true, widgetConfig: true },
+    });
+    if (!agent || agent.workspaceId !== workspaceId) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+    let config = agent.widgetConfig as Record<string, unknown> | null;
+    config = await injectPresignedWidgetHeaderIcon(config);
+    return res.json({ config: config ?? null });
+  } catch (error: any) {
+    console.error('Get widget config error:', error);
+    res.status(500).json({ error: 'Failed to get widget config', details: error?.message });
+  }
+});
+
+/**
+ * PATCH /api/v2/workspaces/:workspaceId/agents/:agentId/widget-config
+ * Save the chat widget (skin) config for this agent. Body: { config: SkinConfig }.
+ */
+router.patch('/:workspaceId/agents/:agentId/widget-config', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const agent = await prisma.agent.findUnique({
+      where: { id: agentId },
+      select: { workspaceId: true },
+    });
+    if (!agent || agent.workspaceId !== workspaceId) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const { config } = req.body;
+    if (config !== null && (typeof config !== 'object' || Array.isArray(config))) {
+      return res.status(400).json({ error: 'config must be an object or null' });
+    }
+
+    await prisma.agent.update({
+      where: { id: agentId },
+      data: { widgetConfig: config === null ? null : config },
+    });
+    return res.json({ ok: true, config: config ?? null });
+  } catch (error: any) {
+    console.error('Patch widget config error:', error);
+    res.status(500).json({ error: 'Failed to save widget config', details: error?.message });
+  }
+});
+
+/**
+ * POST /api/v2/workspaces/:workspaceId/agents/:agentId/widget-header-image
+ * Upload a header/avatar image for the chat widget. Multipart form field: file (image). Returns { url }.
+ */
+router.post('/:workspaceId/agents/:agentId/widget-header-image', uploadImage.single('file'), async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: 'No file provided' });
+
+    const result = await uploadWidgetHeaderToS3(file, workspaceId, agentId);
+    const presignedUrl = await getPresignedUrl(result.key, 7 * 24 * 3600); // 7 days
+    return res.status(201).json({ url: result.url, key: result.key, presignedUrl });
+  } catch (error: any) {
+    console.error('Widget header image upload error:', error);
+    res.status(500).json({ error: 'Failed to upload image', details: error?.message });
+  }
+});
+
+/**
+ * GET /api/v2/workspaces/:workspaceId/agents/:agentId/chat-logs
+ * List chat sessions for this agent. Query: limit?, offset?, search?
+ */
+router.get('/:workspaceId/agents/:agentId/chat-logs', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const agent = await prisma.agent.findUnique({ where: { id: agentId } });
+    if (!agent || agent.workspaceId !== workspaceId) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const limit = Math.min(100, parseInt(String(req.query.limit || 50), 10) || 50);
+    const offset = parseInt(String(req.query.offset || 0), 10) || 0;
+    const search = typeof req.query.search === 'string' ? req.query.search : null;
+
+    const sessions = await listSessionsByAgent(agentId, limit, offset, search);
+    return res.json({ sessions });
+  } catch (error: any) {
+    console.error('Chat logs list error:', error);
+    res.status(500).json({ error: 'Failed to load chat logs', details: error?.message });
+  }
+});
+
+/**
+ * GET /api/v2/workspaces/:workspaceId/agents/:agentId/chat-logs/:sessionId
+ * Get messages for a specific chat session.
+ */
+router.get('/:workspaceId/agents/:agentId/chat-logs/:sessionId', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    const sessionId = req.params.sessionId;
+    if (isNaN(workspaceId) || isNaN(agentId) || !sessionId) {
+      return res.status(400).json({ error: 'Invalid workspace, agent, or session ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const belongs = await sessionBelongsToAgent(sessionId, agentId);
+    if (!belongs) return res.status(404).json({ error: 'Session not found' });
+
+    const messages = await getSessionMessages(agentId, sessionId);
+    return res.json({ messages });
+  } catch (error: any) {
+    console.error('Chat log session error:', error);
+    res.status(500).json({ error: 'Failed to load session', details: error?.message });
   }
 });
 
@@ -607,7 +819,7 @@ router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
       return res.status(404).json({ error: 'Agent not found' });
     }
 
-    const { message, history } = req.body;
+    const { message, history, sessionId: bodySessionId } = req.body;
     const userMessage = typeof message === 'string' ? message.trim() : '';
     if (!userMessage) {
       return res.status(400).json({ error: 'message is required' });
@@ -647,7 +859,12 @@ router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
     if (qaMatches.length > 0) {
       await recordQaUsage(qaMatches.map((q) => q.id)).catch((err) => console.error('Record Q&A usage:', err));
     }
-    return res.json({ message: reply });
+
+    const { sessionIdExternal, sessionRowId } = await createOrGetSession(agentId, bodySessionId ?? null);
+    await appendMessage(sessionRowId, agentId, 'user', userMessage);
+    await appendMessage(sessionRowId, agentId, 'assistant', reply);
+
+    return res.json({ message: reply, sessionId: sessionIdExternal });
   } catch (error: any) {
     console.error('Agent chat error:', error);
     res.status(500).json({ error: error.message || 'Chat failed' });
@@ -676,7 +893,7 @@ router.post('/:workspaceId/agents/:agentId/chat/stream', async (req, res) => {
       return res.status(404).json({ error: 'Agent not found' });
     }
 
-    const { message, history } = req.body;
+    const { message, history, sessionId: bodySessionId } = req.body;
     const userMessage = typeof message === 'string' ? message.trim() : '';
     if (!userMessage) {
       return res.status(400).json({ error: 'message is required' });
@@ -719,14 +936,21 @@ router.post('/:workspaceId/agents/:agentId/chat/stream', async (req, res) => {
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
 
+    let fullReply = '';
     try {
       for await (const chunk of chatCompletionStream(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
         maxTokens: 1024,
         temperature: 0.7,
       })) {
+        fullReply += chunk;
         res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
         if (typeof (res as any).flush === 'function') (res as any).flush();
       }
+      const replyText = fullReply.trim();
+      const { sessionIdExternal, sessionRowId } = await createOrGetSession(agentId, bodySessionId ?? null);
+      await appendMessage(sessionRowId, agentId, 'user', userMessage);
+      await appendMessage(sessionRowId, agentId, 'assistant', replyText);
+      res.write(`data: ${JSON.stringify({ sessionId: sessionIdExternal })}\n\n`);
       res.write('data: [DONE]\n\n');
     } catch (streamErr: any) {
       console.error('Agent chat stream error:', streamErr);

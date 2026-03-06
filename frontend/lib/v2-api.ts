@@ -17,6 +17,10 @@ v2Api.interceptors.request.use((config) => {
       config.headers.Authorization = `Bearer ${token}`;
     }
   }
+  // Let the browser set multipart/form-data with boundary when sending FormData
+  if (config.data instanceof FormData && config.headers) {
+    delete config.headers['Content-Type'];
+  }
   return config;
 });
 
