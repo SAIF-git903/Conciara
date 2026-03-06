@@ -152,7 +152,7 @@ function NumberInput({
   }
   return (
     <div>
-      <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
+      <label className="block text-sm font-medium text-slate-700 mb-2">{label}</label>
       <input
         type="number"
         value={clamped ?? 0}
@@ -286,7 +286,42 @@ export default function ChatbotCustomizationsPage() {
     setSaveLoading(true)
     setError(null)
     try {
-      await v2Api.patch(`/v2/workspaces/${workspaceId}/agents/${agentId}/widget-config`, { config })
+      let configToSave = config
+      if (pendingHeaderFile) {
+        setHeaderImageUploading(true)
+        try {
+          const formData = new FormData()
+          formData.append('file', pendingHeaderFile)
+          const { data } = await v2Api.post<{ url: string; key: string; presignedUrl: string }>(
+            `/v2/workspaces/${workspaceId}/agents/${agentId}/widget-header-image`,
+            formData
+          )
+          if (data?.presignedUrl && data?.key) {
+            revokeHeaderPreviewUrl()
+            setPendingHeaderFile(null)
+            configToSave = {
+              ...config,
+              components: {
+                ...config.components,
+                header: {
+                  ...config.components?.header,
+                  avatarIcon: data.presignedUrl,
+                  avatarIconKey: data.key,
+                },
+              },
+            }
+          }
+        } catch (err: unknown) {
+          const msg = err && typeof err === 'object' && 'response' in err ? (err as { response?: { data?: { error?: string } } }).response?.data?.error : null
+          setError(msg || (err instanceof Error ? err.message : 'Failed to upload image'))
+          setHeaderImageUploading(false)
+          setSaveLoading(false)
+          return
+        }
+        setHeaderImageUploading(false)
+      }
+      await v2Api.patch(`/v2/workspaces/${workspaceId}/agents/${agentId}/widget-config`, { config: configToSave })
+      setConfig(configToSave)
     } catch (e: unknown) {
       const msg = e && typeof e === 'object' && 'response' in e ? (e as { response?: { data?: { error?: string } } }).response?.data?.error : null
       setError(msg || (e instanceof Error ? e.message : 'Failed to save'))
@@ -311,17 +346,28 @@ export default function ChatbotCustomizationsPage() {
   })
 
   const headerImageInputRef = useRef<HTMLInputElement>(null)
+  const headerPreviewObjectUrlRef = useRef<string | null>(null)
+  const [pendingHeaderFile, setPendingHeaderFile] = useState<File | null>(null)
+  const [headerImageUploading, setHeaderImageUploading] = useState(false)
   const toggle = (key: string) => setExpanded((p) => ({ ...p, [key]: !p[key] }))
+
+  // Revoke blob URL when replacing or unmounting
+  const revokeHeaderPreviewUrl = useCallback(() => {
+    if (headerPreviewObjectUrlRef.current) {
+      URL.revokeObjectURL(headerPreviewObjectUrlRef.current)
+      headerPreviewObjectUrlRef.current = null
+    }
+  }, [])
 
   const handleHeaderImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !file.type.startsWith('image/')) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      const dataUrl = reader.result
-      if (typeof dataUrl === 'string') updateComponents('header', { avatarIcon: dataUrl })
-    }
-    reader.readAsDataURL(file)
+    setError(null)
+    revokeHeaderPreviewUrl()
+    const objectUrl = URL.createObjectURL(file)
+    headerPreviewObjectUrlRef.current = objectUrl
+    setPendingHeaderFile(file)
+    updateComponents('header', { avatarIcon: objectUrl })
     e.target.value = ''
   }
 
@@ -340,6 +386,14 @@ export default function ChatbotCustomizationsPage() {
       ...c,
       states: { ...c.states, [state]: { ...(c.states?.[state] || {}), ...u } },
     }))
+
+  const clearHeaderImage = useCallback(() => {
+    revokeHeaderPreviewUrl()
+    setPendingHeaderFile(null)
+    updateComponents('header', { avatarIcon: '', avatarIconKey: '' })
+  }, [revokeHeaderPreviewUrl, updateComponents])
+
+  useEffect(() => () => revokeHeaderPreviewUrl(), [revokeHeaderPreviewUrl])
 
   const theme = config.theme || {}
   const comp = config.components || {}
@@ -511,26 +565,36 @@ export default function ChatbotCustomizationsPage() {
                               />
                               <button
                                 type="button"
+                                disabled={headerImageUploading}
                                 onClick={() => headerImageInputRef.current?.click()}
-                                className="flex items-center gap-3 w-full rounded-lg border border-slate-200 bg-slate-50/50 p-3 text-left transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--v2-primary)] focus:ring-offset-1"
+                                className="flex items-center gap-3 w-full rounded-lg border border-slate-200 bg-slate-50/50 p-3 text-left transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--v2-primary)] focus:ring-offset-1 disabled:opacity-60 disabled:pointer-events-none"
                               >
-                                {comp.header?.avatarIcon ? (
+                                {headerImageUploading ? (
+                                  <>
+                                    <Loader2 className="h-12 w-12 shrink-0 animate-spin text-slate-400" />
+                                    <div className="min-w-0 flex-1">
+                                      <span className="text-sm font-medium text-slate-700">Uploading…</span>
+                                    </div>
+                                  </>
+                                ) : comp.header?.avatarIcon ? (
                                   <>
                                     <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full border border-slate-200 bg-white">
                                       <img
                                         src={comp.header.avatarIcon}
                                         alt=""
                                         className="h-full w-full object-cover"
-                                        onError={() => updateComponents('header', { avatarIcon: '' })}
+                                        onError={() => clearHeaderImage()}
                                       />
                                     </div>
                                     <div className="min-w-0 flex-1">
                                       <span className="text-sm font-medium text-slate-700">Change image</span>
-                                      <p className="text-xs text-slate-500 mt-0.5">Shown in header next to title</p>
+                                      <p className="text-xs text-slate-500 mt-0.5">
+                                        {pendingHeaderFile ? 'Preview only — click Save to upload' : 'Shown in header next to title'}
+                                      </p>
                                     </div>
                                     <button
                                       type="button"
-                                      onClick={(e) => { e.stopPropagation(); updateComponents('header', { avatarIcon: '' }) }}
+                                      onClick={(e) => { e.stopPropagation(); clearHeaderImage() }}
                                       className="shrink-0 text-xs font-medium text-slate-500 hover:text-red-600"
                                     >
                                       Remove

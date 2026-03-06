@@ -126,6 +126,17 @@ export async function getWorkspacesForUser(userId: number): Promise<WorkspaceWit
 }
 
 /**
+ * Delete an agent. Verifies workspace; cascades to documents, chunks, Q&A, etc.
+ * Returns true if deleted, false if not found or wrong workspace.
+ */
+export async function deleteAgent(agentId: number, workspaceId: number): Promise<boolean> {
+  const result = await prisma.agent.deleteMany({
+    where: { id: agentId, workspaceId },
+  });
+  return result.count > 0;
+}
+
+/**
  * Get all agents in a workspace (for a user who has access).
  */
 export async function getAgentsForWorkspace(workspaceId: number): Promise<AgentInfo[]> {

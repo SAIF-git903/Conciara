@@ -23,6 +23,7 @@ import apiKeyRoutes from './routes/apiKeys.js';
 import v2WorkspaceRoutes from './routes/v2Workspaces.js';
 import { prisma } from './db/prisma.js';
 import { SUPPORTED_LLM_MODELS } from './services/llmService.js';
+import { injectPresignedWidgetHeaderIcon } from './services/s3Service.js';
 import { getBypassUsers, getUserById, updateLastLogin } from './services/userService.js';
 import { getWorkspacesForUser } from './services/workspaceService.js';
 import { generateJWT, generateRefreshToken } from './services/authService.js';
@@ -132,7 +133,8 @@ app.get('/api/v2/public/widget-config', async (req, res) => {
       select: { widgetConfig: true },
     });
     if (!agent) return res.status(404).json({ error: 'Agent not found' });
-    const config = agent.widgetConfig as Record<string, unknown> | null;
+    let config = agent.widgetConfig as Record<string, unknown> | null;
+    config = await injectPresignedWidgetHeaderIcon(config);
     res.json({ config: config ?? null });
   } catch (error: any) {
     console.error('Public widget config error:', error);

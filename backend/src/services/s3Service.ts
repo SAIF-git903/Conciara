@@ -101,6 +101,60 @@ export async function uploadToS3(
 }
 
 /**
+ * Upload a widget header/avatar image to S3.
+ * Key: widget-header/{workspaceId}/{agentId}/{timestamp}_{filename}
+ */
+export async function uploadWidgetHeaderToS3(
+  file: Express.Multer.File,
+  workspaceId: number,
+  agentId: number
+): Promise<UploadResult> {
+  if (!BUCKET_NAME) {
+    throw new Error('AWS_S3_BUCKET_NAME environment variable is not set');
+  }
+
+  const timestamp = Date.now();
+  const sanitizedFileName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const key = `widget-header/${workspaceId}/${agentId}/${timestamp}_${sanitizedFileName}`;
+  const contentType = file.mimetype || 'application/octet-stream';
+
+  const command = new PutObjectCommand({
+    Bucket: BUCKET_NAME,
+    Key: key,
+    Body: file.buffer,
+    ContentType: contentType,
+  });
+
+  let actualRegion = AWS_REGION;
+  try {
+    await s3Client.send(command);
+  } catch (error: any) {
+    if (error.name === 'PermanentRedirect' && error.$metadata?.httpStatusCode === 301) {
+      const endpoint = error.Endpoint || '';
+      const regionMatch = endpoint.match(/\.s3\.([^.]+)\.amazonaws\.com/);
+      if (regionMatch && regionMatch[1]) {
+        actualRegion = regionMatch[1];
+        const correctedClient = new S3Client({
+          region: actualRegion,
+          credentials: {
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+          },
+        });
+        await correctedClient.send(command);
+      } else {
+        throw error;
+      }
+    } else {
+      throw error;
+    }
+  }
+
+  const url = `https://${BUCKET_NAME}.s3.${actualRegion}.amazonaws.com/${key}`;
+  return { key, url, contentType, size: file.size };
+}
+
+/**
  * Delete a file from S3
  */
 export async function deleteFromS3(key: string): Promise<void> {
@@ -175,4 +229,34 @@ export function isValidMediaType(mimetype: string): boolean {
 export function getMediaType(mimetype: string): 'image' | 'video' {
   const imageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
   return imageTypes.includes(mimetype) ? 'image' : 'video';
+}
+
+const WIDGET_HEADER_PRESIGN_EXPIRES = 7 * 24 * 3600; // 7 days
+
+/**
+ * If config has components.header.avatarIconKey (S3 key), set components.header.avatarIcon
+ * to a presigned URL. Returns a shallow copy with the injection; does not mutate input.
+ */
+export async function injectPresignedWidgetHeaderIcon(
+  config: Record<string, unknown> | null,
+  expiresIn: number = WIDGET_HEADER_PRESIGN_EXPIRES
+): Promise<Record<string, unknown> | null> {
+  if (!config || typeof config !== 'object') return config;
+  const components = config.components as Record<string, unknown> | undefined;
+  const header = components?.header as Record<string, unknown> | undefined;
+  const key = header?.avatarIconKey;
+  if (typeof key !== 'string' || !key) return config;
+
+  try {
+    const presignedUrl = await getPresignedUrl(key, expiresIn);
+    const out = { ...config };
+    const outComponents = { ...(out.components as Record<string, unknown>) };
+    const outHeader = { ...(outComponents.header as Record<string, unknown>) };
+    outHeader.avatarIcon = presignedUrl;
+    outComponents.header = outHeader;
+    out.components = outComponents;
+    return out;
+  } catch {
+    return config;
+  }
 }

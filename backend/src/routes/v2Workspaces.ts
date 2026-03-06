@@ -12,6 +12,7 @@ import {
   createWorkspace,
   createAgent,
   canManageAgent,
+  deleteAgent,
 } from '../services/workspaceService.js';
 import {
   crawlAndStore,
@@ -35,6 +36,7 @@ import {
 } from '../services/agentQaService.js';
 import { prisma } from '../db/prisma.js';
 import { isSupportedMimeType, resolveMimeType } from '../services/documentParserService.js';
+import { uploadWidgetHeaderToS3, getPresignedUrl, injectPresignedWidgetHeaderIcon } from '../services/s3Service.js';
 
 const router = express.Router();
 const upload = multer({
@@ -47,6 +49,17 @@ const upload = multer({
     const ok = isSupportedMimeType(mime) || (ext && allowedExts.includes(ext));
     if (ok) cb(null, true);
     else cb(new Error('Unsupported file type. Use PDF, DOCX, TXT, or MD.'));
+  },
+});
+
+const uploadImage = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB for header image
+  fileFilter: (_req, file, cb) => {
+    const mime = (file.mimetype || '').toLowerCase().split(';')[0].trim();
+    const ok = /^image\/(jpeg|jpg|png|gif|webp)$/.test(mime);
+    if (ok) cb(null, true);
+    else cb(new Error('Invalid file type. Only JPEG, PNG, GIF, and WebP images are allowed.'));
   },
 });
 
@@ -285,6 +298,32 @@ router.post('/:workspaceId/agents', async (req, res) => {
 });
 
 /**
+ * DELETE /api/v2/workspaces/:workspaceId/agents/:agentId
+ * Permanently delete an agent and all its data. Cannot be undone.
+ */
+router.delete('/:workspaceId/agents/:agentId', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgentsInWorkspace(userId, workspaceId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied to this workspace' });
+
+    const deleted = await deleteAgent(agentId, workspaceId);
+    if (!deleted) return res.status(404).json({ error: 'Agent not found' });
+    return res.status(204).send();
+  } catch (error: any) {
+    console.error('Delete agent error:', error);
+    res.status(500).json({ error: 'Failed to delete agent', details: error?.message });
+  }
+});
+
+/**
  * GET /api/v2/workspaces/:workspaceId/agents/:agentId/widget-config
  * Get the saved chat widget (skin) config for this agent. Returns null if not set.
  */
@@ -308,7 +347,8 @@ router.get('/:workspaceId/agents/:agentId/widget-config', async (req, res) => {
     if (!agent || agent.workspaceId !== workspaceId) {
       return res.status(404).json({ error: 'Agent not found' });
     }
-    const config = agent.widgetConfig as Record<string, unknown> | null;
+    let config = agent.widgetConfig as Record<string, unknown> | null;
+    config = await injectPresignedWidgetHeaderIcon(config);
     return res.json({ config: config ?? null });
   } catch (error: any) {
     console.error('Get widget config error:', error);
@@ -354,6 +394,35 @@ router.patch('/:workspaceId/agents/:agentId/widget-config', async (req, res) => 
   } catch (error: any) {
     console.error('Patch widget config error:', error);
     res.status(500).json({ error: 'Failed to save widget config', details: error?.message });
+  }
+});
+
+/**
+ * POST /api/v2/workspaces/:workspaceId/agents/:agentId/widget-header-image
+ * Upload a header/avatar image for the chat widget. Multipart form field: file (image). Returns { url }.
+ */
+router.post('/:workspaceId/agents/:agentId/widget-header-image', uploadImage.single('file'), async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: 'No file provided' });
+
+    const result = await uploadWidgetHeaderToS3(file, workspaceId, agentId);
+    const presignedUrl = await getPresignedUrl(result.key, 7 * 24 * 3600); // 7 days
+    return res.status(201).json({ url: result.url, key: result.key, presignedUrl });
+  } catch (error: any) {
+    console.error('Widget header image upload error:', error);
+    res.status(500).json({ error: 'Failed to upload image', details: error?.message });
   }
 });
 

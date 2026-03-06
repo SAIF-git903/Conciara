@@ -43,7 +43,10 @@ export interface HeaderConfig {
   showMinimize?: boolean;
   showClose?: boolean;
   showAvatar?: boolean;
+  /** URL for header image (may be presigned S3 URL). */
   avatarIcon?: string;
+  /** S3 key for header image; backend uses this to return presigned avatarIcon when serving config. */
+  avatarIconKey?: string;
 }
 
 export interface MessagesConfig {
