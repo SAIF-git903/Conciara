@@ -64,12 +64,12 @@ export async function listSessionsByAgent(
   offset: number = 0,
   search?: string | null
 ): Promise<AgentChatSessionSummary[]> {
-  const where: { agentId: number; messages?: { content: { contains: string; mode: 'insensitive' } } } = {
+  const where: { agentId: number; messages?: { some: { content: { contains: string; mode: 'insensitive' } } } } = {
     agentId,
   };
   if (search?.trim()) {
     where.messages = {
-      content: { contains: search.trim(), mode: 'insensitive' },
+      some: { content: { contains: search.trim(), mode: 'insensitive' } },
     };
   }
 
