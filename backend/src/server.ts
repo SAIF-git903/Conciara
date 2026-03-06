@@ -21,6 +21,7 @@ import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import apiKeyRoutes from './routes/apiKeys.js';
 import v2WorkspaceRoutes from './routes/v2Workspaces.js';
+import { prisma } from './db/prisma.js';
 import { SUPPORTED_LLM_MODELS } from './services/llmService.js';
 import { getBypassUsers, getUserById, updateLastLogin } from './services/userService.js';
 import { getWorkspacesForUser } from './services/workspaceService.js';
@@ -116,6 +117,27 @@ app.use('/api/v2/workspaces', v2WorkspaceRoutes);
 
 app.get('/api/v2/models', (_req, res) => {
   res.json({ models: SUPPORTED_LLM_MODELS.map((m) => ({ id: m.id, label: m.label })) });
+});
+
+/** Public: get widget (skin) config for v2 embed. Query: workspaceId, agentId. No auth. */
+app.get('/api/v2/public/widget-config', async (req, res) => {
+  try {
+    const workspaceId = parseInt(String(req.query.workspaceId ?? ''), 10);
+    const agentId = parseInt(String(req.query.agentId ?? ''), 10);
+    if (!workspaceId || !agentId || isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'workspaceId and agentId are required' });
+    }
+    const agent = await prisma.agent.findFirst({
+      where: { id: agentId, workspaceId },
+      select: { widgetConfig: true },
+    });
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
+    const config = agent.widgetConfig as Record<string, unknown> | null;
+    res.json({ config: config ?? null });
+  } catch (error: any) {
+    console.error('Public widget config error:', error);
+    res.status(500).json({ error: 'Failed to load widget config' });
+  }
 });
 
 /**

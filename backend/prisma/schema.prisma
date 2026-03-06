@@ -63,14 +63,15 @@ model WorkspaceMember {
 }
 
 model Agent {
-  id          Int      @id @default(autoincrement())
-  workspaceId Int      @map("workspace_id")
-  name        String   @map("name")
-  model       String?  @map("model")
-  prePrompt   String?  @map("pre_prompt")
-  logoUrl     String?  @map("logo_url")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @default(now()) @map("updated_at")
+  id           Int      @id @default(autoincrement())
+  workspaceId  Int      @map("workspace_id")
+  name         String   @map("name")
+  model        String?  @map("model")
+  prePrompt    String?  @map("pre_prompt")
+  logoUrl      String?  @map("logo_url")
+  widgetConfig Json?    @map("widget_config")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @map("updated_at")
 
   workspace      Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   members        AgentMember[]

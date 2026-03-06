@@ -285,6 +285,79 @@ router.post('/:workspaceId/agents', async (req, res) => {
 });
 
 /**
+ * GET /api/v2/workspaces/:workspaceId/agents/:agentId/widget-config
+ * Get the saved chat widget (skin) config for this agent. Returns null if not set.
+ */
+router.get('/:workspaceId/agents/:agentId/widget-config', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const agent = await prisma.agent.findUnique({
+      where: { id: agentId },
+      select: { workspaceId: true, widgetConfig: true },
+    });
+    if (!agent || agent.workspaceId !== workspaceId) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+    const config = agent.widgetConfig as Record<string, unknown> | null;
+    return res.json({ config: config ?? null });
+  } catch (error: any) {
+    console.error('Get widget config error:', error);
+    res.status(500).json({ error: 'Failed to get widget config', details: error?.message });
+  }
+});
+
+/**
+ * PATCH /api/v2/workspaces/:workspaceId/agents/:agentId/widget-config
+ * Save the chat widget (skin) config for this agent. Body: { config: SkinConfig }.
+ */
+router.patch('/:workspaceId/agents/:agentId/widget-config', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const agent = await prisma.agent.findUnique({
+      where: { id: agentId },
+      select: { workspaceId: true },
+    });
+    if (!agent || agent.workspaceId !== workspaceId) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const { config } = req.body;
+    if (config !== null && (typeof config !== 'object' || Array.isArray(config))) {
+      return res.status(400).json({ error: 'config must be an object or null' });
+    }
+
+    await prisma.agent.update({
+      where: { id: agentId },
+      data: { widgetConfig: config === null ? null : config },
+    });
+    return res.json({ ok: true, config: config ?? null });
+  } catch (error: any) {
+    console.error('Patch widget config error:', error);
+    res.status(500).json({ error: 'Failed to save widget config', details: error?.message });
+  }
+});
+
+/**
  * GET /api/v2/workspaces/:workspaceId/agents/:agentId/documents
  * List documents (training files) for an agent.
  */
