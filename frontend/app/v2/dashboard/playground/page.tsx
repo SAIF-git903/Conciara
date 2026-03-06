@@ -63,8 +63,13 @@ const PLAYGROUND_WELCOME: { id: string; type: 'bot'; content: string; timestamp:
 export default function PlaygroundPage() {
   const { currentWorkspace, currentAgent } = useDashboard()
   const messagesRef = useRef<{ id: string; type: 'user' | 'bot'; content: string; timestamp: Date }[]>([])
+  const sessionIdRef = useRef<string | null>(null)
   const [config, setConfig] = useState<MergedSkinConfig | null>(null)
   const [configLoading, setConfigLoading] = useState(true)
+
+  useEffect(() => {
+    sessionIdRef.current = null
+  }, [currentAgent?.id, currentWorkspace?.id])
 
   useEffect(() => {
     if (!currentWorkspace?.id || !currentAgent?.id) {
@@ -134,7 +139,11 @@ export default function PlaygroundPage() {
             'Content-Type': 'application/json',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ message: userMessage.trim(), history }),
+          body: JSON.stringify({
+            message: userMessage.trim(),
+            history,
+            ...(sessionIdRef.current ? { sessionId: sessionIdRef.current } : {}),
+          }),
         })
         if (res.status === 401 && typeof window !== 'undefined') {
           localStorage.removeItem('auth_token')
@@ -163,8 +172,9 @@ export default function PlaygroundPage() {
               const payload = line.slice(6).trim()
               if (payload === '[DONE]') continue
               try {
-                const data = JSON.parse(payload) as { content?: string; error?: string }
+                const data = JSON.parse(payload) as { content?: string; error?: string; sessionId?: string }
                 if (data.error) throw new Error(data.error)
+                if (typeof data.sessionId === 'string') sessionIdRef.current = data.sessionId
                 if (typeof data.content === 'string') {
                   full += data.content
                   ctx?.onChunk(data.content)
@@ -180,8 +190,9 @@ export default function PlaygroundPage() {
           const payload = buffer.trim().slice(6).trim()
           if (payload !== '[DONE]') {
             try {
-              const data = JSON.parse(payload) as { content?: string; error?: string }
+              const data = JSON.parse(payload) as { content?: string; error?: string; sessionId?: string }
               if (data.error) throw new Error(data.error)
+              if (typeof data.sessionId === 'string') sessionIdRef.current = data.sessionId
               if (typeof data.content === 'string') {
                 full += data.content
                 ctx?.onChunk(data.content)

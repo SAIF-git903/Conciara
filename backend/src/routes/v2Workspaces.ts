@@ -37,6 +37,13 @@ import {
 import { prisma } from '../db/prisma.js';
 import { isSupportedMimeType, resolveMimeType } from '../services/documentParserService.js';
 import { uploadWidgetHeaderToS3, getPresignedUrl, injectPresignedWidgetHeaderIcon } from '../services/s3Service.js';
+import {
+  listSessionsByAgent,
+  getSessionMessages,
+  sessionBelongsToAgent,
+  createOrGetSession,
+  appendMessage,
+} from '../services/agentChatLogService.js';
 
 const router = express.Router();
 const upload = multer({
@@ -427,6 +434,69 @@ router.post('/:workspaceId/agents/:agentId/widget-header-image', uploadImage.sin
 });
 
 /**
+ * GET /api/v2/workspaces/:workspaceId/agents/:agentId/chat-logs
+ * List chat sessions for this agent. Query: limit?, offset?, search?
+ */
+router.get('/:workspaceId/agents/:agentId/chat-logs', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const agent = await prisma.agent.findUnique({ where: { id: agentId } });
+    if (!agent || agent.workspaceId !== workspaceId) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const limit = Math.min(100, parseInt(String(req.query.limit || 50), 10) || 50);
+    const offset = parseInt(String(req.query.offset || 0), 10) || 0;
+    const search = typeof req.query.search === 'string' ? req.query.search : null;
+
+    const sessions = await listSessionsByAgent(agentId, limit, offset, search);
+    return res.json({ sessions });
+  } catch (error: any) {
+    console.error('Chat logs list error:', error);
+    res.status(500).json({ error: 'Failed to load chat logs', details: error?.message });
+  }
+});
+
+/**
+ * GET /api/v2/workspaces/:workspaceId/agents/:agentId/chat-logs/:sessionId
+ * Get messages for a specific chat session.
+ */
+router.get('/:workspaceId/agents/:agentId/chat-logs/:sessionId', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    const sessionId = req.params.sessionId;
+    if (isNaN(workspaceId) || isNaN(agentId) || !sessionId) {
+      return res.status(400).json({ error: 'Invalid workspace, agent, or session ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const belongs = await sessionBelongsToAgent(sessionId, agentId);
+    if (!belongs) return res.status(404).json({ error: 'Session not found' });
+
+    const messages = await getSessionMessages(agentId, sessionId);
+    return res.json({ messages });
+  } catch (error: any) {
+    console.error('Chat log session error:', error);
+    res.status(500).json({ error: 'Failed to load session', details: error?.message });
+  }
+});
+
+/**
  * GET /api/v2/workspaces/:workspaceId/agents/:agentId/documents
  * List documents (training files) for an agent.
  */
@@ -749,7 +819,7 @@ router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
       return res.status(404).json({ error: 'Agent not found' });
     }
 
-    const { message, history } = req.body;
+    const { message, history, sessionId: bodySessionId } = req.body;
     const userMessage = typeof message === 'string' ? message.trim() : '';
     if (!userMessage) {
       return res.status(400).json({ error: 'message is required' });
@@ -789,7 +859,12 @@ router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
     if (qaMatches.length > 0) {
       await recordQaUsage(qaMatches.map((q) => q.id)).catch((err) => console.error('Record Q&A usage:', err));
     }
-    return res.json({ message: reply });
+
+    const { sessionIdExternal, sessionRowId } = await createOrGetSession(agentId, bodySessionId ?? null);
+    await appendMessage(sessionRowId, agentId, 'user', userMessage);
+    await appendMessage(sessionRowId, agentId, 'assistant', reply);
+
+    return res.json({ message: reply, sessionId: sessionIdExternal });
   } catch (error: any) {
     console.error('Agent chat error:', error);
     res.status(500).json({ error: error.message || 'Chat failed' });
@@ -818,7 +893,7 @@ router.post('/:workspaceId/agents/:agentId/chat/stream', async (req, res) => {
       return res.status(404).json({ error: 'Agent not found' });
     }
 
-    const { message, history } = req.body;
+    const { message, history, sessionId: bodySessionId } = req.body;
     const userMessage = typeof message === 'string' ? message.trim() : '';
     if (!userMessage) {
       return res.status(400).json({ error: 'message is required' });
@@ -861,14 +936,21 @@ router.post('/:workspaceId/agents/:agentId/chat/stream', async (req, res) => {
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
 
+    let fullReply = '';
     try {
       for await (const chunk of chatCompletionStream(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
         maxTokens: 1024,
         temperature: 0.7,
       })) {
+        fullReply += chunk;
         res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
         if (typeof (res as any).flush === 'function') (res as any).flush();
       }
+      const replyText = fullReply.trim();
+      const { sessionIdExternal, sessionRowId } = await createOrGetSession(agentId, bodySessionId ?? null);
+      await appendMessage(sessionRowId, agentId, 'user', userMessage);
+      await appendMessage(sessionRowId, agentId, 'assistant', replyText);
+      res.write(`data: ${JSON.stringify({ sessionId: sessionIdExternal })}\n\n`);
       res.write('data: [DONE]\n\n');
     } catch (streamErr: any) {
       console.error('Agent chat stream error:', streamErr);

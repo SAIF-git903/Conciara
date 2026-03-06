@@ -79,8 +79,38 @@ model Agent {
   documents      AgentDocument[]
   documentChunks AgentDocumentChunk[]
   qaEntries      AgentQa[]
+  chatSessions   AgentChatSession[]
+  chatMessages   AgentChatMessage[]
 
   @@map("agents")
+}
+
+model AgentChatSession {
+  id        Int      @id @default(autoincrement())
+  agentId   Int      @map("agent_id")
+  sessionId String   @map("session_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  agent   Agent              @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  messages AgentChatMessage[]
+
+  @@unique([agentId, sessionId])
+  @@map("agent_chat_sessions")
+}
+
+model AgentChatMessage {
+  id        Int      @id @default(autoincrement())
+  sessionId Int      @map("session_id")
+  agentId   Int      @map("agent_id")
+  role      String   // 'user' | 'assistant'
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  session AgentChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  agent   Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@map("agent_chat_messages")
 }
 
 model AgentDocument {
