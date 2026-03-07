@@ -654,12 +654,21 @@ export async function listCrawlsByWorkspace(
 
 /**
  * Delete a crawl by id; verifies workspace ownership.
+ * Returns { deleted, agentId } so the caller can clear the agent's Website crawl document/chunks.
  */
-export async function deleteCrawl(crawlId: number, workspaceId: number): Promise<boolean> {
+export async function deleteCrawl(
+  crawlId: number,
+  workspaceId: number
+): Promise<{ deleted: boolean; agentId: number | null }> {
+  const crawl = await prisma.websiteCrawl.findFirst({
+    where: { id: crawlId, workspaceId },
+    select: { agentId: true },
+  });
+  const agentId = crawl?.agentId ?? null;
   const result = await prisma.websiteCrawl.deleteMany({
     where: { id: crawlId, workspaceId },
   });
-  return result.count > 0;
+  return { deleted: result.count > 0, agentId };
 }
 
 /**

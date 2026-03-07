@@ -36,6 +36,7 @@ import {
   appendCrawlContentToAgentDocument,
   getWebsiteCrawlTrainedStats,
   setWebsiteCrawlTrainedLinkCount,
+  deleteWebsiteCrawlDocuments,
 } from '../services/agentDocumentService.js';
 import { retrieveChunks } from '../services/agentRagService.js';
 import {
@@ -80,6 +81,7 @@ const CONVERSATION_RULES = `
 
 Conversation rules (always follow):
 - You are the virtual assistant FOR this business. Always speak in first-person plural as the brand. Say "you can contact us", "our support team", "we offer", "visit our website" — NEVER say "their", "the company", "the business", or refer to the brand in third person.
+- Your training data may include multiple websites or stores (e.g. regional sites or different sub-stores). Use context from any relevant source to answer. If the user could be asking about more than one store, consider all and say which store when it helps (e.g. "On [Store A] we offer… On [Store B]…").
 - Answer the user's actual question first. Only give contact/support details when the user explicitly asks how to contact, get support, or reach the team. When they ask about a product, price, or feature, answer only that from the context — do NOT lead with or add contact information unless they asked for it.
 - If the context does not contain information that answers the question (e.g. a specific product or price), say so clearly and humanly: e.g. "I don't have information about that in my training", "I'm not sure about that product", "That's not in the info I have." Then you may briefly offer to help with something else or to put them in touch with support if they'd like.
 - Do NOT repeat product details, prices, or support information that was already given earlier in the conversation.
@@ -289,8 +291,9 @@ router.delete('/:workspaceId/crawls/:crawlId', async (req, res) => {
     const canManage = await canManageAgentsInWorkspace(userId, workspaceId);
     if (!canManage) return res.status(403).json({ error: 'Access denied to this workspace' });
 
-    const deleted = await deleteCrawl(crawlId, workspaceId);
+    const { deleted, agentId } = await deleteCrawl(crawlId, workspaceId);
     if (!deleted) return res.status(404).json({ error: 'Crawl not found' });
+    if (agentId != null) await deleteWebsiteCrawlDocuments(agentId);
     return res.status(204).send();
   } catch (error: any) {
     console.error('Delete crawl error:', error);
@@ -1117,7 +1120,7 @@ router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
 
     if (!isConversational) {
       const [chunks, qa] = await Promise.all([
-        retrieveChunks(agentId, userMessage, 10),
+        retrieveChunks(agentId, userMessage, 20),
         retrieveQa(agentId, userMessage, 5),
       ]);
       qaMatches = qa;
@@ -1127,7 +1130,7 @@ router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
           : '';
       contextBlock =
         chunks.length > 0
-          ? `\n\nUse the following relevant excerpts from the agent's training data to answer. If the answer is not in the context, say so.\n\n${chunks.map((c) => c.content).join('\n\n---\n\n')}`
+          ? `\n\nUse the following relevant excerpts from the agent's training data to answer. The training data may include information from multiple websites or stores; use any relevant excerpt and, if the user's question could refer to more than one, consider all and clarify which store when helpful.\n\n${chunks.map((c) => c.content).join('\n\n---\n\n')}`
           : '';
       // Crawl content is only used after user clicks "Retrain agent"; it is fed into RAG (chunks) then.
       websiteBlock = '';
@@ -1210,7 +1213,7 @@ router.post('/:workspaceId/agents/:agentId/chat/stream', async (req, res) => {
 
     if (!isConversational) {
       const [chunks, qa] = await Promise.all([
-        retrieveChunks(agentId, userMessage, 10),
+        retrieveChunks(agentId, userMessage, 20),
         retrieveQa(agentId, userMessage, 5),
       ]);
       qaMatches = qa;
@@ -1220,7 +1223,7 @@ router.post('/:workspaceId/agents/:agentId/chat/stream', async (req, res) => {
           : '';
       contextBlock =
         chunks.length > 0
-          ? `\n\nUse the following relevant excerpts from the agent's training data to answer. If the answer is not in the context, say so.\n\n${chunks.map((c) => c.content).join('\n\n---\n\n')}`
+          ? `\n\nUse the following relevant excerpts from the agent's training data to answer. The training data may include information from multiple websites or stores; use any relevant excerpt and, if the user's question could refer to more than one, consider all and clarify which store when helpful.\n\n${chunks.map((c) => c.content).join('\n\n---\n\n')}`
           : '';
       // Crawl content is only used after user clicks "Retrain agent"; it is fed into RAG (chunks) then.
       websiteBlock = '';
