@@ -123,10 +123,11 @@ model AgentDocument {
   mimeType     String    @map("mime_type")
   status       String    @default("pending") // pending | processing | ready | failed
   errorMessage String?   @map("error_message")
-  chunkCount   Int       @default(0) @map("chunk_count")
-  content      String?   @db.Text
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @default(now()) @map("updated_at")
+  chunkCount       Int       @default(0) @map("chunk_count")
+  trainedLinkCount Int?      @map("trained_link_count")
+  content          String?   @db.Text
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @default(now()) @map("updated_at")
 
   agent   Agent               @relation(fields: [agentId], references: [id], onDelete: Cascade)
   workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

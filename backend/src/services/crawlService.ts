@@ -678,7 +678,62 @@ export async function assignCrawlToAgent(
 }
 
 /**
- * Get all crawl training content for an agent (for chat context).
+ * Returns true if the agent has at least one crawl created after the given date (e.g. after last train).
+ * Used to enable Retrain when user adds a new website even if total link count matches.
+ */
+export async function hasCrawlsAfter(agentId: number, since: Date | null): Promise<boolean> {
+  if (since == null) {
+    const count = await prisma.websiteCrawl.count({ where: { agentId } });
+    return count > 0;
+  }
+  const count = await prisma.websiteCrawl.count({
+    where: { agentId, createdAt: { gt: since } },
+  });
+  return count > 0;
+}
+
+/**
+ * Number of links (pages_crawled) from crawls created after the given date.
+ * Used for "Links not fed yet" when new websites were added after last train.
+ */
+export async function getLinkCountFromCrawlsAfter(agentId: number, since: Date | null): Promise<number> {
+  if (since == null) {
+    const rows = await prisma.$queryRaw<{ pages_crawled: number }[]>`
+      SELECT COALESCE(pages_crawled, 1) AS pages_crawled FROM website_crawls WHERE agent_id = ${agentId}
+    `;
+    return rows.reduce((sum, r) => sum + (Number(r.pages_crawled) || 1), 0);
+  }
+  const rows = await prisma.$queryRaw<{ pages_crawled: number }[]>`
+    SELECT COALESCE(pages_crawled, 1) AS pages_crawled
+    FROM website_crawls
+    WHERE agent_id = ${agentId} AND created_at > ${since}
+  `;
+  return rows.reduce((sum, r) => sum + (Number(r.pages_crawled) || 1), 0);
+}
+
+/**
+ * Get crawl stats for an agent (link count and total content size in bytes). Used for Data sources UI and train limit.
+ */
+export async function getCrawlStatsForAgent(agentId: number): Promise<{
+  linkCount: number;
+  crawlSizeBytes: number;
+}> {
+  const rows = await prisma.$queryRaw<{ pages_crawled: number; training_content: string }[]>`
+    SELECT COALESCE(pages_crawled, 1) AS pages_crawled, training_content
+    FROM website_crawls
+    WHERE agent_id = ${agentId}
+  `;
+  let linkCount = 0;
+  let crawlSizeBytes = 0;
+  for (const row of rows) {
+    linkCount += Number(row.pages_crawled) || 1;
+    crawlSizeBytes += Buffer.byteLength(row.training_content || '', 'utf8');
+  }
+  return { linkCount, crawlSizeBytes };
+}
+
+/**
+ * Get all crawl training content for an agent (for chat context / RAG training).
  */
 export async function getCrawlTrainingContentForAgent(agentId: number): Promise<string> {
   const crawls = await prisma.websiteCrawl.findMany({
@@ -692,6 +747,31 @@ export async function getCrawlTrainingContentForAgent(agentId: number): Promise<
     return `${header}\n\n${c.trainingContent}`;
   });
   return parts.join('\n\n---\n\n');
+}
+
+/**
+ * Get crawl training content only from crawls created after the given date (for incremental Retrain).
+ * Returns { content, linkCount }.
+ */
+export async function getCrawlTrainingContentForAgentAfter(
+  agentId: number,
+  after: Date
+): Promise<{ content: string; linkCount: number }> {
+  const rows = await prisma.$queryRaw<
+    { training_content: string; url: string; title: string | null; pages_crawled: number }[]
+  >`
+    SELECT training_content, url, title, COALESCE(pages_crawled, 1) AS pages_crawled
+    FROM website_crawls
+    WHERE agent_id = ${agentId} AND created_at > ${after}
+    ORDER BY created_at ASC
+  `;
+  if (rows.length === 0) return { content: '', linkCount: 0 };
+  const parts = rows.map((r) => {
+    const header = r.title ? `[${r.title}] (${r.url})` : r.url;
+    return `${header}\n\n${r.training_content}`;
+  });
+  const linkCount = rows.reduce((sum, r) => sum + Number(r.pages_crawled || 1), 0);
+  return { content: parts.join('\n\n---\n\n'), linkCount };
 }
 
 /**
