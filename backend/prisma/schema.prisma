@@ -189,6 +189,11 @@ model WebsiteCrawl {
   useCase         String   @default("general") @map("use_case")
   trainingContent String   @map("training_content")
   metadata        Json     @default("{}") @map("metadata")
+  pagesCrawled    Int      @default(1) @map("pages_crawled")
+  crawledPages    Json     @default("[]") @map("crawled_pages")
+  products        Json     @default("[]") @map("products")
+  supportLinks    Json     @default("[]") @map("support_links")
+  navLinks        Json     @default("[]") @map("nav_links")
   createdAt       DateTime @default(now()) @map("created_at")
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

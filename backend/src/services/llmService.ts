@@ -521,6 +521,7 @@ export async function generatePrePromptFromWebsiteContent(websiteContent: string
 - Reflect the tone and purpose of the website
 - Tell the agent to answer based on the provided website content and to be concise and helpful
 - Not include meta instructions (e.g. "Output in JSON") — just the agent's persona and behavior
+IMPORTANT: The pre-prompt you write must instruct the agent to always speak AS the business in first person (we/us/our), never as an outside observer describing the business. The agent IS the business's assistant.
 Write only the pre-prompt text, no quotes or preamble.`,
         },
         {

@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import ReactMarkdown, { type Components } from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
   Search,
   MessageSquare,
@@ -19,6 +21,20 @@ import { useDashboard } from '@/contexts/DashboardContext'
 import v2Api from '@/lib/v2-api'
 
 type Message = { id: string; role: 'user' | 'assistant'; content: string; at: string }
+
+const chatLogMarkdownComponents: Components = {
+  p: ({ children }) => <p className="mb-2 last:mb-0 text-sm leading-relaxed">{children}</p>,
+  ul: ({ children }) => <ul className="list-disc list-outside ml-4 mb-2 space-y-0.5 text-sm">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal list-outside ml-4 mb-2 space-y-0.5 text-sm">{children}</ol>,
+  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+  em: ({ children }) => <em className="italic">{children}</em>,
+  a: ({ href, children }) => (
+    <a href={href ?? '#'} target="_blank" rel="noopener noreferrer" className="underline font-medium text-[var(--v2-primary)] hover:opacity-80">
+      {children}
+    </a>
+  ),
+}
 
 type SessionSummary = {
   id: string
@@ -308,7 +324,15 @@ export default function ChatLogsPage() {
                             : 'rounded-tl-md bg-[var(--v2-primary)]/5 text-slate-900'
                         }`}
                       >
-                        <p className="text-sm">{msg.content}</p>
+                        {msg.role === 'assistant' ? (
+                          <div className="text-sm">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={chatLogMarkdownComponents}>
+                              {msg.content}
+                            </ReactMarkdown>
+                          </div>
+                        ) : (
+                          <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                        )}
                         <div className="mt-1 flex items-center justify-between gap-2">
                           <p className="text-xs text-slate-400">
                             {formatMessageTime(msg.at)}

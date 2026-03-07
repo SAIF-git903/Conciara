@@ -66,10 +66,23 @@ const AGENT_ROLE_PROMPTS: Record<string, string> = {
 const CONVERSATION_RULES = `
 
 Conversation rules (always follow):
+- You are the virtual assistant FOR this business. Always speak in first-person plural as the brand. Say "you can contact us", "our support team", "we offer", "visit our website" — NEVER say "their", "the company", "the business", or refer to the brand in third person.
+- Answer the user's actual question first. Only give contact/support details when the user explicitly asks how to contact, get support, or reach the team. When they ask about a product, price, or feature, answer only that from the context — do NOT lead with or add contact information unless they asked for it.
+- If the context does not contain information that answers the question (e.g. a specific product or price), say so clearly and humanly: e.g. "I don't have information about that in my training", "I'm not sure about that product", "That's not in the info I have." Then you may briefly offer to help with something else or to put them in touch with support if they'd like.
 - Do NOT repeat product details, prices, or support information that was already given earlier in the conversation.
 - If the user is acknowledging or thanking (e.g. "thanks", "ok thanks"), respond in ONE short, friendly sentence (e.g. "You're welcome!", "Glad I could help!") and do not repeat recommendations.
 - Keep responses short and natural: 1–2 sentences when possible. Behave like a human support or sales agent.
-- Use conversation history to keep context; do not ask for information the user already provided.`;
+- Use conversation history to keep context; do not ask for information the user already provided.
+- Format responses for readability: use **markdown** when it helps — bullet points (- or *) for lists (e.g. product features, contact options, specs), **bold** for key terms or prices, and line breaks between sections. Keep answers scannable like ChatGPT; avoid walls of plain text when listing multiple items.`;
+
+/** Extra instructions when user intent is support/contact so the agent surfaces links and uses first person. */
+const SUPPORT_INTENT_INSTRUCTIONS = `
+
+When answering support or contact questions:
+1. Use first person (we/us/our) — you speak AS the business.
+2. Provide the most direct contact method first (WhatsApp link if available, then email, then phone).
+3. Format WhatsApp as a markdown link: [Chat with us on WhatsApp](https://wa.me/...)
+4. Keep the response short, friendly, and end with an offer to help further.`;
 
 function getRolePrompt(role: string | null | undefined): string {
   const r = (role || 'general').toLowerCase();
@@ -99,7 +112,9 @@ function buildAgentChatSystemContent(params: AgentChatSystemParams): string {
     return `${base}${CONVERSATION_RULES}${stateHint}`;
   }
 
-  return `${base}${qaBlock}${contextBlock}${websiteBlock}${CONVERSATION_RULES}`;
+  const supportBlock =
+    sessionState.userIntent === 'support_request' ? SUPPORT_INTENT_INSTRUCTIONS : '';
+  return `${base}${qaBlock}${contextBlock}${websiteBlock}${supportBlock}${CONVERSATION_RULES}`;
 }
 
 const upload = multer({
@@ -913,7 +928,7 @@ router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
           : '';
       websiteBlock =
         crawlContent && crawlContent.trim()
-          ? `\n\nWebsite context (from crawled pages the agent can use to answer):\n\n${crawlContent.trim()}\n\n`
+          ? `\n\nWebsite context (from crawled pages — use this to answer the user's question; if the answer is not here, say so clearly instead of giving contact info):\n\n${crawlContent.trim()}\n\n`
           : '';
     }
 
@@ -1009,7 +1024,7 @@ router.post('/:workspaceId/agents/:agentId/chat/stream', async (req, res) => {
           : '';
       websiteBlock =
         crawlContent && crawlContent.trim()
-          ? `\n\nWebsite context (from crawled pages the agent can use to answer):\n\n${crawlContent.trim()}\n\n`
+          ? `\n\nWebsite context (from crawled pages — use this to answer the user's question; if the answer is not here, say so clearly instead of giving contact info):\n\n${crawlContent.trim()}\n\n`
           : '';
     }
 

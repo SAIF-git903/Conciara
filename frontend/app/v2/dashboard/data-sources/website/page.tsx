@@ -1,9 +1,20 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import { Globe, Trash2, RefreshCw, Loader2 } from 'lucide-react'
+import {
+  Globe,
+  Trash2,
+  RefreshCw,
+  Loader2,
+  MoreHorizontal,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+} from 'lucide-react'
 import { useDashboard } from '@/contexts/DashboardContext'
 import v2Api from '@/lib/v2-api'
+
+type CrawlPage = { url: string; title?: string }
 
 type Crawl = {
   id: number
@@ -15,6 +26,8 @@ type Crawl = {
   trainingContent: string
   metadata: Record<string, unknown>
   createdAt: string
+  pagesCrawled?: number
+  crawledPages?: CrawlPage[]
 }
 
 function formatCrawlDate(iso: string): string {
@@ -22,9 +35,25 @@ function formatCrawlDate(iso: string): string {
   const diff = (Date.now() - d.getTime()) / 1000
   if (diff < 60) return 'Just now'
   if (diff < 3600) return `${Math.floor(diff / 60)} min ago`
+  if (diff < 3600 * 2) return '1 hour ago'
   if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`
   if (diff < 604800) return `${Math.floor(diff / 86400)} days ago`
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+function isNewCrawl(iso: string, withinHours = 48): boolean {
+  const d = new Date(iso)
+  return (Date.now() - d.getTime()) / 1000 < 3600 * withinHours
+}
+
+/** Base URL (origin + path for display). */
+function baseUrlDisplay(url: string): string {
+  try {
+    const u = new URL(url)
+    return u.origin + (u.pathname === '/' ? '/' : u.pathname)
+  } catch {
+    return url
+  }
 }
 
 export default function DataSourcesWebsitePage() {
@@ -39,6 +68,8 @@ export default function DataSourcesWebsitePage() {
   const [crawlingUrl, setCrawlingUrl] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [recrawlingId, setRecrawlingId] = useState<number | null>(null)
+  const [expandedCrawlId, setExpandedCrawlId] = useState<number | null>(null)
+  const [crawlMenuId, setCrawlMenuId] = useState<number | null>(null)
 
   const fetchCrawls = useCallback(async () => {
     if (!workspaceId || !agentId) return
@@ -99,23 +130,26 @@ export default function DataSourcesWebsitePage() {
     async (crawlId: number) => {
       if (!workspaceId) return
       setDeletingId(crawlId)
+      setCrawlMenuId(null)
       setError(null)
       try {
         await v2Api.delete(`/v2/workspaces/${workspaceId}/crawls/${crawlId}`)
         setCrawls((prev) => prev.filter((c) => c.id !== crawlId))
+        if (expandedCrawlId === crawlId) setExpandedCrawlId(null)
       } catch {
         setError('Failed to delete website')
       } finally {
         setDeletingId(null)
       }
     },
-    [workspaceId]
+    [workspaceId, expandedCrawlId]
   )
 
   const handleRecrawl = useCallback(
     async (crawl: Crawl) => {
       if (!workspaceId || !agentId) return
       setRecrawlingId(crawl.id)
+      setCrawlMenuId(null)
       setError(null)
       try {
         await v2Api.post(`/v2/workspaces/${workspaceId}/crawl`, {
@@ -177,7 +211,9 @@ export default function DataSourcesWebsitePage() {
                 <label htmlFor="website-url" className="block text-sm font-medium text-slate-700">
                   Add website URL
                 </label>
-                <p className="text-xs text-slate-500">We’ll crawl and index the page for your agent.</p>
+                <p className="text-xs text-slate-500">
+                  We’ll crawl and index the page for your agent.
+                </p>
               </div>
             </div>
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -213,7 +249,7 @@ export default function DataSourcesWebsitePage() {
             </div>
           </div>
 
-          {/* Website list */}
+          {/* Website list - card per crawl with links included (image-style) */}
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
@@ -224,82 +260,173 @@ export default function DataSourcesWebsitePage() {
                 <Globe className="h-6 w-6" />
               </div>
               <p className="mt-3 text-sm font-medium text-slate-700">No websites yet</p>
-              <p className="mt-1 text-xs text-slate-500">Add a URL above to crawl and index its content.</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Add a URL above to crawl and index its content.
+              </p>
             </div>
           ) : (
-            <div>
-              <h2 className="mb-3 text-sm font-medium text-slate-700">Crawled websites</h2>
-              <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-                <div className="divide-y divide-slate-100">
-                  {crawlingUrl && !crawls.some((c) => c.url === crawlingUrl) && (
-                    <div className="flex items-center gap-4 px-4 py-3 bg-amber-50/70">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100">
-                        <Loader2 className="h-4 w-4 animate-spin text-amber-700" />
+            <div className="space-y-4">
+              {crawlingUrl && !crawls.some((c) => c.url === crawlingUrl) && (
+                <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-amber-50/70 px-4 py-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100">
+                    <Loader2 className="h-4 w-4 animate-spin text-amber-700" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-slate-900">{crawlingUrl}</p>
+                    <p className="text-xs text-amber-700">Crawling…</p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">
+                    Crawling
+                  </span>
+                </div>
+              )}
+              {crawls.map((crawl) => {
+                const isRecrawling = recrawlingId === crawl.id
+                const isDeleting = deletingId === crawl.id
+                const linkCount = crawl.pagesCrawled ?? (crawl.crawledPages?.length ?? 1)
+                const links = crawl.crawledPages?.length
+                  ? crawl.crawledPages
+                  : [{ url: crawl.url, title: crawl.title ?? undefined }]
+                const isExpanded = expandedCrawlId === crawl.id
+                const showNew = isNewCrawl(crawl.createdAt)
+                const menuOpen = crawlMenuId === crawl.id
+
+                return (
+                  <div
+                    key={crawl.id}
+                    className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden"
+                  >
+                    {/* Header: globe, URL, New, "Last crawled • Links: N", menu, expand */}
+                    <div className="flex items-start gap-3 p-4">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+                        <Globe className="h-4 w-4" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-slate-900">{crawlingUrl}</p>
-                        <p className="text-xs text-amber-700">Crawling…</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="truncate text-sm font-medium text-slate-900">
+                            {baseUrlDisplay(crawl.url)}
+                          </span>
+                          {showNew && (
+                            <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                              New
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          Last crawled {formatCrawlDate(crawl.createdAt)} • Links: {linkCount}
+                        </p>
                       </div>
-                      <span className="shrink-0 flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        Crawling
-                      </span>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setCrawlMenuId(menuOpen ? null : crawl.id)}
+                            className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                            aria-label="Options"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </button>
+                          {menuOpen && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-10"
+                                aria-hidden
+                                onClick={() => setCrawlMenuId(null)}
+                              />
+                              <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCrawlMenuId(null)
+                                    handleRecrawl(crawl)
+                                  }}
+                                  disabled={isRecrawling || isCrawling}
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                                >
+                                  {isRecrawling ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <RefreshCw className="h-4 w-4" />
+                                  )}
+                                  Re-crawl
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCrawlMenuId(null)
+                                    handleRemove(crawl.id)
+                                  }}
+                                  disabled={isDeleting}
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                >
+                                  {isDeleting ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-4 w-4" />
+                                  )}
+                                  Remove
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedCrawlId(isExpanded ? null : crawl.id)
+                          }
+                          className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                          aria-label={isExpanded ? 'Collapse' : 'Expand'}
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
                     </div>
-                  )}
-                  {crawls.map((crawl) => {
-                    const isRecrawling = recrawlingId === crawl.id
-                    const isDeleting = deletingId === crawl.id
-                    return (
-                      <div
-                        key={crawl.id}
-                        className="flex items-center gap-4 px-4 py-3 first:rounded-t-lg last:rounded-b-lg hover:bg-slate-50/80 transition-colors"
-                      >
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-                          <Globe className="h-4 w-4" />
+
+                    {/* Collapsible: N LINKS INCLUDED + scrollable list */}
+                    {isExpanded && (
+                      <div className="border-t border-slate-100 bg-slate-50/50">
+                        <p className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          {linkCount} links included
+                        </p>
+                        <div className="max-h-64 overflow-y-auto p-2">
+                          <ul className="space-y-0.5">
+                            {links.map((page, idx) => (
+                              <li
+                                key={page.url + String(idx)}
+                                className="flex items-center gap-2 rounded-md px-2 py-2 hover:bg-slate-100/80"
+                              >
+                                <span className="min-w-0 flex-1 truncate text-sm text-slate-700">
+                                  {page.url}
+                                </span>
+                                {showNew && (
+                                  <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                                    New
+                                  </span>
+                                )}
+                                <a
+                                  href={page.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="shrink-0 rounded p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+                                  aria-label="Open link"
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                </a>
+                                <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                              </li>
+                            ))}
+                          </ul>
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-slate-900">
-                            {crawl.title || crawl.url}
-                          </p>
-                          <p className="truncate text-xs text-slate-500">
-                            {crawl.url} · {formatCrawlDate(crawl.createdAt)}
-                          </p>
-                        </div>
-                        <span className="shrink-0 flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                          Indexed
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleRecrawl(crawl)}
-                          disabled={isRecrawling || isCrawling}
-                          className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50"
-                          aria-label="Re-crawl"
-                          title="Re-crawl"
-                        >
-                          {isRecrawling ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <RefreshCw className="h-4 w-4" />
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleRemove(crawl.id)}
-                          disabled={isDeleting}
-                          className="rounded p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                          aria-label="Remove"
-                        >
-                          {isDeleting ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </button>
                       </div>
-                    )
-                  })}
-                </div>
-              </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
