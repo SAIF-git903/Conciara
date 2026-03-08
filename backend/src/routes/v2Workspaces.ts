@@ -13,6 +13,12 @@ import {
   createAgent,
   canManageAgent,
   deleteAgent,
+  canManageWorkspaceSettings,
+  listWorkspaceMembers,
+  listPendingInvites,
+  inviteWorkspaceMember,
+  removeWorkspaceMember,
+  resendWorkspaceInvite,
 } from '../services/workspaceService.js';
 import {
   crawlAndStore,
@@ -331,6 +337,127 @@ router.patch('/:workspaceId/crawls/:crawlId', async (req, res) => {
   } catch (error: any) {
     console.error('Assign crawl error:', error);
     res.status(500).json({ error: 'Failed to assign crawl', details: error?.message });
+  }
+});
+
+/**
+ * GET /api/v2/workspaces/:workspaceId/members
+ * List workspace members (owner + members) and pending invites. Caller must have access.
+ */
+router.get('/:workspaceId/members', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    if (isNaN(workspaceId)) return res.status(400).json({ error: 'Invalid workspace ID' });
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgentsInWorkspace(userId, workspaceId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied to this workspace' });
+
+    const [members, pendingInvites] = await Promise.all([
+      listWorkspaceMembers(workspaceId),
+      listPendingInvites(workspaceId),
+    ]);
+    return res.json({ members, pendingInvites });
+  } catch (error: any) {
+    console.error('List members error:', error);
+    res.status(500).json({ error: 'Failed to load members', details: error?.message });
+  }
+});
+
+/**
+ * POST /api/v2/workspaces/:workspaceId/invites/resend
+ * Resend invite email for a pending invite. Body: { email }. Only workspace owner.
+ */
+router.post('/:workspaceId/invites/resend', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    if (isNaN(workspaceId)) return res.status(400).json({ error: 'Invalid workspace ID' });
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    const result = await resendWorkspaceInvite(workspaceId, email, userId);
+    return res.status(200).json(result);
+  } catch (error: any) {
+    if (error?.message === 'Only the workspace owner can resend invites') {
+      return res.status(403).json({ error: error.message });
+    }
+    if (error?.message === 'No pending invite found for this email') {
+      return res.status(404).json({ error: error.message });
+    }
+    console.error('Resend invite error:', error);
+    res.status(500).json({ error: 'Failed to resend invite', details: error?.message });
+  }
+});
+
+/**
+ * POST /api/v2/workspaces/:workspaceId/members
+ * Invite a user by email. Body: { email }. Only workspace owner can invite.
+ * If user exists: adds them and returns { member }.
+ * If user doesn't exist: creates pending invite and returns { pendingInvite: true, inviteLink, expiresAt }.
+ */
+router.post('/:workspaceId/members', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    if (isNaN(workspaceId)) return res.status(400).json({ error: 'Invalid workspace ID' });
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    const result = await inviteWorkspaceMember(workspaceId, email, userId);
+    if (result.kind === 'member') {
+      return res.status(201).json({ member: result.member });
+    }
+    return res.status(201).json({
+      pendingInvite: true,
+      inviteLink: result.inviteLink,
+      expiresAt: result.expiresAt,
+    });
+  } catch (error: any) {
+    if (error?.message === 'Only the workspace owner can invite members') {
+      return res.status(403).json({ error: error.message });
+    }
+    if (error?.message === 'This user is already a member of the workspace') {
+      return res.status(409).json({ error: error.message });
+    }
+    console.error('Invite member error:', error);
+    res.status(500).json({ error: 'Failed to invite member', details: error?.message });
+  }
+});
+
+/**
+ * DELETE /api/v2/workspaces/:workspaceId/members/:userId
+ * Remove a member from the workspace. Only owner can remove. Cannot remove self (owner).
+ */
+router.delete('/:workspaceId/members/:userId', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const userIdToRemove = parseInt(req.params.userId, 10);
+    if (isNaN(workspaceId) || isNaN(userIdToRemove)) {
+      return res.status(400).json({ error: 'Invalid workspace or user ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    await removeWorkspaceMember(workspaceId, userIdToRemove, userId);
+    return res.status(200).json({ message: 'Member removed' });
+  } catch (error: any) {
+    if (error?.message === 'Only the workspace owner can remove members') {
+      return res.status(403).json({ error: error.message });
+    }
+    if (error?.message === 'Member not found in this workspace') {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error?.message?.includes('cannot remove yourself') || error?.message?.includes('Cannot remove the workspace owner')) {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error('Remove member error:', error);
+    res.status(500).json({ error: 'Failed to remove member', details: error?.message });
   }
 });
 

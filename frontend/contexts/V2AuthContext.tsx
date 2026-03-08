@@ -30,6 +30,8 @@ interface V2AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, fullName?: string) => Promise<void>;
+  /** Accept a workspace invite (create account and join). Used when signing up via invite link. */
+  acceptInvite: (token: string, password: string, fullName?: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -110,6 +112,30 @@ export function V2AuthProvider({ children }: { children: React.ReactNode }) {
     [router]
   );
 
+  const acceptInvite = useCallback(
+    async (inviteToken: string, password: string, fullName?: string) => {
+      const { data } = await v2Api.post<{
+        token: string;
+        refreshToken: string;
+        user: V2User;
+      }>('/auth/invite/accept', { token: inviteToken, password, fullName: fullName || undefined });
+
+      localStorage.setItem(AUTH_TOKEN, data.token);
+      localStorage.setItem(AUTH_REFRESH, data.refreshToken);
+      localStorage.setItem(AUTH_USER, JSON.stringify(data.user));
+      setToken(data.token);
+      setUser(data.user);
+
+      const wsList = data.user.workspaces ?? [];
+      if (wsList.length > 1) {
+        router.push('/v2/choose-workspace');
+      } else {
+        router.push('/v2/dashboard');
+      }
+    },
+    [router]
+  );
+
   const logout = useCallback(async () => {
     const refreshToken = typeof window !== 'undefined' ? localStorage.getItem(AUTH_REFRESH) : null;
     try {
@@ -146,6 +172,7 @@ export function V2AuthProvider({ children }: { children: React.ReactNode }) {
         loading,
         login,
         signup,
+        acceptInvite,
         logout,
         refreshUser,
       }}

@@ -146,6 +146,93 @@ router.post('/login', async (req, res) => {
 });
 
 /**
+ * GET /api/auth/invite/validate?token=...
+ * Validate a workspace invite token. Returns { email, workspaceName, valid } if valid and not expired.
+ */
+router.get('/invite/validate', async (req, res) => {
+  try {
+    const token = typeof req.query?.token === 'string' ? req.query.token : '';
+    const { validateInviteToken } = await import('../services/workspaceInviteService.js');
+    const result = await validateInviteToken(token);
+    if (!result) {
+      return res.status(400).json({ valid: false, error: 'Invalid or expired invite link' });
+    }
+    return res.json(result);
+  } catch (error: any) {
+    console.error('Invite validate error:', error);
+    res.status(500).json({ valid: false, error: 'Something went wrong' });
+  }
+});
+
+/**
+ * POST /api/auth/invite/accept
+ * Accept a workspace invite: create account and join workspace. Body: { token, password, fullName? }.
+ * Returns same shape as signup (token, refreshToken, user with workspaces).
+ */
+router.post('/invite/accept', async (req, res) => {
+  try {
+    const { token, password, fullName } = req.body || {};
+    if (!token || !password) {
+      return res.status(400).json({ error: 'Token and password are required' });
+    }
+    const { acceptInvite } = await import('../services/workspaceInviteService.js');
+    const { getWorkspacesForUser } = await import('../services/workspaceService.js');
+
+    const result = await acceptInvite(token, password, fullName?.trim() || undefined);
+
+    await updateLastLogin(result.userId);
+    const workspaces = await getWorkspacesForUser(result.userId);
+
+    const jwt = generateJWT({
+      id: result.userId,
+      email: result.email,
+      role: 'member',
+      fullName: result.fullName,
+    });
+    const refreshToken = generateRefreshToken({
+      id: result.userId,
+      email: result.email,
+      role: 'member',
+      fullName: result.fullName,
+    });
+
+    try {
+      await createSession({
+        userId: result.userId,
+        sessionToken: `session_${result.userId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        refreshToken,
+        expiresInDays: 7,
+        ipAddress: req.ip || (req.socket as any)?.remoteAddress,
+        userAgent: req.headers['user-agent'] || null,
+      });
+    } catch (error: any) {
+      console.warn('Failed to store session:', error.message);
+    }
+
+    return res.status(201).json({
+      token: jwt,
+      refreshToken,
+      user: {
+        id: result.userId,
+        email: result.email,
+        fullName: result.fullName,
+        role: 'member',
+        workspaces,
+      },
+    });
+  } catch (error: any) {
+    if (error?.message === 'Invalid or expired invite link' || error?.message?.includes('expired')) {
+      return res.status(400).json({ error: error.message });
+    }
+    if (error?.message?.includes('already exists')) {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error('Invite accept error:', error);
+    res.status(500).json({ error: 'Failed to create account', details: error?.message });
+  }
+});
+
+/**
  * POST /api/auth/signup - Public self-registration (for v2 UI).
  * Creates user as owner with no workspace; user must create one via onboarding.
  */

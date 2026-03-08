@@ -23,9 +23,10 @@ model User {
 
   sessions         UserSession[]
   apiKeys          ApiKey[]
-  workspacesOwned  Workspace[]       @relation("WorkspaceOwner")
-  workspaceMembers WorkspaceMember[]
-  agentMembers     AgentMember[]
+  workspacesOwned    Workspace[]       @relation("WorkspaceOwner")
+  workspaceMembers   WorkspaceMember[]
+  workspaceInvitesSent WorkspaceInvite[]
+  agentMembers       AgentMember[]
 
   @@map("users")
 }
@@ -40,12 +41,28 @@ model Workspace {
 
   owner     User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members   WorkspaceMember[]
+  invites   WorkspaceInvite[]
   agents    Agent[]
   websiteCrawls WebsiteCrawl[]
   agentDocuments AgentDocument[]
   agentQaEntries AgentQa[]
 
   @@map("workspaces")
+}
+
+model WorkspaceInvite {
+  id              Int      @id @default(autoincrement())
+  workspaceId     Int      @map("workspace_id")
+  email           String   @map("email")
+  token           String   @unique @map("token")
+  invitedByUserId Int      @map("invited_by_user_id")
+  expiresAt       DateTime @map("expires_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invitedBy   User      @relation(fields: [invitedByUserId], references: [id], onDelete: Cascade)
+
+  @@map("workspace_invites")
 }
 
 model WorkspaceMember {

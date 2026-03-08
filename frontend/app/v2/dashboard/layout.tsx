@@ -275,7 +275,11 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   )
 
   const isDashboardHome = pathname === '/v2/dashboard'
-  const navItems = isDashboardHome ? dashboardNavItems : agentNavItems
+  const isWorkspaceLevelRoute =
+    isDashboardHome ||
+    pathname === '/v2/dashboard/members' ||
+    (pathname.startsWith('/v2/dashboard/settings/') && !pathname.includes('chatbot'))
+  const navItems = isWorkspaceLevelRoute ? dashboardNavItems : agentNavItems
   const isNewAgentFlow = pathname.startsWith('/v2/dashboard/new-agent')
 
   if (isNewAgentFlow) {
@@ -366,7 +370,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
           )}
         </div>
 
-        {!isDashboardHome && (
+        {!isWorkspaceLevelRoute && (
           <>
             <span className="text-slate-300">/</span>
             {/* Agent selector - only when inside an agent */}

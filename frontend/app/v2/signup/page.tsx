@@ -1,17 +1,50 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { useV2Auth } from '@/contexts/V2AuthContext'
+import v2Api from '@/lib/v2-api'
 
 export default function SignupPage() {
-  const { signup } = useV2Auth()
+  const searchParams = useSearchParams()
+  const inviteToken = searchParams.get('invite') ?? ''
+  const { signup, acceptInvite } = useV2Auth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [fullName, setFullName] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [inviteInfo, setInviteInfo] = useState<{ email: string; workspaceName: string } | null>(null)
+  const [inviteValidating, setInviteValidating] = useState(!!inviteToken)
+
+  useEffect(() => {
+    if (!inviteToken) return
+    let cancelled = false
+    setInviteValidating(true)
+    v2Api
+      .get<{ email: string; workspaceName: string; valid: boolean }>('/auth/invite/validate', {
+        params: { token: inviteToken },
+      })
+      .then(({ data }) => {
+        if (!cancelled && data.valid && data.email) {
+          setInviteInfo({ email: data.email, workspaceName: data.workspaceName || 'the workspace' })
+          setEmail(data.email)
+        } else if (!cancelled) {
+          setError('Invalid or expired invite link. You can still sign up below.')
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setError('Invalid or expired invite link. You can still sign up below.')
+      })
+      .finally(() => {
+        if (!cancelled) setInviteValidating(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [inviteToken])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -22,7 +55,11 @@ export default function SignupPage() {
     }
     setSubmitting(true)
     try {
-      await signup(email, password, fullName || undefined)
+      if (inviteToken && inviteInfo) {
+        await acceptInvite(inviteToken, password, fullName || undefined)
+      } else {
+        await signup(email, password, fullName || undefined)
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Sign up failed')
     } finally {
@@ -34,8 +71,13 @@ export default function SignupPage() {
     <div className="flex items-center justify-center">
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white px-8 py-10 shadow-sm">
         <h1 className="mb-6 text-center text-2xl font-semibold tracking-tight text-slate-900">
-          Sign Up
+          {inviteInfo ? 'Create your account' : 'Sign Up'}
         </h1>
+        {inviteInfo && (
+          <p className="mb-4 text-center text-sm text-slate-600">
+            You&apos;re joining <strong>{inviteInfo.workspaceName}</strong>. Set your password to get started.
+          </p>
+        )}
 
         <form className="space-y-4" onSubmit={handleSubmit}>
           {error && (
@@ -53,7 +95,8 @@ export default function SignupPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none ring-0 transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+              readOnly={!!inviteInfo}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none ring-0 transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100 disabled:bg-slate-50 disabled:text-slate-500"
               placeholder="you@example.com"
             />
           </div>
@@ -109,13 +152,13 @@ export default function SignupPage() {
 
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || inviteValidating}
             className="mt-4 w-full rounded-lg bg-[var(--v2-primary)] py-2.5 text-sm font-medium text-[var(--v2-primary-foreground)] shadow-sm transition hover:bg-[var(--v2-primary-hover)] disabled:opacity-50"
           >
-            {submitting ? 'Creating account…' : 'Sign Up'}
+            {submitting ? (inviteInfo ? 'Joining workspace…' : 'Creating account…') : inviteValidating ? 'Checking invite…' : inviteInfo ? 'Create account & join' : 'Sign Up'}
           </button>
           <p className="mt-3 text-center text-xs text-slate-500">
-            After sign up you&apos;ll be signed in and taken to your dashboard.
+            {inviteInfo ? "You'll be signed in and taken to the workspace dashboard." : "After sign up you'll be signed in and taken to your dashboard."}
           </p>
         </form>
 
