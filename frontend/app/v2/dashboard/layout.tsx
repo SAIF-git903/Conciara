@@ -297,21 +297,32 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     <div className="flex h-full w-full min-h-0 flex-col bg-white">
       {/* Full-width top header - workspace name and agent dropdowns */}
       <header className="relative flex h-12 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-[var(--v2-primary)] text-sm font-bold text-white">
+        <Link
+          href="/v2/dashboard"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-[var(--v2-primary)] text-sm font-bold text-white hover:opacity-90 transition"
+          aria-label="Dashboard"
+        >
           C
-        </div>
+        </Link>
         <span className="text-slate-300">/</span>
 
-        {/* Workspace name / selector */}
-        <div className="relative" ref={workspaceRef}>
+        {/* Workspace name (clickable → dashboard) + dropdown trigger */}
+        <div className="relative flex items-center gap-0.5" ref={workspaceRef}>
+          <Link
+            href="/v2/dashboard"
+            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-slate-700 hover:bg-slate-50"
+            title="Go to dashboard"
+          >
+            <span className="font-medium">{currentWorkspace.name}</span>
+            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">{currentWorkspace.plan.charAt(0).toUpperCase() + currentWorkspace.plan.slice(1)}</span>
+          </Link>
           <button
             type="button"
             onClick={() => setOpenDropdown((v) => (v === 'workspace' ? null : 'workspace'))}
-            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-slate-700 hover:bg-slate-50"
+            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            aria-label="Switch workspace"
           >
-            <span className="font-medium" title="Workspace">{currentWorkspace.name}</span>
-            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">{currentWorkspace.plan.charAt(0).toUpperCase() + currentWorkspace.plan.slice(1)}</span>
-            <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${openDropdown === 'workspace' ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${openDropdown === 'workspace' ? 'rotate-180' : ''}`} />
           </button>
           {openDropdown === 'workspace' && (
             <div className="absolute left-0 top-full z-50 mt-0.5 w-64 rounded-lg border border-slate-200 bg-white py-1.5 shadow-lg">

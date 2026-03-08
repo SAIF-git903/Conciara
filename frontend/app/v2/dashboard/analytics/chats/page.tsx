@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { DateRangePicker } from 'react-date-range'
 import 'react-date-range/dist/styles.css'
 import 'react-date-range/dist/theme/default.css'
@@ -14,19 +14,17 @@ import {
   YAxis,
 } from 'recharts'
 import { BarChart3, RefreshCw, TrendingUp, MessageSquare, Calendar, ChevronDown } from 'lucide-react'
+import { useDashboard } from '@/contexts/DashboardContext'
+import v2Api from '@/lib/v2-api'
 
 const CHART_COLOR = '#0f172a' // --v2-primary
 
-// Mock analytics - replace with real API later
-const MOCK_CHATS_BY_DAY = [12, 18, 15, 22, 19, 28, 24]
-const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const CHART_DATA = MOCK_CHATS_BY_DAY.map((chats, i) => ({
-  day: DAY_LABELS[i],
-  chats,
-}))
-const MOCK_TOTAL_MESSAGES = 842
-const MOCK_TOTAL_CONVERSATIONS = 137
-const MOCK_TREND_PCT = 14
+interface ChatAnalytics {
+  totalMessages: number
+  totalConversations: number
+  trendPct: number
+  chatsByDay: { date: string; dayLabel: string; chats: number }[]
+}
 
 function toDateString(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -45,8 +43,19 @@ function formatRangeLabel(start: string, end: string) {
   return `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} – ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
 }
 
+function formatChartLabel(dateStr: string) {
+  const d = new Date(dateStr)
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
 export default function AnalyticsChatsPage() {
+  const { currentWorkspace, currentAgent } = useDashboard()
   const [customRange, setCustomRange] = useState(getDefaultCustomRange)
+  /** Pending range in the date picker; only applied when user clicks Apply */
+  const [pendingRange, setPendingRange] = useState(getDefaultCustomRange)
+  const [analytics, setAnalytics] = useState<ChatAnalytics | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [dateFilterOpen, setDateFilterOpen] = useState(false)
   const dateFilterRef = useRef<HTMLDivElement>(null)
@@ -56,22 +65,62 @@ export default function AnalyticsChatsPage() {
     [customRange.start, customRange.end]
   )
 
+  /** Selection shown in the date picker (pending until Apply) */
   const selectionRange = useMemo(
     () => ({
-      startDate: new Date(customRange.start),
-      endDate: new Date(customRange.end),
+      startDate: new Date(pendingRange.start),
+      endDate: new Date(pendingRange.end),
       key: 'selection',
     }),
-    [customRange.start, customRange.end]
+    [pendingRange.start, pendingRange.end]
   )
 
+  const fetchAnalytics = useCallback(async () => {
+    if (!currentWorkspace?.id || !currentAgent?.id) {
+      setAnalytics(null)
+      setLoading(false)
+      return
+    }
+    setError(null)
+    try {
+      const { data } = await v2Api.get<ChatAnalytics>(
+        `/v2/workspaces/${currentWorkspace.id}/agents/${currentAgent.id}/analytics/chats`,
+        { params: { start: customRange.start, end: customRange.end } }
+      )
+      setAnalytics(data)
+    } catch (e: unknown) {
+      setAnalytics(null)
+      setError(e instanceof Error ? e.message : 'Failed to load analytics')
+    } finally {
+      setLoading(false)
+      setIsRefreshing(false)
+    }
+  }, [currentWorkspace?.id, currentAgent?.id, customRange.start, customRange.end])
+
+  useEffect(() => {
+    setLoading(true)
+    fetchAnalytics()
+  }, [fetchAnalytics])
+
+  /** Update only the pending range while user is picking; Apply will commit it */
   const handleRangeSelect = (ranges: Record<string, { startDate: Date; endDate: Date }>) => {
     const sel = ranges.selection
     if (!sel?.startDate) return
-    setCustomRange({
+    setPendingRange({
       start: toDateString(sel.startDate),
       end: sel.endDate ? toDateString(sel.endDate) : toDateString(sel.startDate),
     })
+  }
+
+  const handleApplyRange = () => {
+    setCustomRange(pendingRange)
+    setDateFilterOpen(false)
+  }
+
+  /** When opening the picker, sync pending range to current applied range */
+  const handleOpenDateFilter = () => {
+    setPendingRange(customRange)
+    setDateFilterOpen((v) => !v)
   }
 
   useEffect(() => {
@@ -87,8 +136,27 @@ export default function AnalyticsChatsPage() {
 
   const handleRefresh = () => {
     setIsRefreshing(true)
-    // TODO: replace with real API refetch
-    setTimeout(() => setIsRefreshing(false), 800)
+    setLoading(true)
+    fetchAnalytics()
+  }
+
+  const chartData = useMemo(
+    () =>
+      (analytics?.chatsByDay ?? []).map((d) => ({
+        date: d.date,
+        dayLabel: d.dayLabel,
+        label: formatChartLabel(d.date),
+        chats: d.chats,
+      })),
+    [analytics?.chatsByDay]
+  )
+
+  if (!currentAgent) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center p-6 text-center">
+        <p className="text-sm text-slate-600">Select an agent from the header to view chat analytics.</p>
+      </div>
+    )
   }
 
   return (
@@ -98,14 +166,14 @@ export default function AnalyticsChatsPage() {
           Chats
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          Chat volume and trends for this agent.
+          Chat volume and trends for {currentAgent.name}.
         </p>
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <div className="relative" ref={dateFilterRef}>
             <button
               type="button"
-              onClick={() => setDateFilterOpen((v) => !v)}
+              onClick={handleOpenDateFilter}
               className="flex min-w-[240px] items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-left text-sm text-slate-900 shadow-sm outline-none transition hover:border-slate-400 focus:border-[var(--v2-primary)] focus:ring-2 focus:ring-[var(--v2-primary)]/20"
               aria-expanded={dateFilterOpen}
               aria-haspopup="dialog"
@@ -140,7 +208,7 @@ export default function AnalyticsChatsPage() {
                 <div className="flex justify-end border-t border-slate-100 p-3">
                   <button
                     type="button"
-                    onClick={() => setDateFilterOpen(false)}
+                    onClick={handleApplyRange}
                     className="rounded-lg bg-[var(--v2-primary)] px-4 py-2 text-sm font-medium text-[var(--v2-primary-foreground)] transition hover:opacity-90"
                   >
                     Apply
@@ -165,55 +233,67 @@ export default function AnalyticsChatsPage() {
       </div>
 
       <div className="flex-1 overflow-auto p-6">
-        {/* Metric cards */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center gap-2 text-slate-500">
-              <MessageSquare className="h-4 w-4" />
-              <span className="text-sm font-medium">Total Messages</span>
-            </div>
-            <p className="mt-2 text-2xl font-bold text-slate-900">
-              {MOCK_TOTAL_MESSAGES}
-            </p>
-            <p className="mt-0.5 text-xs text-slate-500">In selected period</p>
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {error}
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center gap-2 text-slate-500">
-              <BarChart3 className="h-4 w-4" />
-              <span className="text-sm font-medium">Total Conversations</span>
-            </div>
-            <p className="mt-2 text-2xl font-bold text-slate-900">
-              {MOCK_TOTAL_CONVERSATIONS}
-            </p>
-            <p className="mt-0.5 text-xs text-slate-500">In selected period</p>
+        )}
+        {loading && !analytics ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--v2-primary)] border-t-transparent" />
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center gap-2 text-slate-500">
-              <TrendingUp className="h-4 w-4" />
-              <span className="text-sm font-medium">Trends</span>
+        ) : (
+          <>
+            {/* Metric cards */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-2 text-slate-500">
+                  <MessageSquare className="h-4 w-4" />
+                  <span className="text-sm font-medium">Total Messages</span>
+                </div>
+                <p className="mt-2 text-2xl font-bold text-slate-900">
+                  {analytics?.totalMessages ?? 0}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">In selected period</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-2 text-slate-500">
+                  <BarChart3 className="h-4 w-4" />
+                  <span className="text-sm font-medium">Total Conversations</span>
+                </div>
+                <p className="mt-2 text-2xl font-bold text-slate-900">
+                  {analytics?.totalConversations ?? 0}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">In selected period</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-2 text-slate-500">
+                  <TrendingUp className="h-4 w-4" />
+                  <span className="text-sm font-medium">Trends</span>
+                </div>
+                <p className={`mt-2 text-2xl font-bold ${(analytics?.trendPct ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {(analytics?.trendPct ?? 0) >= 0 ? '+' : ''}{analytics?.trendPct ?? 0}%
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">vs previous period</p>
+              </div>
             </div>
-            <p className="mt-2 text-2xl font-bold text-emerald-600">
-              +{MOCK_TREND_PCT}%
-            </p>
-            <p className="mt-0.5 text-xs text-slate-500">vs previous period</p>
-          </div>
-        </div>
 
-        {/* Line chart - Recharts */}
-        <div className="mt-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-sm font-semibold text-slate-900">
-            Chats over time
-          </h2>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Daily chat count: {rangeLabel}
-          </p>
-          <div className="mt-6 h-[280px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={CHART_DATA}
-                margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
-                aria-label="Daily chats line chart"
-              >
+            {/* Line chart - Recharts */}
+            <div className="mt-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h2 className="text-sm font-semibold text-slate-900">
+                Chats over time
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Daily chat count: {rangeLabel}
+              </p>
+              <div className="mt-6 h-[280px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    key={`${customRange.start}-${customRange.end}`}
+                    data={chartData}
+                    margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                    aria-label="Daily chats line chart"
+                  >
                 <defs>
                   <linearGradient id="chatsAreaFill" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor={CHART_COLOR} stopOpacity={0.25} />
@@ -222,7 +302,7 @@ export default function AnalyticsChatsPage() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
                 <XAxis
-                  dataKey="day"
+                  dataKey="label"
                   tick={{ fontSize: 12, fill: '#64748b' }}
                   tickLine={false}
                   axisLine={{ stroke: '#e2e8f0' }}
@@ -257,6 +337,8 @@ export default function AnalyticsChatsPage() {
             </ResponsiveContainer>
           </div>
         </div>
+          </>
+        )}
       </div>
     </div>
   )

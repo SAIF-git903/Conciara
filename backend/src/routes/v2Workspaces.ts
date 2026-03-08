@@ -57,6 +57,7 @@ import {
   sessionBelongsToAgent,
   createOrGetSession,
   appendMessage,
+  getChatAnalytics,
 } from '../services/agentChatLogService.js';
 import {
   classifyIntent,
@@ -517,6 +518,44 @@ router.post('/:workspaceId/agents/:agentId/widget-header-image', uploadImage.sin
   } catch (error: any) {
     console.error('Widget header image upload error:', error);
     res.status(500).json({ error: 'Failed to upload image', details: error?.message });
+  }
+});
+
+/**
+ * GET /api/v2/workspaces/:workspaceId/agents/:agentId/analytics/chats
+ * Chat analytics for date range. Query: start=YYYY-MM-DD, end=YYYY-MM-DD
+ */
+router.get('/:workspaceId/agents/:agentId/analytics/chats', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const agent = await prisma.agent.findUnique({ where: { id: agentId } });
+    if (!agent || agent.workspaceId !== workspaceId) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const startParam = typeof req.query.start === 'string' ? req.query.start : null;
+    const endParam = typeof req.query.end === 'string' ? req.query.end : null;
+    const end = endParam ? new Date(endParam) : new Date();
+    const start = startParam ? new Date(startParam) : (() => { const d = new Date(); d.setDate(d.getDate() - 6); return d; })();
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+      return res.status(400).json({ error: 'Invalid date range' });
+    }
+
+    const analytics = await getChatAnalytics(agentId, start, end);
+    return res.json(analytics);
+  } catch (error: any) {
+    console.error('Chat analytics error:', error);
+    res.status(500).json({ error: 'Failed to load analytics', details: error?.message });
   }
 });
 

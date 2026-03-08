@@ -130,3 +130,72 @@ export async function sessionBelongsToAgent(
   });
   return !!session;
 }
+
+export interface ChatAnalyticsResult {
+  totalMessages: number;
+  totalConversations: number;
+  trendPct: number;
+  chatsByDay: { date: string; dayLabel: string; chats: number }[];
+}
+
+/**
+ * Get chat analytics for an agent in a date range (inclusive).
+ * - totalMessages: count of messages with createdAt in [start, end]
+ * - totalConversations: count of sessions with createdAt in [start, end]
+ * - trendPct: % change in totalConversations vs previous period of same length
+ * - chatsByDay: one row per day in range with conversation count that day
+ */
+export async function getChatAnalytics(
+  agentId: number,
+  startDate: Date,
+  endDate: Date
+): Promise<ChatAnalyticsResult> {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  start.setHours(0, 0, 0, 0);
+  end.setHours(23, 59, 59, 999);
+
+  const [totalMessages, totalConversations, sessionsInRange] = await Promise.all([
+    prisma.agentChatMessage.count({
+      where: { agentId, createdAt: { gte: start, lte: end } },
+    }),
+    prisma.agentChatSession.count({
+      where: { agentId, createdAt: { gte: start, lte: end } },
+    }),
+    prisma.agentChatSession.findMany({
+      where: { agentId, createdAt: { gte: start, lte: end } },
+      select: { createdAt: true },
+    }),
+  ]);
+
+  const dayMap = new Map<string, number>();
+  for (const s of sessionsInRange as { createdAt: Date }[]) {
+    const d = s.createdAt.toISOString().slice(0, 10);
+    dayMap.set(d, (dayMap.get(d) ?? 0) + 1);
+  }
+
+  const chatsByDay: { date: string; dayLabel: string; chats: number }[] = [];
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    const dateStr = cursor.toISOString().slice(0, 10);
+    const dayLabel = cursor.toLocaleDateString(undefined, { weekday: 'short' });
+    chatsByDay.push({ date: dateStr, dayLabel, chats: dayMap.get(dateStr) ?? 0 });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  const periodMs = end.getTime() - start.getTime();
+  const prevEnd = new Date(start.getTime() - 1);
+  const prevStart = new Date(prevEnd.getTime() - periodMs);
+  const previousConversations = await prisma.agentChatSession.count({
+    where: { agentId, createdAt: { gte: prevStart, lte: prevEnd } },
+  });
+
+  let trendPct = 0;
+  if (previousConversations > 0) {
+    trendPct = Math.round(((totalConversations - previousConversations) / previousConversations) * 100);
+  } else if (totalConversations > 0) {
+    trendPct = 100;
+  }
+
+  return { totalMessages, totalConversations, trendPct, chatsByDay };
+}
