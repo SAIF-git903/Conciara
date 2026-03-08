@@ -81,7 +81,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { user, loading, logout } = useAuth()
+  const { user, loading, logout, refreshUser } = useAuth()
   const agentIdFromUrl = searchParams.get('agent')
   const parsed = parseDashboardPath(pathname ?? '')
   const workspaceIdFromPath = parsed.workspaceId ? parseInt(parsed.workspaceId, 10) : null
@@ -98,6 +98,11 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   const [agentToDelete, setAgentToDelete] = useState<{ id: string; name: string } | null>(null)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false)
+  const [createWorkspaceName, setCreateWorkspaceName] = useState('')
+  const [createWorkspaceLoading, setCreateWorkspaceLoading] = useState(false)
+  const [createWorkspaceError, setCreateWorkspaceError] = useState('')
+  const createWorkspaceInputRef = useRef<HTMLInputElement>(null)
   const workspaceRef = useRef<HTMLDivElement>(null)
   const agentRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
@@ -300,6 +305,55 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     }
   }, [agentToDelete, currentWorkspace?.id, currentAgent?.id, agents, deleteConfirmText, router])
 
+  useEffect(() => {
+    if (createWorkspaceOpen) {
+      createWorkspaceInputRef.current?.focus()
+    }
+  }, [createWorkspaceOpen])
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && createWorkspaceOpen && !createWorkspaceLoading) {
+        setCreateWorkspaceOpen(false)
+        setCreateWorkspaceError('')
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [createWorkspaceOpen, createWorkspaceLoading])
+
+  const handleCreateWorkspace = useCallback(async () => {
+    const name = createWorkspaceName.trim()
+    if (!name) {
+      setCreateWorkspaceError('Workspace name is required')
+      return
+    }
+    setCreateWorkspaceError('')
+    setCreateWorkspaceLoading(true)
+    try {
+      const { data } = await api.post<{ workspace: { id: number; name: string; plan: string; role: string } }>('/workspaces', { name })
+      await refreshUser()
+      setSelectedWorkspaceId(data.workspace.id)
+      setCurrentWorkspace({
+        id: data.workspace.id,
+        name: data.workspace.name,
+        plan: data.workspace.plan,
+        role: 'owner',
+      })
+      setCreateWorkspaceOpen(false)
+      setCreateWorkspaceName('')
+      router.push(buildDashboardUrl(data.workspace.id))
+    } catch (err: unknown) {
+      const message =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
+          : 'Failed to create workspace'
+      setCreateWorkspaceError(message || 'Failed to create workspace')
+    } finally {
+      setCreateWorkspaceLoading(false)
+    }
+  }, [createWorkspaceName, refreshUser, router])
+
   if (loading || !user) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-white">
@@ -424,7 +478,16 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
             <div className="absolute left-0 top-full z-50 mt-0.5 w-64 rounded-lg border border-slate-200 bg-white py-1.5 shadow-lg">
               {isOwner && (
                 <div className="border-b border-slate-100 px-1.5 pb-1.5">
-                  <button type="button" className="flex w-full items-center justify-center gap-1 rounded border border-[var(--v2-primary)] py-1.5 text-xs font-medium text-[var(--v2-primary)] hover:bg-[var(--v2-primary)]/10">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCreateWorkspaceOpen(true)
+                      setOpenDropdown(null)
+                      setCreateWorkspaceName('')
+                      setCreateWorkspaceError('')
+                    }}
+                    className="flex w-full items-center justify-center gap-1 rounded border border-[var(--v2-primary)] py-1.5 text-xs font-medium text-[var(--v2-primary)] hover:bg-[var(--v2-primary)]/10"
+                  >
                     <Plus className="h-3 w-3" /> Create workspace
                   </button>
                 </div>
@@ -719,6 +782,79 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                     className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:pointer-events-none"
                   >
                     {deleteLoading ? 'Deleting…' : 'Delete permanently'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create workspace modal */}
+      {createWorkspaceOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4"
+          onClick={() => !createWorkspaceLoading && (setCreateWorkspaceOpen(false), setCreateWorkspaceError(''))}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="create-workspace-title"
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--v2-primary)]/10 text-[var(--v2-primary)]">
+                <Plus className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 id="create-workspace-title" className="text-lg font-semibold text-slate-900">
+                  Create workspace
+                </h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  Add a new workspace to organize agents and data separately.
+                </p>
+                <label htmlFor="create-workspace-name" className="mt-4 block text-sm font-medium text-slate-700">
+                  Workspace name
+                </label>
+                <input
+                  id="create-workspace-name"
+                  ref={createWorkspaceInputRef}
+                  type="text"
+                  value={createWorkspaceName}
+                  onChange={(e) => setCreateWorkspaceName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleCreateWorkspace()}
+                  placeholder="e.g. Marketing, Support"
+                  className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm placeholder:text-slate-400 focus:border-[var(--v2-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--v2-primary)]/20"
+                  disabled={createWorkspaceLoading}
+                  autoComplete="off"
+                />
+                {createWorkspaceError && (
+                  <p className="mt-2 text-sm text-red-600" role="alert">
+                    {createWorkspaceError}
+                  </p>
+                )}
+                <div className="mt-6 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!createWorkspaceLoading) {
+                        setCreateWorkspaceOpen(false)
+                        setCreateWorkspaceError('')
+                      }
+                    }}
+                    disabled={createWorkspaceLoading}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCreateWorkspace}
+                    disabled={createWorkspaceLoading || !createWorkspaceName.trim()}
+                    className="rounded-lg bg-[var(--v2-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:pointer-events-none"
+                  >
+                    {createWorkspaceLoading ? 'Creating…' : 'Create workspace'}
                   </button>
                 </div>
               </div>
