@@ -1,6 +1,6 @@
 'use client'
 
-import { Minimize2, Maximize2, X, Settings } from 'lucide-react'
+import { X, Settings } from 'lucide-react'
 import { MergedSkinConfig } from '../../types/skinConfig'
 
 interface DynamicHeaderProps {
@@ -62,20 +62,7 @@ export default function DynamicHeader({
             <Settings className="w-4 h-4" />
           </button>
         )}
-        {headerConfig.showMinimize && (
-          <button
-            onClick={onMinimize}
-            className="p-1 hover:bg-white/20 rounded transition-colors"
-            aria-label={isMinimized ? 'Maximize' : 'Minimize'}
-          >
-            {isMinimized ? (
-              <Maximize2 className="w-4 h-4" />
-            ) : (
-              <Minimize2 className="w-4 h-4" />
-            )}
-          </button>
-        )}
-        {headerConfig.showClose && (
+        {headerConfig.showClose !== false && (
           <button
             onClick={onClose}
             className="p-1 hover:bg-white/20 rounded transition-colors"

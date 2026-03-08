@@ -108,9 +108,9 @@ export default function SigninPage() {
         </form>
 
         <div className="mt-4 text-center text-xs text-slate-500">
-          <button type="button" className="text-slate-700 underline-offset-2 hover:underline">
+          <Link href="/forgot-password" className="text-slate-700 underline-offset-2 hover:underline">
             Forgot password?
-          </button>
+          </Link>
         </div>
 
         <div className="mt-6 flex items-center gap-3 text-xs text-slate-500">

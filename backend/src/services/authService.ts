@@ -12,6 +12,7 @@ const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || '12');
 const JWT_SECRET: string = process.env.JWT_SECRET || 'change-this-secret-in-production';
 const JWT_EXPIRES_IN: string = process.env.JWT_EXPIRES_IN || '15m';
 const JWT_REFRESH_EXPIRES_IN: string = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+const PASSWORD_RESET_EXPIRES_IN = process.env.PASSWORD_RESET_EXPIRES_IN || '1h';
 const API_KEY_PREFIX = process.env.API_KEY_PREFIX || 'ct_';
 const API_KEY_LENGTH = parseInt(process.env.API_KEY_LENGTH || '32');
 
@@ -99,6 +100,38 @@ export function verifyJWT(token: string): UserPayload {
     }
     if (error.name === 'JsonWebTokenError') {
       throw new Error('Invalid token');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Generate a one-time JWT for password reset (short-lived, e.g. 1h).
+ */
+export function generatePasswordResetToken(userId: number, email: string): string {
+  return jwt.sign(
+    { type: 'password-reset', id: userId, email },
+    JWT_SECRET,
+    { expiresIn: PASSWORD_RESET_EXPIRES_IN } as SignOptions
+  );
+}
+
+/**
+ * Verify password reset token and return userId and email.
+ */
+export function verifyPasswordResetToken(token: string): { userId: number; email: string } {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as { type?: string; id: number; email: string };
+    if (decoded.type !== 'password-reset') {
+      throw new Error('Invalid token type');
+    }
+    return { userId: decoded.id, email: decoded.email };
+  } catch (error: any) {
+    if (error.name === 'TokenExpiredError') {
+      throw new Error('Reset link has expired');
+    }
+    if (error.name === 'JsonWebTokenError') {
+      throw new Error('Invalid or expired reset link');
     }
     throw error;
   }

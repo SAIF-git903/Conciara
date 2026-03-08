@@ -13,9 +13,7 @@
     "migrate:rollback": "tsx src/db/migrate.ts rollback",
     "migrate:check": "tsx src/db/checkMigrationTables.ts",
     "setup-db": "tsx src/db/setup.ts",
-    "seed": "tsx src/db/seed.ts",
     "seed-admin": "tsx src/db/seedAdmin.ts",
-    "regenerate-embeddings": "tsx src/regenerateEmbeddings.ts",
     "postinstall": "prisma generate"
   },
   "keywords": [

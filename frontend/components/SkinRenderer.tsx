@@ -48,6 +48,8 @@ export interface SkinRendererProps {
   sessionId?: string | null
   /** When true, only the chat window is shown (no floating button); window starts open. For embed/preview. */
   previewMode?: boolean
+  /** When in previewMode (embed), called when user clicks close so the host can hide the panel and show the launcher. */
+  onEmbedClose?: () => void
 }
 
 export default function SkinRenderer({
@@ -63,7 +65,8 @@ export default function SkinRenderer({
   onMessagesChange,
   initialMessages = [],
   sessionId: initialSessionId = null,
-  previewMode = false
+  previewMode = false,
+  onEmbedClose
 }: SkinRendererProps) {
   const [isOpen, setIsOpen] = useState(previewMode)
   const [isMinimized, setIsMinimized] = useState(false)
@@ -293,7 +296,7 @@ export default function SkinRenderer({
             <DynamicHeader
               config={config}
               isMinimized={isMinimized}
-              onMinimize={() => setIsMinimized(!isMinimized)}
+              onMinimize={() => {}}
               onClose={handleClose}
             />
             {!isMinimized && (
@@ -330,8 +333,8 @@ export default function SkinRenderer({
           <DynamicHeader
             config={config}
             isMinimized={isMinimized}
-            onMinimize={previewMode ? () => {} : () => setIsMinimized(!isMinimized)}
-            onClose={previewMode ? () => {} : handleClose}
+            onMinimize={() => {}}
+            onClose={previewMode ? () => onEmbedClose?.() : handleClose}
             showSettings={!previewMode && !!(language && typeof onLanguageSelect === 'function')}
             onSettingsClick={() => setSettingsOpen(true)}
           />

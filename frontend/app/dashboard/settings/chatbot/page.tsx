@@ -14,9 +14,12 @@ import { DEFAULT_WINDOW, DEFAULT_THEME, CHAT_WIDGET_LEFT_WIDTH, CHAT_WIDGET_PREV
 type TabType = 'theme' | 'components' | 'embed'
 
 function buildEmbedSnippet(apiUrl: string, workspaceId: number, agentId: number | string): string {
-  return `<script
-  src="${typeof window !== 'undefined' ? window.location.origin : ''}/loader.js"
-  data-api-url="${apiUrl}"
+  const baseUrl = apiUrl.replace(/\/+$/, '')
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://your-app.com'
+  return `<!-- ConversaTree chat widget -->
+<script
+  src="${origin}/embed.js"
+  data-api-url="${baseUrl}"
   data-workspace-id="${workspaceId}"
   data-agent-id="${agentId}"
   data-position="bottom-right"
@@ -719,6 +722,16 @@ export default function ChatbotCustomizationsPage() {
 
               {activeTab === 'embed' && (
                 <div className="space-y-3">
+                  <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                    <CheckboxInput
+                      label="Allow public embed"
+                      checked={!!(config as SkinConfig & { allowPublicEmbed?: boolean }).allowPublicEmbed}
+                      onChange={(v) => setConfig((c) => ({ ...c, allowPublicEmbed: v }))}
+                    />
+                    <p className="text-xs text-slate-500 mt-1.5 ml-6">
+                      Let visitors use the chat on your site without logging in. Disable to restrict chat to authenticated users only.
+                    </p>
+                  </div>
                   <div className="rounded-lg border border-slate-200 bg-slate-900 overflow-hidden">
                     <div className="flex items-center justify-between px-3 py-2 border-b border-slate-700/80">
                       <span className="text-[11px] font-medium uppercase tracking-wider text-slate-400">HTML</span>

@@ -11,6 +11,8 @@ import {
   generateRefreshToken,
   verifyRefreshToken,
   hashPassword,
+  generatePasswordResetToken,
+  verifyPasswordResetToken,
   revokeRefreshToken,
   revokeAllUserRefreshTokens,
   revokeSession,
@@ -142,6 +144,69 @@ router.post('/login', async (req, res) => {
   } catch (error: any) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Login failed', details: error.message });
+  }
+});
+
+/**
+ * POST /api/auth/forgot-password
+ * Body: { email }. Sends a password reset link to the user's email if the account exists.
+ */
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    const trimmed = typeof email === 'string' ? email.trim() : '';
+    if (!trimmed) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+    const user = await getUserByEmail(trimmed);
+    if (!user || !user.isActive) {
+      return res.json({ message: 'If an account exists with this email, you will receive a reset link.' });
+    }
+    const token = generatePasswordResetToken(user.id, user.email);
+    const { sendPasswordResetEmail } = await import('../services/emailService.js');
+    const baseUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
+    const resetLink = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
+    await sendPasswordResetEmail(user.email, resetLink);
+    return res.json({ message: 'If an account exists with this email, you will receive a reset link.' });
+  } catch (error: any) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+/**
+ * POST /api/auth/reset-password
+ * Body: { token, newPassword }. Sets a new password using a valid reset token.
+ */
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body || {};
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: 'Reset token is required' });
+    }
+    const raw = typeof newPassword === 'string' ? newPassword : '';
+    if (!raw || raw.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    let payload: { userId: number; email: string };
+    try {
+      payload = verifyPasswordResetToken(token);
+    } catch (e: any) {
+      return res.status(400).json({ error: e.message || 'Invalid or expired reset link' });
+    }
+    const user = await getUserById(payload.userId);
+    if (!user || !user.isActive) {
+      return res.status(400).json({ error: 'Invalid or expired reset link' });
+    }
+    const passwordHash = await hashPassword(raw);
+    await prisma.user.update({
+      where: { id: payload.userId },
+      data: { passwordHash, updatedAt: new Date() },
+    });
+    return res.json({ message: 'Your password has been reset. You can sign in with your new password.' });
+  } catch (error: any) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 

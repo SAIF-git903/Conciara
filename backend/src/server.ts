@@ -5,11 +5,10 @@ import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger.js';
 // Import connection early to validate DATABASE_URL
 import './db/connection.js';
-import mediaRoutes from './routes/media.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import apiKeyRoutes from './routes/apiKeys.js';
-import workspaceRoutes from './routes/workspaces.js';
+import workspaceRoutes, { handlePublicAgentChatStream } from './routes/workspaces.js';
 import { prisma } from './db/prisma.js';
 import { SUPPORTED_LLM_MODELS } from './services/llmService.js';
 import { injectPresignedWidgetHeaderIcon } from './services/s3Service.js';
@@ -41,10 +40,6 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-
-// Media routes BEFORE express.json() so file uploads (multipart/form-data) are
-// handled by multer only — express.json() must not parse multipart bodies.
-app.use('/api/media', mediaRoutes);
 
 app.use(express.json());
 
@@ -117,6 +112,25 @@ app.get('/api/public/widget-config', async (req, res) => {
   } catch (error: any) {
     console.error('Public widget config error:', error);
     res.status(500).json({ error: 'Failed to load widget config' });
+  }
+});
+
+/** Public embed: chat stream. No auth; requires agent.widgetConfig.allowPublicEmbed. */
+app.post('/api/public/workspaces/:workspaceId/agents/:agentId/chat/stream', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    await handlePublicAgentChatStream(workspaceId, agentId, req.body, res);
+  } catch (error: any) {
+    console.error('Public chat stream error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || 'Chat failed' });
+    } else {
+      res.end();
+    }
   }
 });
 
