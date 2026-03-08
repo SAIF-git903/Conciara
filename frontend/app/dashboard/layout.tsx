@@ -71,7 +71,6 @@ const agentNavItems = [
   { href: '#', label: 'Activity', Icon: MessageSquare, children: ['Chat logs'] },
   { href: '#', label: 'Analytics', Icon: BarChart3, children: ['Chats'] },
   { href: '#', label: 'Data sources', Icon: Database, children: ['Files', 'Q&A', 'Website'] },
-  { href: '/dashboard/members', label: 'Members', Icon: Users },
   { href: '/dashboard/connected-apps', label: 'Connected Apps', Icon: Plug },
   { href: '/dashboard/settings/chatbot', label: 'Chat widget', Icon: Palette },
   { href: '#', label: 'Settings', Icon: Settings, children: ['General', 'API keys'] },

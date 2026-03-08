@@ -3,6 +3,7 @@
  * Used only by v2 UI. Requires auth; enforces owner/member access.
  */
 
+import crypto from 'crypto';
 import express from 'express';
 import multer from 'multer';
 import { requireAuth } from '../middleware/authMiddleware.js';
@@ -616,6 +617,164 @@ router.patch('/:workspaceId/agents/:agentId/widget-config', async (req, res) => 
   } catch (error: any) {
     console.error('Patch widget config error:', error);
     res.status(500).json({ error: 'Failed to save widget config', details: error?.message });
+  }
+});
+
+/**
+ * GET /api/v2/workspaces/:workspaceId/agents/:agentId/integrations/slack
+ * Returns Slack connection status (no token). { connected: boolean, teamName?: string }
+ */
+router.get('/:workspaceId/agents/:agentId/integrations/slack', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const agent = await prisma.agent.findFirst({
+      where: { id: agentId, workspaceId },
+      select: { integrations: true },
+    });
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+    const integrations = (agent.integrations as { slack?: { teamId?: string; teamName?: string } } | null) ?? {};
+    const slack = integrations.slack;
+    return res.json({
+      connected: !!slack?.teamId,
+      teamName: slack?.teamName ?? undefined,
+    });
+  } catch (error: any) {
+    console.error('Get Slack integration error:', error);
+    res.status(500).json({ error: 'Failed to get Slack integration', details: error?.message });
+  }
+});
+
+const SLACK_OAUTH_SCOPES = 'chat:write,app_mentions:read,channels:history,channels:read,groups:history,groups:read,im:history,im:read,im:write';
+
+/**
+ * GET /api/v2/workspaces/:workspaceId/agents/:agentId/integrations/slack/oauth-url
+ * Returns { redirectUrl } for Slack OAuth v2. User is redirected there to authorize; callback stores token.
+ */
+router.get('/:workspaceId/agents/:agentId/integrations/slack/oauth-url', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const clientId = process.env.SLACK_CLIENT_ID;
+    const redirectUri = process.env.SLACK_REDIRECT_URI;
+    if (!clientId || !redirectUri) {
+      return res.status(503).json({ error: 'Slack integration is not configured. Set SLACK_CLIENT_ID and SLACK_REDIRECT_URI.' });
+    }
+
+    const stateSecret = process.env.JWT_SECRET || process.env.SLACK_OAUTH_STATE_SECRET || 'slack-oauth-state';
+    const exp = Math.floor(Date.now() / 1000) + 600;
+    const payload = { workspaceId, agentId, userId, exp };
+    const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    const sig = crypto.createHmac('sha256', stateSecret).update(payloadB64).digest('hex');
+    const state = `${payloadB64}.${sig}`;
+
+    const redirectUrl = 'https://slack.com/oauth/v2/authorize?' + new URLSearchParams({
+      client_id: clientId,
+      scope: SLACK_OAUTH_SCOPES,
+      redirect_uri: redirectUri,
+      state,
+    });
+    return res.json({ redirectUrl });
+  } catch (error: any) {
+    console.error('Slack OAuth URL error:', error);
+    res.status(500).json({ error: 'Failed to get Slack authorization URL', details: error?.message });
+  }
+});
+
+/**
+ * POST /api/v2/workspaces/:workspaceId/agents/:agentId/integrations/slack
+ * Connect Slack: body { accessToken, signingSecret }. Validates token via auth.test and stores per agent.
+ * signingSecret is from the user's Slack app (Basic Information → Signing Secret); used to verify events.
+ */
+router.post('/:workspaceId/agents/:agentId/integrations/slack', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const agent = await prisma.agent.findFirst({
+      where: { id: agentId, workspaceId },
+      select: { id: true, integrations: true },
+    });
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+    const { accessToken, signingSecret } = req.body ?? {};
+    const token = typeof accessToken === 'string' ? accessToken.trim() : '';
+    const secret = typeof signingSecret === 'string' ? signingSecret.trim() : '';
+    if (!token) {
+      return res.status(400).json({ error: 'accessToken is required' });
+    }
+    if (!secret) {
+      return res.status(400).json({ error: 'signingSecret is required so we can verify events from your Slack app. Find it in your app’s Basic Information → Signing Secret.' });
+    }
+
+    return res.status(400).json({ error: 'Connect via OAuth: use the Connect to Slack button in Connected Apps.' });
+  } catch (error: any) {
+    console.error('Connect Slack error:', error);
+    res.status(500).json({ error: 'Failed to connect Slack', details: error?.message });
+  }
+});
+
+/**
+ * DELETE /api/v2/workspaces/:workspaceId/agents/:agentId/integrations/slack
+ * Disconnect Slack for this agent.
+ */
+router.delete('/:workspaceId/agents/:agentId/integrations/slack', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const agent = await prisma.agent.findFirst({
+      where: { id: agentId, workspaceId },
+      select: { id: true, integrations: true },
+    });
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+    const integrations = (agent.integrations as Record<string, unknown> | null) ?? {};
+    const { slack: _removed, ...rest } = integrations;
+    await prisma.agent.update({
+      where: { id: agentId },
+      data: { integrations: Object.keys(rest).length > 0 ? rest : null },
+    });
+
+    return res.json({ ok: true, connected: false });
+  } catch (error: any) {
+    console.error('Disconnect Slack error:', error);
+    res.status(500).json({ error: 'Failed to disconnect Slack', details: error?.message });
   }
 });
 
@@ -1239,6 +1398,71 @@ router.delete('/:workspaceId/agents/:agentId/qa/:qaId', async (req, res) => {
     res.status(500).json({ error: 'Failed to delete Q&A' });
   }
 });
+
+/**
+ * Get a single AI reply for an agent (used by Slack and other integrations).
+ * Agent must be the full Prisma agent record. Returns the reply text.
+ */
+export async function getAgentReply(
+  agent: { id: number; workspaceId: number; prePrompt: string | null; model: string | null; role?: string | null },
+  userMessage: string,
+  bodySessionId?: string | null
+): Promise<string> {
+  const agentId = agent.id;
+  const historyList: { role: 'user' | 'assistant'; content: string }[] = [];
+  const intent = classifyIntent(userMessage);
+  const sessionState = deriveSessionState(historyList, intent);
+  const isConversational = isConversationalIntent(intent);
+
+  let qaBlock = '';
+  let contextBlock = '';
+  let websiteBlock = '';
+  let qaMatches: { id: number }[] = [];
+
+  if (!isConversational) {
+    const [chunks, qa] = await Promise.all([
+      retrieveChunks(agentId, userMessage, 20),
+      retrieveQa(agentId, userMessage, 5),
+    ]);
+    qaMatches = qa;
+    qaBlock =
+      qa.length > 0
+        ? `\n\nPRIORITY – Use these exact answers when the user's question matches. Prefer them over other context.\n${qa.map((q) => `Q: ${q.question}\nA: ${q.answer}`).join('\n\n')}\n\n`
+        : '';
+    contextBlock =
+      chunks.length > 0
+        ? `\n\nUse the following relevant excerpts from the agent's training data to answer. The training data may include information from multiple websites or stores; use any relevant excerpt and, if the user's question could refer to more than one, consider all and clarify which store when helpful.\n\n${chunks.map((c) => c.content).join('\n\n---\n\n')}`
+        : '';
+    websiteBlock = '';
+  }
+
+  const agentRole = (agent as { role?: string | null }).role ?? 'general';
+  const systemContent = buildAgentChatSystemContent({
+    prePrompt: agent.prePrompt,
+    role: agentRole,
+    qaBlock,
+    contextBlock,
+    websiteBlock,
+    sessionState,
+    isConversational,
+  });
+
+  const modelId = agent.model || 'gpt-4o-mini';
+  const reply = await chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
+    maxTokens: 1024,
+    temperature: 0.7,
+  });
+
+  if (!isConversational && qaMatches.length > 0) {
+    await recordQaUsage(qaMatches.map((q) => q.id)).catch((err) => console.error('Record Q&A usage:', err));
+  }
+
+  const { sessionRowId } = await createOrGetSession(agentId, bodySessionId ?? null);
+  await appendMessage(sessionRowId, agentId, 'user', userMessage);
+  await appendMessage(sessionRowId, agentId, 'assistant', reply);
+
+  return reply;
+}
 
 /**
  * POST /api/v2/workspaces/:workspaceId/agents/:agentId/chat

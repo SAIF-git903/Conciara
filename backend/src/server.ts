@@ -9,6 +9,7 @@ import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import apiKeyRoutes from './routes/apiKeys.js';
 import workspaceRoutes, { handlePublicAgentChatStream } from './routes/workspaces.js';
+import slackEventsRouter from './routes/slackEvents.js';
 import { prisma } from './db/prisma.js';
 import { SUPPORTED_LLM_MODELS } from './services/llmService.js';
 import { injectPresignedWidgetHeaderIcon } from './services/s3Service.js';
@@ -40,6 +41,9 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// Slack Events API needs raw body for signature verification (must be before express.json())
+app.use('/api/integrations/slack', express.raw({ type: 'application/json' }), slackEventsRouter);
 
 app.use(express.json());
 

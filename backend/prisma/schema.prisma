@@ -88,6 +88,7 @@ model Agent {
   logoUrl      String?  @map("logo_url")
   role         String?  @default("general") @map("role") // general | support | sales
   widgetConfig Json?    @map("widget_config")
+  integrations Json?    @map("integrations") // { slack?: { accessToken?, teamId?, teamName? }, ... }
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @default(now()) @map("updated_at")
 
