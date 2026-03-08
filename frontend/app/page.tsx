@@ -16,11 +16,14 @@ export default function Home() {
   const [selectedWebsite, setSelectedWebsite] = useState<Website | null>(null)
   const isMountedRef = useRef(true)
 
-  // If v2 signed in but no workspaces, onboarding must be done → redirect to onboarding
+  // If v2 signed in: no workspaces → onboarding; has workspaces → send to v2 dashboard (avoid v1 header)
   useEffect(() => {
     if (v2Loading) return
-    if (v2User && (!v2User.workspaces || v2User.workspaces.length === 0)) {
+    if (!v2User) return
+    if (!v2User.workspaces || v2User.workspaces.length === 0) {
       router.replace('/v2/onboarding')
+    } else {
+      router.replace('/v2/dashboard')
     }
   }, [v2Loading, v2User, router])
 
@@ -32,7 +35,7 @@ export default function Home() {
     }
   }, [])
 
-  if (v2User && (!v2User.workspaces || v2User.workspaces.length === 0)) {
+  if (v2User) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-white">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" aria-hidden />

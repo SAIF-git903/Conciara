@@ -24,6 +24,7 @@ import {
   BookOpen,
   Trash2,
   AlertTriangle,
+  LogOut,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Suspense } from 'react'
@@ -80,10 +81,11 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { user, loading } = useV2Auth()
+  const { user, loading, logout } = useV2Auth()
   const agentIdFromUrl = searchParams.get('agent')
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [openDropdown, setOpenDropdown] = useState<'workspace' | 'agent' | null>(null)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [workspaceSearch, setWorkspaceSearch] = useState('')
   const [agentSearch, setAgentSearch] = useState('')
   const workspaces = user?.workspaces?.length ? user.workspaces : [{ id: 0, name: 'My Workspace', plan: 'free', role: 'owner' as const }]
@@ -95,6 +97,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   const [deleteLoading, setDeleteLoading] = useState(false)
   const workspaceRef = useRef<HTMLDivElement>(null)
   const agentRef = useRef<HTMLDivElement>(null)
+  const userMenuRef = useRef<HTMLDivElement>(null)
   const isOwner = user?.role === 'owner'
   const dashboardNavItems = isOwner ? dashboardNavItemsOwner : dashboardNavItemsMember
 
@@ -185,8 +188,9 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as Node
-      if (workspaceRef.current?.contains(target) || agentRef.current?.contains(target)) return
+      if (workspaceRef.current?.contains(target) || agentRef.current?.contains(target) || userMenuRef.current?.contains(target)) return
       setOpenDropdown(null)
+      setUserMenuOpen(false)
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
@@ -457,9 +461,44 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
             <BookOpen className="h-4 w-4" />
             <span className="hidden sm:inline">Docs</span>
           </Link>
-          <button type="button" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Profile">
-            <User className="h-4 w-4" />
-          </button>
+          <div className="relative" ref={userMenuRef}>
+            <button
+              type="button"
+              onClick={() => setUserMenuOpen((v) => !v)}
+              className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+              aria-label="Account menu"
+              aria-expanded={userMenuOpen}
+              aria-haspopup="true"
+            >
+              <User className="h-4 w-4" />
+            </button>
+            {userMenuOpen && (
+              <div
+                className="absolute right-0 top-full z-50 mt-1 w-52 rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+                role="menu"
+                aria-label="Account menu"
+              >
+                <Link
+                  href="/v2/account"
+                  role="menuitem"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  <Settings className="h-4 w-4 text-slate-500" />
+                  Account settings
+                </Link>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => { setUserMenuOpen(false); logout() }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  <LogOut className="h-4 w-4 text-slate-500" />
+                  Sign out
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
