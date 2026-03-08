@@ -31,6 +31,7 @@ import { Suspense } from 'react'
 import { DashboardProvider } from '@/contexts/DashboardContext'
 import { getSelectedWorkspaceId, setSelectedWorkspaceId } from '@/lib/workspace-selection'
 import { startNewAgentFlow } from '@/lib/onboarding'
+import { parseDashboardPath, buildDashboardUrl } from '@/lib/dashboard-url'
 
 // Sidebar when on dashboard (Agents list). Members cannot access workspace settings or billing.
 const dashboardNavItemsOwner = [
@@ -43,25 +44,25 @@ const dashboardNavItemsMember = [
   { href: '#', label: 'Usage', Icon: Clock },
 ]
 
-// Map sidebar child labels to routes (for Activity, Analytics, etc.)
-const childHrefMap: Record<string, Record<string, string>> = {
-  Activity: { 'Chat logs': '/dashboard/activity/chat-logs' },
-  Analytics: { Chats: '/dashboard/analytics/chats' },
+// Map sidebar child labels to path segments (used with buildDashboardUrl)
+const childPathMap: Record<string, Record<string, string>> = {
+  Activity: { 'Chat logs': 'activity/chat-logs' },
+  Analytics: { Chats: 'analytics/chats' },
   'Data sources': {
-    Files: '/dashboard/data-sources/files',
-    'Q&A': '/dashboard/data-sources/qa',
-    Website: '/dashboard/data-sources/website',
+    Files: 'data-sources/files',
+    'Q&A': 'data-sources/qa',
+    Website: 'data-sources/website',
   },
   'Workspace settings': {
-    General: '/dashboard/settings/general',
-    Members: '/dashboard/members',
+    General: 'settings/general',
+    Members: 'members',
     Plans: '/pricing',
-    Billing: '/dashboard/settings/general',
-    'API keys': '/dashboard/settings/api-keys',
+    Billing: 'settings/general',
+    'API keys': 'settings/api-keys',
   },
   Settings: {
-    General: '/dashboard/settings/general',
-    'API keys': '/dashboard/settings/api-keys',
+    General: 'settings/general',
+    'API keys': 'settings/api-keys',
   },
 }
 
@@ -82,6 +83,9 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   const searchParams = useSearchParams()
   const { user, loading, logout } = useAuth()
   const agentIdFromUrl = searchParams.get('agent')
+  const parsed = parseDashboardPath(pathname ?? '')
+  const workspaceIdFromPath = parsed.workspaceId ? parseInt(parsed.workspaceId, 10) : null
+  const agentIdFromPath = parsed.agentId ?? null
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [openDropdown, setOpenDropdown] = useState<'workspace' | 'agent' | null>(null)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -112,9 +116,17 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     }
   }, [user, loading, router])
 
-  // When user has multiple workspaces: require a chosen workspace; otherwise use stored or first
+  // Sync currentWorkspace from URL when path has workspaceId
   useEffect(() => {
     if (workspaces.length === 0 || workspaces[0].id === 0) return
+    if (workspaceIdFromPath != null) {
+      const w = workspaces.find((x) => x.id === workspaceIdFromPath)
+      if (w) {
+        setCurrentWorkspace((prev) => (prev.id === w.id ? prev : w))
+        setSelectedWorkspaceId(w.id)
+        return
+      }
+    }
     const selectedId = getSelectedWorkspaceId()
     const selectedWorkspace = selectedId ? workspaces.find((w) => w.id === selectedId) : null
     if (workspaces.length > 1 && !selectedWorkspace) {
@@ -123,13 +135,38 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     }
     const next = selectedWorkspace ?? workspaces[0]
     setCurrentWorkspace((prev) => (prev.id === next.id ? prev : next))
-  }, [workspaces, router])
+  }, [workspaces, router, workspaceIdFromPath])
 
-  // Persist workspace choice when user changes it via dropdown (so multi-workspace users keep selection)
+  // Redirect /dashboard (no workspace in path) to /dashboard/[workspaceId]
+  useEffect(() => {
+    if (pathname !== '/dashboard' || !user?.workspaces?.length) return
+    const selectedId = getSelectedWorkspaceId()
+    const first = user.workspaces[0]
+    const wId = selectedId && user.workspaces.some((w) => w.id === selectedId) ? selectedId : first.id
+    router.replace(buildDashboardUrl(wId))
+  }, [pathname, user?.workspaces, router])
+
+  // Redirect old workspace-level paths (e.g. /dashboard/members) to /dashboard/[workspaceId]/...
+  useEffect(() => {
+    if (parsed.workspaceId || !pathname?.startsWith('/dashboard/') || pathname.startsWith('/dashboard/new-agent')) return
+    const rest = pathname.replace(/^\/dashboard\/?/, '')
+    const wId = currentWorkspace.id
+    if (!wId) return
+    if (rest === 'members') {
+      router.replace(buildDashboardUrl(wId, { subPath: 'members' }))
+      return
+    }
+    if (rest === 'settings/general' || rest === 'settings/api-keys') {
+      router.replace(buildDashboardUrl(wId, { subPath: rest }))
+    }
+  }, [pathname, parsed.workspaceId, currentWorkspace.id, router])
+
+  // Persist workspace choice and navigate to URL with workspace
   const handleWorkspaceSelect = (workspace: typeof workspaces[0]) => {
     setCurrentWorkspace(workspace)
     setOpenDropdown(null)
     setSelectedWorkspaceId(workspace.id)
+    router.push(buildDashboardUrl(workspace.id))
   }
 
   // Load agents for the current workspace (must be before any early return to satisfy Rules of Hooks)
@@ -147,18 +184,25 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
       .catch(() => setAgents([]))
   }, [currentWorkspace.id])
 
+  // Sync currentAgent from URL when path has agentId, or default to first in workspace
   useEffect(() => {
     const inWorkspace = agents.filter((a) => a.workspaceId === currentWorkspace.id)
+    const fromPath = agentIdFromPath ? inWorkspace.find((a) => a.id === agentIdFromPath) : null
+    if (fromPath) {
+      setCurrentAgent((prev) => (prev?.id === fromPath.id ? prev : fromPath))
+      return
+    }
     if (inWorkspace.length > 0 && (!currentAgent || !inWorkspace.find((a) => a.id === currentAgent?.id))) {
       setCurrentAgent(inWorkspace[0])
     }
-  }, [currentWorkspace.id, agents, currentAgent?.id])
+  }, [currentWorkspace.id, agents, currentAgent?.id, agentIdFromPath])
 
   // When ?agent= is set but not in list (e.g. just created from new-agent flow), refetch agents
   useEffect(() => {
-    if (!agentIdFromUrl || currentWorkspace.id === 0) return
+    const aid = agentIdFromUrl || agentIdFromPath
+    if (!aid || currentWorkspace.id === 0) return
     const inWorkspace = agents.filter((a) => a.workspaceId === currentWorkspace.id)
-    const found = inWorkspace.find((a) => a.id === agentIdFromUrl)
+    const found = inWorkspace.find((a) => a.id === aid)
     if (!found) {
       api.get<{ agents: Array<{ id: number; workspaceId: number; name: string }> }>(`/workspaces/${currentWorkspace.id}/agents`)
         .then((res) => {
@@ -171,18 +215,37 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         })
         .catch(() => { })
     }
-  }, [agentIdFromUrl, currentWorkspace.id, agents])
+  }, [agentIdFromUrl, agentIdFromPath, currentWorkspace.id, agents])
+
+  // Redirect old agent routes (e.g. /dashboard/playground) to /dashboard/[w]/playground/[a]
+  useEffect(() => {
+    if (!parsed.workspaceId && pathname && pathname.startsWith('/dashboard/') && !pathname.startsWith('/dashboard/new-agent')) {
+      const rest = pathname.replace(/^\/dashboard\/?/, '').split('/')[0] ?? ''
+      const isOldAgentRoute = ['playground', 'settings', 'activity', 'analytics', 'data-sources', 'connected-apps'].includes(rest)
+      if (isOldAgentRoute && currentWorkspace.id) {
+        const agentId = agentIdFromUrl || currentAgent?.id
+        if (agentId) {
+          const sub = pathname.includes('chatbot') ? 'settings/chatbot' : pathname.includes('chat-logs') ? 'activity/chat-logs' : pathname.includes('chats') ? 'analytics/chats' : pathname.includes('data-sources/files') ? 'data-sources/files' : pathname.includes('data-sources/qa') ? 'data-sources/qa' : pathname.includes('data-sources/website') ? 'data-sources/website' : pathname.includes('connected-apps') ? 'connected-apps' : 'playground'
+          router.replace(buildDashboardUrl(currentWorkspace.id, { agentId, subPath: sub }))
+        } else if (rest === 'playground') {
+          const inWorkspace = agents.filter((a) => a.workspaceId === currentWorkspace.id)
+          if (inWorkspace.length > 0) router.replace(buildDashboardUrl(currentWorkspace.id, { agentId: inWorkspace[0].id, subPath: 'playground' }))
+        }
+      }
+    }
+  }, [pathname, parsed.workspaceId, currentWorkspace.id, currentAgent?.id, agentIdFromUrl, router, agents])
 
   // After onboarding / new-agent: select the newly created agent from ?agent= and go to playground
   useEffect(() => {
-    if (!agentIdFromUrl || agents.length === 0) return
+    const aid = agentIdFromUrl || agentIdFromPath
+    if (!aid || agents.length === 0) return
     const inWorkspace = agents.filter((a) => a.workspaceId === currentWorkspace.id)
-    const found = inWorkspace.find((a) => a.id === agentIdFromUrl)
+    const found = inWorkspace.find((a) => a.id === aid)
     if (found) {
       setCurrentAgent(found)
-      router.replace('/dashboard/playground')
+      if (!parsed.agentId) router.replace(buildDashboardUrl(currentWorkspace.id, { agentId: found.id, subPath: 'playground' }))
     }
-  }, [agentIdFromUrl, agents, currentWorkspace.id, router])
+  }, [agentIdFromUrl, agentIdFromPath, agents, currentWorkspace.id, router, parsed.agentId])
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -225,8 +288,8 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         const remaining = agents.filter((a) => a.workspaceId === currentWorkspace.id && a.id !== agentToDelete.id)
         setCurrentAgent(remaining[0] ?? null)
         setOpenDropdown(null)
-        if (remaining.length > 0) router.push(`/dashboard/playground?agent=${remaining[0].id}`)
-        else router.push('/dashboard')
+        if (remaining.length > 0) router.push(buildDashboardUrl(currentWorkspace.id, { agentId: remaining[0].id, subPath: 'playground' }))
+        else router.push(buildDashboardUrl(currentWorkspace.id))
       }
       setAgentToDelete(null)
       setDeleteConfirmText('')
@@ -277,13 +340,39 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     a.name.toLowerCase().includes(agentSearch.toLowerCase())
   )
 
-  const isDashboardHome = pathname === '/dashboard'
+  const isDashboardHome = parsed.isWorkspaceHome
   const isWorkspaceLevelRoute =
     isDashboardHome ||
-    pathname === '/dashboard/members' ||
-    (pathname.startsWith('/dashboard/settings/') && !pathname.includes('chatbot'))
+    (parsed.workspaceId && pathname === `/dashboard/${parsed.workspaceId}/members`) ||
+    (parsed.workspaceId && pathname?.startsWith(`/dashboard/${parsed.workspaceId}/settings/`) && !pathname.includes('chatbot'))
   const navItems = isWorkspaceLevelRoute ? dashboardNavItems : agentNavItems
   const isNewAgentFlow = pathname.startsWith('/dashboard/new-agent')
+  const dashboardBase = currentWorkspace.id ? buildDashboardUrl(currentWorkspace.id) : '/dashboard'
+  const agentBase = currentWorkspace.id && currentAgent?.id ? (sub: string) => buildDashboardUrl(currentWorkspace.id, { agentId: currentAgent.id, subPath: sub }) : (sub: string) => `/dashboard/${sub}`
+  const getNavHref = (item: { label: string; href: string }, child?: string): string => {
+    const isWorkspaceNav = isWorkspaceLevelRoute
+    if (child) {
+      const pathSeg = childPathMap[item.label]?.[child]
+      if (pathSeg === '/pricing') return '/pricing'
+      if (isWorkspaceNav && currentWorkspace.id) return pathSeg ? buildDashboardUrl(currentWorkspace.id, { subPath: pathSeg }) : '#'
+      if (!isWorkspaceNav && currentWorkspace.id && currentAgent?.id && pathSeg) return buildDashboardUrl(currentWorkspace.id, { agentId: currentAgent.id, subPath: pathSeg })
+      return pathSeg ? '#' : '#'
+    }
+    if (item.href === '/dashboard') return dashboardBase
+    if (item.href === '/dashboard/playground') return agentBase('playground')
+    if (item.href === '/dashboard/connected-apps') return agentBase('connected-apps')
+    if (item.href === '/dashboard/settings/chatbot') return agentBase('settings/chatbot')
+    if (item.href === '#') return item.href
+    if (isWorkspaceNav) return dashboardBase
+    return agentBase('playground')
+  }
+  const getChildHrefForActive = (item: { label: string }, child: string): string => {
+    const pathSeg = childPathMap[item.label]?.[child]
+    if (pathSeg === '/pricing') return '/pricing'
+    if (isWorkspaceLevelRoute && currentWorkspace.id) return pathSeg ? buildDashboardUrl(currentWorkspace.id, { subPath: pathSeg }) : ''
+    if (currentWorkspace.id && currentAgent?.id && pathSeg) return buildDashboardUrl(currentWorkspace.id, { agentId: currentAgent.id, subPath: pathSeg })
+    return ''
+  }
 
   if (isNewAgentFlow) {
     return (
@@ -305,7 +394,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
       {/* Full-width top header - workspace name and agent dropdowns */}
       <header className="relative flex h-12 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4">
         <Link
-          href="/dashboard"
+          href={dashboardBase}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-[var(--v2-primary)] text-sm font-bold text-white hover:opacity-90 transition"
           aria-label="Dashboard"
         >
@@ -316,7 +405,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         {/* Workspace name (clickable → dashboard) + dropdown trigger */}
         <div className="relative flex items-center gap-0.5" ref={workspaceRef}>
           <Link
-            href="/dashboard"
+            href={dashboardBase}
             className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-slate-700 hover:bg-slate-50"
             title="Go to dashboard"
           >
@@ -422,7 +511,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                       >
                         <button
                           type="button"
-                          onClick={() => { setCurrentAgent(a); setOpenDropdown(null) }}
+                          onClick={() => { setCurrentAgent(a); setOpenDropdown(null); router.push(buildDashboardUrl(currentWorkspace.id, { agentId: a.id, subPath: 'playground' })) }}
                           className="min-w-0 flex-1 text-left truncate"
                         >
                           {a.name}
@@ -506,13 +595,13 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         <aside className="flex w-56 shrink-0 flex-col border-r border-slate-200 bg-slate-50">
           <nav className="flex-1 overflow-y-auto py-3">
             {navItems.map((item) => {
-              const isActive = pathname === item.href
+              const itemHref = getNavHref(item)
+              const isActive = !('children' in item && (item as { children?: string[] }).children?.length) && pathname === itemHref
               const hasChildren = 'children' in item && Array.isArray((item as { children?: string[] }).children) && (item as { children: string[] }).children.length > 0
               const isChildRoute =
                 hasChildren &&
                 (item as { children: string[] }).children.some(
-                  (child) =>
-                    pathname === (childHrefMap[item.label]?.[child] ?? '')
+                  (child) => pathname === getChildHrefForActive(item, child)
                 )
               const isExpanded =
                 hasChildren && (expanded[item.label] || isChildRoute)
@@ -533,7 +622,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                     </button>
                   ) : (
                     <Link
-                      href={item.href}
+                      href={itemHref}
                       className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition ${isActive
                           ? 'bg-slate-200 text-slate-900'
                           : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -546,9 +635,8 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                   {hasChildren && isExpanded && (
                     <div className="ml-6 mt-1 space-y-0.5 border-l border-slate-200 pl-3">
                       {(item as { children: string[] }).children.map((child) => {
-                        const childHref =
-                          childHrefMap[item.label]?.[child] ?? '#'
-                        const isChildActive = pathname === childHref
+                        const childHref = getNavHref(item, child)
+                        const isChildActive = pathname === getChildHrefForActive(item, child)
                         return (
                           <Link
                             key={child}
