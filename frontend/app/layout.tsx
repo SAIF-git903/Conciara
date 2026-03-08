@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/contexts/AuthContext'
-import { V2AuthProvider } from '@/contexts/V2AuthContext'
+import LayoutShell from '@/components/LayoutShell'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -20,12 +20,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <AuthProvider>
-          <V2AuthProvider>
+          <LayoutShell>
             {children}
-          </V2AuthProvider>
+          </LayoutShell>
         </AuthProvider>
       </body>
     </html>
   )
 }
-

@@ -275,7 +275,7 @@ export async function resendWorkspaceInvite(
   });
 
   const baseUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
-  const inviteLink = `${baseUrl}/v2/signup?invite=${encodeURIComponent(inviteToken)}`;
+  const inviteLink = `${baseUrl}/signup?invite=${encodeURIComponent(inviteToken)}`;
 
   try {
     const { sendWorkspaceInviteEmail } = await import('./emailService.js');
@@ -369,7 +369,7 @@ export async function inviteWorkspaceMember(
   });
 
   const baseUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
-  const inviteLink = `${baseUrl}/v2/signup?invite=${encodeURIComponent(inviteToken)}`;
+  const inviteLink = `${baseUrl}/signup?invite=${encodeURIComponent(inviteToken)}`;
 
   try {
     const { sendWorkspaceInviteEmail } = await import('./emailService.js');

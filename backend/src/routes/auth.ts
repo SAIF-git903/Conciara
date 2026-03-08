@@ -187,13 +187,13 @@ router.post('/invite/accept', async (req, res) => {
       id: result.userId,
       email: result.email,
       role: 'member',
-      fullName: result.fullName,
+      fullName: result.fullName ?? undefined,
     });
     const refreshToken = generateRefreshToken({
       id: result.userId,
       email: result.email,
       role: 'member',
-      fullName: result.fullName,
+      fullName: result.fullName ?? undefined,
     });
 
     try {

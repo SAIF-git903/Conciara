@@ -5,22 +5,11 @@ import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger.js';
 // Import connection early to validate DATABASE_URL
 import './db/connection.js';
-import dialogTreeRoutes from './routes/dialogTree.js';
-import dialogNodeRoutes from './routes/dialogNode.js';
-import prepromptRoutes from './routes/preprompt.js';
-import customerTypeRoutes from './routes/customerType.js';
-import websiteRoutes from './routes/website.js';
-import skinRoutes from './routes/skin.js';
-import abVariationRoutes from './routes/abVariation.js';
-import chatRoutes from './routes/chat.js';
-import widgetRoutes from './routes/widget.js';
-import traceRoutes from './routes/trace.js';
-import conversationRoutes from './routes/conversations.js';
 import mediaRoutes from './routes/media.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import apiKeyRoutes from './routes/apiKeys.js';
-import v2WorkspaceRoutes from './routes/v2Workspaces.js';
+import workspaceRoutes from './routes/workspaces.js';
 import { prisma } from './db/prisma.js';
 import { SUPPORTED_LLM_MODELS } from './services/llmService.js';
 import { injectPresignedWidgetHeaderIcon } from './services/s3Service.js';
@@ -100,28 +89,17 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
 }));
 
 // Routes (JSON body)
-app.use('/api/dialog-tree', dialogTreeRoutes);
-app.use('/api/dialog-node', dialogNodeRoutes);
-app.use('/api/preprompt', prepromptRoutes);
-app.use('/api/customer-type', customerTypeRoutes);
-app.use('/api/website', websiteRoutes);
-app.use('/api/skin', skinRoutes);
-app.use('/api/ab-variation', abVariationRoutes);
-app.use('/api/chat', chatRoutes);
-app.use('/api/widget', widgetRoutes);
-app.use('/api/trace', traceRoutes);
-app.use('/api/conversations', conversationRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/api-keys', apiKeyRoutes);
-app.use('/api/v2/workspaces', v2WorkspaceRoutes);
+app.use('/api/workspaces', workspaceRoutes);
 
-app.get('/api/v2/models', (_req, res) => {
+app.get('/api/models', (_req, res) => {
   res.json({ models: SUPPORTED_LLM_MODELS.map((m) => ({ id: m.id, label: m.label })) });
 });
 
-/** Public: get widget (skin) config for v2 embed. Query: workspaceId, agentId. No auth. */
-app.get('/api/v2/public/widget-config', async (req, res) => {
+/** Public: get widget config for embed. Query: workspaceId, agentId. No auth. */
+app.get('/api/public/widget-config', async (req, res) => {
   try {
     const workspaceId = parseInt(String(req.query.workspaceId ?? ''), 10);
     const agentId = parseInt(String(req.query.agentId ?? ''), 10);
