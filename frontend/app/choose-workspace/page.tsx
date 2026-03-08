@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { setSelectedWorkspaceId } from '@/lib/workspace-selection'
+import { buildDashboardUrl } from '@/lib/dashboard-url'
 import type { Workspace } from '@/contexts/AuthContext'
 import { Building2, ChevronRight } from 'lucide-react'
 
@@ -24,13 +25,13 @@ export default function ChooseWorkspacePage() {
     }
     if (workspaces.length === 1) {
       setSelectedWorkspaceId(workspaces[0].id)
-      router.replace('/dashboard')
+      router.replace(buildDashboardUrl(workspaces[0].id))
     }
   }, [user, loading, workspaces.length, router])
 
   const handleSelect = (workspace: Workspace) => {
     setSelectedWorkspaceId(workspace.id)
-    router.push('/dashboard')
+    router.push(buildDashboardUrl(workspace.id))
   }
 
   if (loading || !user || workspaces.length <= 1) {

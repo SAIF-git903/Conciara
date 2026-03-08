@@ -4,6 +4,7 @@ import { useRef, useCallback, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { ChevronDown, Bot, FileText } from 'lucide-react'
 import { useDashboard } from '@/contexts/DashboardContext'
+import { buildDashboardUrl } from '@/lib/dashboard-url'
 import { getApiBaseUrl } from '@/lib/api'
 import SkinRenderer from '@/components/SkinRenderer'
 import type { MergedSkinConfig } from '@/types/skinConfig'
@@ -238,7 +239,7 @@ export default function PlaygroundPage() {
             Upload files in Data sources → Files so the agent can answer from your documents.
           </p>
           <Link
-            href="/dashboard/data-sources/files"
+            href={currentWorkspace?.id && currentAgent?.id ? buildDashboardUrl(currentWorkspace.id, { agentId: currentAgent.id, subPath: 'data-sources/files' }) : '/dashboard/data-sources/files'}
             className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[var(--v2-primary)]/10 px-3 py-2 text-sm font-medium text-[var(--v2-primary)] hover:bg-[var(--v2-primary)]/20"
           >
             <FileText className="h-4 w-4" />

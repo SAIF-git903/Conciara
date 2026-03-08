@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useDashboard } from '@/contexts/DashboardContext'
+import { buildDashboardUrl } from '@/lib/dashboard-url'
 import api from '@/lib/api'
 import { Plug, Check, ChevronRight, MessageCircle, HeadphonesIcon, ShoppingBag } from 'lucide-react'
 
@@ -12,6 +13,11 @@ const SlackLogo = () => (
   </svg>
 )
 
+function getSlackHref(workspaceId: number | undefined, agentId: string | undefined): string {
+  if (workspaceId && agentId) return buildDashboardUrl(workspaceId, { agentId, subPath: 'connected-apps' }) + '/slack'
+  return '/dashboard/connected-apps/slack'
+}
+
 const INTEGRATIONS = [
   {
     id: 'slack',
@@ -19,7 +25,7 @@ const INTEGRATIONS = [
     description: 'Respond in channels and DMs. @mention your agent or message it directly.',
     icon: SlackLogo,
     available: true,
-    href: '/dashboard/connected-apps/slack',
+    hrefKey: 'slack' as const,
   },
   {
     id: 'whatsapp',
@@ -48,6 +54,7 @@ export default function ConnectedAppsPage() {
   const { currentWorkspace, currentAgent } = useDashboard()
   const [slackStatus, setSlackStatus] = useState<{ connected: boolean; teamName?: string } | null>(null)
   const [slackLoading, setSlackLoading] = useState(true)
+  const slackHref = getSlackHref(currentWorkspace?.id, currentAgent?.id)
   const workspaceId = currentWorkspace?.id
   const agentId = currentAgent?.id
 
@@ -96,10 +103,11 @@ export default function ConnectedAppsPage() {
             const isSlack = integration.id === 'slack'
             const connected = isSlack && !slackLoading && slackStatus?.connected
 
+            const linkHref = 'hrefKey' in integration && integration.hrefKey === 'slack' ? slackHref : '#'
             return integration.available ? (
               <Link
                 key={integration.id}
-                href={integration.href!}
+                href={linkHref}
                 className="group flex flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:shadow-md"
               >
                 <div className="flex items-start justify-between gap-3">

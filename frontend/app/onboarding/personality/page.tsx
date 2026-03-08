@@ -3,7 +3,8 @@
 import { useRouter } from 'next/navigation'
 import PersonalityStep from '@/components/onboarding/PersonalityStep'
 import { useAuth } from '@/contexts/AuthContext'
-import { resetOnboardingAndGoToWorkspace } from '@/lib/onboarding'
+import { resetOnboardingAndGoToWorkspace, getOnboardingWorkspaceId } from '@/lib/onboarding'
+import { buildDashboardUrl } from '@/lib/dashboard-url'
 
 export default function OnboardingPersonalityPage() {
   const router = useRouter()
@@ -12,7 +13,12 @@ export default function OnboardingPersonalityPage() {
     <PersonalityStep
       onSuccess={async (agentId) => {
         await refreshUser()
-        router.push(`/dashboard?agent=${agentId}`)
+        const workspaceId = getOnboardingWorkspaceId()
+        if (workspaceId) {
+          router.push(buildDashboardUrl(workspaceId, { agentId: String(agentId), subPath: 'playground' }))
+        } else {
+          router.push(`/dashboard?agent=${agentId}`)
+        }
       }}
       onForbidden={() => resetOnboardingAndGoToWorkspace(router)}
       submittingLabel="Taking you to dashboard..."

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useDashboard } from '@/contexts/DashboardContext'
+import { buildDashboardUrl } from '@/lib/dashboard-url'
 import api from '@/lib/api'
 import { Loader2, Check, Link2, ArrowLeft } from 'lucide-react'
 
@@ -110,7 +111,7 @@ export default function SlackIntegrationPage() {
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
       <div className="shrink-0 border-b border-slate-200 px-6 py-4">
         <Link
-          href="/dashboard/connected-apps"
+          href={currentWorkspace?.id && currentAgent?.id ? buildDashboardUrl(currentWorkspace.id, { agentId: currentAgent.id, subPath: 'connected-apps' }) : '/dashboard/connected-apps'}
           className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 transition hover:text-slate-900"
         >
           <ArrowLeft className="h-4 w-4" />
