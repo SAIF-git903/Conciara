@@ -1,13 +1,14 @@
 /**
  * Authentication Routes
- * Handles login, logout, registration, and token refresh
+ * Handles login, logout, registration, token refresh, and Sign in with Google
  */
 
+import crypto from 'crypto';
 import express from 'express';
-import { getUserByEmail, getUserById, updateLastLogin, getBypassUsers } from '../services/userService.js';
-import { 
-  verifyPassword, 
-  generateJWT, 
+import { getUserByEmail, getUserById, updateLastLogin, getBypassUsers, createUserFromOAuth } from '../services/userService.js';
+import {
+  verifyPassword,
+  generateJWT,
   generateRefreshToken,
   verifyRefreshToken,
   hashPassword,
@@ -17,13 +18,31 @@ import {
   revokeAllUserRefreshTokens,
   revokeSession,
   getUserSessions,
-  cleanupExpiredSessions
+  cleanupExpiredSessions,
 } from '../services/authService.js';
 import { requireAuth, requireAdmin } from '../middleware/authMiddleware.js';
 import { createSession, updateSessionRefresh } from '../services/authService.js';
 import { prisma } from '../db/prisma.js';
+import { getWorkspacesForUser } from '../services/workspaceService.js';
 
 const router = express.Router();
+
+const FRONTEND_URL = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || '';
+
+/** One-time codes for Google OAuth completion (code -> { token, refreshToken, user }); expire after 60s */
+const googleCompleteStore = new Map<
+  string,
+  { token: string; refreshToken: string; user: object; expiresAt: number }
+>();
+function cleanupGoogleCompleteStore() {
+  const now = Date.now();
+  for (const [code, data] of googleCompleteStore.entries()) {
+    if (data.expiresAt < now) googleCompleteStore.delete(code);
+  }
+}
 
 /**
  * @swagger
@@ -428,6 +447,156 @@ router.post('/bypass', async (req, res) => {
   }
 });
 
+// ---------- Sign in with Google ----------
+/**
+ * GET /api/auth/google
+ * Redirects to Google OAuth consent. Call from frontend via window.location.
+ */
+router.get('/google', (req, res) => {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_REDIRECT_URI) {
+    return res.status(503).json({ error: 'Google sign-in is not configured' });
+  }
+  const state = crypto.randomBytes(24).toString('hex');
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: GOOGLE_REDIRECT_URI,
+    response_type: 'code',
+    scope: 'email profile openid',
+    state,
+    access_type: 'offline',
+    prompt: 'consent',
+  });
+  res.redirect(302, `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+});
+
+/**
+ * GET /api/auth/google/callback
+ * Google redirects here with ?code=...&state=... . Exchanges code for tokens, gets user info,
+ * finds or creates user, then redirects to frontend with a one-time code.
+ */
+router.get('/google/callback', async (req, res) => {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
+    return res.redirect(302, `${FRONTEND_URL}/signin?error=google_not_configured`);
+  }
+  const { code, state, error } = req.query;
+  if (error) {
+    return res.redirect(302, `${FRONTEND_URL}/signin?error=${encodeURIComponent(String(error))}`);
+  }
+  if (typeof code !== 'string') {
+    return res.redirect(302, `${FRONTEND_URL}/signin?error=missing_code`);
+  }
+  try {
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: GOOGLE_REDIRECT_URI,
+      }).toString(),
+    });
+    if (!tokenRes.ok) {
+      const errText = await tokenRes.text();
+      console.error('Google token exchange failed:', tokenRes.status, errText);
+      return res.redirect(302, `${FRONTEND_URL}/signin?error=token_exchange_failed`);
+    }
+    const tokenData = (await tokenRes.json()) as { access_token?: string };
+    const accessToken = tokenData.access_token;
+    if (!accessToken) {
+      return res.redirect(302, `${FRONTEND_URL}/signin?error=no_access_token`);
+    }
+    const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!userInfoRes.ok) {
+      console.error('Google userinfo failed:', userInfoRes.status);
+      return res.redirect(302, `${FRONTEND_URL}/signin?error=userinfo_failed`);
+    }
+    const userInfo = (await userInfoRes.json()) as { email?: string; name?: string };
+    const email = userInfo.email?.trim();
+    if (!email) {
+      return res.redirect(302, `${FRONTEND_URL}/signin?error=no_email`);
+    }
+    let user = await getUserByEmail(email);
+    if (!user) {
+      user = await createUserFromOAuth(email, userInfo.name ?? undefined);
+    }
+    if (!user.isActive) {
+      return res.redirect(302, `${FRONTEND_URL}/signin?error=account_disabled`);
+    }
+    await updateLastLogin(user.id);
+    const workspaces = await getWorkspacesForUser(user.id);
+    const token = generateJWT({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      fullName: user.fullName,
+    });
+    const refreshToken = generateRefreshToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      fullName: user.fullName,
+    });
+    try {
+      await createSession({
+        userId: user.id,
+        sessionToken: `session_${user.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        refreshToken,
+        expiresInDays: 7,
+        ipAddress: req.ip || (req.socket as any)?.remoteAddress,
+        userAgent: req.headers['user-agent'] || null,
+      });
+    } catch (err: any) {
+      console.warn('Failed to store session:', err.message);
+    }
+    cleanupGoogleCompleteStore();
+    const oneTimeCode = crypto.randomBytes(24).toString('hex');
+    const TTL_MS = 60_000;
+    googleCompleteStore.set(oneTimeCode, {
+      token,
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+        workspaces,
+      },
+      expiresAt: Date.now() + TTL_MS,
+    });
+    res.redirect(302, `${FRONTEND_URL}/auth/callback?code=${encodeURIComponent(oneTimeCode)}`);
+  } catch (err: any) {
+    console.error('Google callback error:', err);
+    res.redirect(302, `${FRONTEND_URL}/signin?error=callback_failed`);
+  }
+});
+
+/**
+ * POST /api/auth/google/complete
+ * Body: { code }. Exchanges the one-time code from the redirect for token, refreshToken, user.
+ */
+router.post('/google/complete', (req, res) => {
+  const { code } = req.body || {};
+  if (typeof code !== 'string' || !code.trim()) {
+    return res.status(400).json({ error: 'code is required' });
+  }
+  cleanupGoogleCompleteStore();
+  const data = googleCompleteStore.get(code.trim());
+  if (!data) {
+    return res.status(400).json({ error: 'Invalid or expired code' });
+  }
+  googleCompleteStore.delete(code.trim());
+  res.json({
+    token: data.token,
+    refreshToken: data.refreshToken,
+    user: data.user,
+  });
+});
+
+// ---------- /api/auth/logout ----------
 /**
  * @swagger
  * /api/auth/logout:

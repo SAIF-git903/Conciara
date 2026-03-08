@@ -1,8 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { getApiBaseUrl } from '@/lib/api'
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -35,12 +37,32 @@ function AppleIcon({ className }: { className?: string }) {
   )
 }
 
+const GOOGLE_ERROR_MESSAGES: Record<string, string> = {
+  google_not_configured: 'Sign in with Google is not configured.',
+  missing_code: 'Authorization was cancelled or invalid.',
+  token_exchange_failed: 'Google sign-in failed. Please try again.',
+  no_access_token: 'Google did not return an access token.',
+  userinfo_failed: 'Could not load your Google profile.',
+  no_email: 'Your Google account has no email we can use.',
+  account_disabled: 'Your account is disabled.',
+  callback_failed: 'Something went wrong. Please try again.',
+}
+
 export default function SigninPage() {
+  const searchParams = useSearchParams()
   const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    const err = searchParams.get('error')
+    if (err) {
+      setError(GOOGLE_ERROR_MESSAGES[err] || `Sign-in error: ${err}`)
+      window.history.replaceState({}, '', '/signin')
+    }
+  }, [searchParams])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -122,6 +144,10 @@ export default function SigninPage() {
         <div className="mt-4 space-y-3">
           <button
             type="button"
+            onClick={() => {
+              const base = getApiBaseUrl()
+              window.location.href = `${base}/auth/google`
+            }}
             className="flex w-full items-center justify-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-800 shadow-sm transition hover:bg-slate-100"
           >
             <GoogleIcon className="h-5 w-5 shrink-0" />
