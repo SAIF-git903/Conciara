@@ -57,7 +57,7 @@ const childPathMap: Record<string, Record<string, string>> = {
     General: 'settings/general',
     Members: 'members',
     Plans: '/pricing',
-    Billing: 'settings/general',
+    Billing: 'settings/billing',
     'API keys': 'settings/api-keys',
   },
   Settings: {
