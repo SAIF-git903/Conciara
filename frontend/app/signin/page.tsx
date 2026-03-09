@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
@@ -48,7 +48,7 @@ const GOOGLE_ERROR_MESSAGES: Record<string, string> = {
   callback_failed: 'Something went wrong. Please try again.',
 }
 
-export default function SigninPage() {
+function SigninForm() {
   const searchParams = useSearchParams()
   const { login } = useAuth()
   const [email, setEmail] = useState('')
@@ -170,6 +170,29 @@ export default function SigninPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+function SigninFallback() {
+  return (
+    <div className="flex items-center justify-center">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white px-8 py-10 shadow-sm">
+        <h1 className="mb-6 text-center text-2xl font-semibold tracking-tight text-slate-900">
+          Sign In
+        </h1>
+        <div className="flex justify-center py-8">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-slate-600" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function SigninPage() {
+  return (
+    <Suspense fallback={<SigninFallback />}>
+      <SigninForm />
+    </Suspense>
   )
 }
 
