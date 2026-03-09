@@ -55,6 +55,7 @@ import {
   recordQaUsage,
   getQaUsageStats,
 } from '../services/agentQaService.js';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { isSupportedMimeType, resolveMimeType } from '../services/documentParserService.js';
 import { uploadWidgetHeaderToS3, getPresignedUrl, injectPresignedWidgetHeaderIcon } from '../services/s3Service.js';
@@ -768,7 +769,10 @@ router.delete('/:workspaceId/agents/:agentId/integrations/slack', async (req, re
     const { slack: _removed, ...rest } = integrations;
     await prisma.agent.update({
       where: { id: agentId },
-      data: { integrations: Object.keys(rest).length > 0 ? rest : null },
+      data: {
+        integrations:
+          Object.keys(rest).length > 0 ? (rest as Prisma.InputJsonValue) : Prisma.DbNull,
+      },
     });
 
     return res.json({ ok: true, connected: false });

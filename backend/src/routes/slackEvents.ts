@@ -136,7 +136,6 @@ router.get('/oauth/callback', async (req: express.Request, res: express.Response
   };
   await prisma.agent.update({
     where: { id: agentId },
-    // @ts-expect-error Agent.integrations exists in schema (Json?); generated client may be out of date
     data: { integrations: updated },
   });
   res.redirect(redirectTo + '?slack=success');
