@@ -64,6 +64,24 @@ function cleanupAppleCompleteStore() {
   }
 }
 
+/**
+ * Normalize Apple .p8 private key from env (handles \\n, single-line PEM, etc.) so Node accepts it for ES256.
+ */
+function normalizeApplePrivateKey(raw: string): string {
+  if (!raw || !raw.trim()) return raw;
+  let key = raw.trim().replace(/\\n/g, '\n').replace(/\r\n/g, '\n');
+  const begin = '-----BEGIN PRIVATE KEY-----';
+  const end = '-----END PRIVATE KEY-----';
+  const beginIdx = key.indexOf(begin);
+  const endIdx = key.indexOf(end);
+  if (beginIdx === -1 || endIdx === -1 || endIdx <= beginIdx) return key;
+  const base64 = key.slice(beginIdx + begin.length, endIdx).replace(/\s/g, '');
+  if (!base64) return key;
+  const lines = base64.match(/.{1,64}/g) || [base64];
+  const pem = begin + '\n' + lines.join('\n') + '\n' + end;
+  return pem;
+}
+
 /** Generate Apple client_secret JWT (ES256) for token exchange. Must match Services ID used in authorize URL. */
 function getAppleClientSecret(): string {
   const now = Math.floor(Date.now() / 1000);
@@ -74,8 +92,15 @@ function getAppleClientSecret(): string {
     aud: 'https://appleid.apple.com',
     sub: APPLE_CLIENT_ID,
   };
-  const key = APPLE_PRIVATE_KEY.replace(/\\n/g, '\n');
-  return jwt.sign(payload, key, {
+  const pem = normalizeApplePrivateKey(APPLE_PRIVATE_KEY);
+  if (!pem || !pem.includes('-----BEGIN PRIVATE KEY-----')) {
+    throw new Error('Apple private key is missing or invalid (no PEM header)');
+  }
+  const keyObject = crypto.createPrivateKey({
+    key: pem,
+    format: 'pem',
+  });
+  return jwt.sign(payload, keyObject, {
     algorithm: 'ES256',
     keyid: APPLE_KEY_ID,
   });
