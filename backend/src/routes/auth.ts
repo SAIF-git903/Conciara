@@ -82,28 +82,22 @@ function normalizeApplePrivateKey(raw: string): string {
   return pem;
 }
 
-/** Generate Apple client_secret JWT (ES256) for token exchange. Must match Services ID used in authorize URL. */
-function getAppleClientSecret(): string {
+/** Generate Apple client_secret JWT (ES256) for token exchange using jose (handles PKCS#8 .p8 keys). */
+async function getAppleClientSecret(): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  const payload = {
-    iss: APPLE_TEAM_ID,
-    iat: now,
-    exp: now + 86400 * 180, // 180 days max
-    aud: 'https://appleid.apple.com',
-    sub: APPLE_CLIENT_ID,
-  };
   const pem = normalizeApplePrivateKey(APPLE_PRIVATE_KEY);
   if (!pem || !pem.includes('-----BEGIN PRIVATE KEY-----')) {
     throw new Error('Apple private key is missing or invalid (no PEM header)');
   }
-  const keyObject = crypto.createPrivateKey({
-    key: pem,
-    format: 'pem',
-  });
-  return jwt.sign(payload, keyObject, {
-    algorithm: 'ES256',
-    keyid: APPLE_KEY_ID,
-  });
+  const privateKey = await jose.importPKCS8(pem, 'ES256');
+  return new jose.SignJWT({})
+    .setProtectedHeader({ alg: 'ES256', kid: APPLE_KEY_ID })
+    .setIssuer(APPLE_TEAM_ID)
+    .setAudience('https://appleid.apple.com')
+    .setSubject(APPLE_CLIENT_ID)
+    .setIssuedAt(now)
+    .setExpirationTime(now + 86400 * 180)
+    .sign(privateKey);
 }
 
 /**
@@ -715,7 +709,7 @@ router.post('/apple/callback', async (req, res) => {
   try {
     let clientSecret: string;
     try {
-      clientSecret = getAppleClientSecret();
+      clientSecret = await getAppleClientSecret();
     } catch (secretErr: any) {
       console.error('Apple client_secret JWT failed:', secretErr?.message || secretErr);
       return res.redirect(302, `${FRONTEND_URL}/signin?error=token_exchange_failed`);
