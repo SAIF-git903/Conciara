@@ -501,32 +501,55 @@ export const SUPPORTED_LLM_MODELS = [
   { id: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
 ] as const;
 
+export interface GeneratePrePromptContext {
+  /** Agent name (e.g. from onboarding Configure step). */
+  agentName?: string | null;
+  /** Company/workspace name for personalization. */
+  companyName?: string | null;
+}
+
 /**
  * Generate a pre-prompt for an AI agent based on website/crawl content.
- * Uses the LLM to write a concise system prompt that reflects the site's purpose and tone.
+ * Uses the LLM to write a concise system prompt that instructs the agent to behave
+ * as a support assistant, reflecting the site's purpose and tone from gathered onboarding data.
  */
-export async function generatePrePromptFromWebsiteContent(websiteContent: string): Promise<string> {
+export async function generatePrePromptFromWebsiteContent(
+  websiteContent: string,
+  context?: GeneratePrePromptContext
+): Promise<string> {
   if (!openai || !apiKey || !websiteContent?.trim()) {
     return '';
   }
   const truncated = websiteContent.slice(0, 12000);
+  const agentName = context?.agentName?.trim();
+  const companyName = context?.companyName?.trim();
+  const contextLines: string[] = [];
+  if (agentName) contextLines.push(`Agent name: ${agentName}`);
+  if (companyName) contextLines.push(`Company/workspace: ${companyName}`);
+  const contextBlock =
+    contextLines.length > 0 ? `Additional context from onboarding:\n${contextLines.join('\n')}\n\n` : '';
+
   try {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
-          content: `You are an expert at writing system prompts for customer-facing AI chatbots. Given information about a website (title, description, and content summary), write a single, clear pre-prompt (2-5 sentences) that will guide the AI agent. The pre-prompt should:
-- Define the agent's role (e.g. helpful assistant for [company/product])
-- Reflect the tone and purpose of the website
-- Tell the agent to answer based on the provided website content and to be concise and helpful
-- Not include meta instructions (e.g. "Output in JSON") — just the agent's persona and behavior
-IMPORTANT: The pre-prompt you write must instruct the agent to always speak AS the business in first person (we/us/our), never as an outside observer describing the business. The agent IS the business's assistant.
+          content: `You are an expert at writing system prompts for customer support AI assistants. Given information about a website (title, description, and content summary) and any optional context (agent name, company name), write a single, clear pre-prompt (2-5 sentences) that will guide the AI agent. The pre-prompt must:
+
+- Instruct the agent to behave as a SUPPORT ASSISTANT for the business: helpful, professional, and focused on answering questions, resolving issues, and guiding users based on the provided website content.
+- Define the agent's role clearly as the business's support assistant (e.g. "You are the support assistant for [company/product]" or use the given agent/company names if provided).
+- Reflect the tone and purpose of the website so the assistant feels aligned with the business.
+- Tell the agent to answer based on the provided website content, to be concise and helpful, and to stay on topic.
+- Not include meta instructions (e.g. "Output in JSON") — only the agent's persona and behavior.
+
+IMPORTANT: The pre-prompt must instruct the agent to always speak AS the business in first person (we/us/our), never as an outside observer. The agent IS the business's support assistant.
+
 Write only the pre-prompt text, no quotes or preamble.`,
         },
         {
           role: 'user',
-          content: `Website information:\n\n${truncated}`,
+          content: `${contextBlock}Website information:\n\n${truncated}`,
         },
       ],
       max_tokens: 400,

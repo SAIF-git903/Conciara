@@ -57,7 +57,7 @@ const childPathMap: Record<string, Record<string, string>> = {
     General: 'settings/general',
     Members: 'members',
     Plans: '/pricing',
-    Billing: 'settings/general',
+    Billing: 'settings/billing',
     'API keys': 'settings/api-keys',
   },
   Settings: {
@@ -127,7 +127,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     if (workspaceIdFromPath != null) {
       const w = workspaces.find((x) => x.id === workspaceIdFromPath)
       if (w) {
-        setCurrentWorkspace((prev) => (prev.id === w.id ? prev : w))
+        setCurrentWorkspace((prev) => (prev.id === w.id && prev.name === w.name ? prev : w))
         setSelectedWorkspaceId(w.id)
         return
       }

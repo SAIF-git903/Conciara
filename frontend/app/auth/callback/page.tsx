@@ -18,6 +18,7 @@ function AuthCallbackContent() {
 
   useEffect(() => {
     const code = searchParams.get('code');
+    const provider = searchParams.get('provider') || 'google';
     if (!code?.trim()) {
       setStatus('error');
       setErrorMessage('Missing authorization code');
@@ -28,7 +29,8 @@ function AuthCallbackContent() {
     exchangeStartedRef.current = true;
 
     const baseUrl = getApiBaseUrl();
-    fetch(`${baseUrl}/auth/google/complete`, {
+    const completePath = provider === 'apple' ? '/auth/apple/complete' : '/auth/google/complete';
+    fetch(`${baseUrl}${completePath}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code: code.trim() }),

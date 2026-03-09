@@ -384,7 +384,7 @@ export default function DataSourcesWebsitePage() {
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Website</h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            Add URLs to crawl. Press &quot;Retrain agent&quot; to feed this content to the agent so it can answer from it in chat.
+            Add URLs to crawl. We use each URL as an entry point, follow internal links on the same domain, and extract text. Press &quot;Retrain agent&quot; to feed this content to the agent.
           </p>
         </div>
       </div>

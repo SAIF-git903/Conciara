@@ -7,7 +7,7 @@ import { Loader2 } from 'lucide-react'
 import Select from '@/components/Select'
 import api from '@/lib/api'
 import { useAuth } from '@/contexts/AuthContext'
-import { getOnboardingWorkspaceId, setOnboardingLinkDone, setOnboardingCrawlId, setOnboardingAgentName, setOnboardingAgentLogoUrl } from '@/lib/onboarding'
+import { getOnboardingWorkspaceId, setOnboardingLinkDone, setOnboardingCrawlId, setOnboardingAgentName, setOnboardingAgentLogoUrl, setOnboardingTrainOnCrawl } from '@/lib/onboarding'
 
 export interface LinkStepProps {
   nextPath: string
@@ -146,6 +146,12 @@ export default function LinkStep({ nextPath, router, onForbidden }: LinkStepProp
     if (detectedProtocol) setProtocol(detectedProtocol)
   }
 
+  const handleTrainOrSkip = (train: boolean) => {
+    setOnboardingTrainOnCrawl(train)
+    setOnboardingLinkDone()
+    router.push(nextPath)
+  }
+
   const handleContinue = async () => {
     if (!canContinue || workspaceId == null) return
     setCrawlError('')
@@ -164,8 +170,7 @@ export default function LinkStep({ nextPath, router, onForbidden }: LinkStepProp
       setOnboardingCrawlId(data.crawl.id)
       setOnboardingAgentName(data.crawl.title?.trim() || 'ConversaTree')
       setOnboardingAgentLogoUrl(data.crawl.logoUrl?.trim() || '')
-      setOnboardingLinkDone()
-      router.push(nextPath)
+      // Don't redirect: show "Train Agent" or "Skip it" so user can choose
     } catch (err: unknown) {
       const status = err && typeof err === 'object' && 'response' in err
         ? (err as { response?: { status?: number } }).response?.status
@@ -219,77 +224,109 @@ export default function LinkStep({ nextPath, router, onForbidden }: LinkStepProp
           initial="hidden"
           animate="show"
         >
-          <motion.div variants={item}>
-            <label htmlFor="url" className="mb-2 block text-sm font-medium text-slate-700">
-              Your website URL
-            </label>
-            <div className="flex h-11 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-200/50 transition focus-within:border-[var(--v2-primary)] focus-within:ring-2 focus-within:ring-[var(--v2-primary)]/20">
-              <div className="flex h-full w-[7.5rem] shrink-0 flex-col">
+          {!crawlData ? (
+            <>
+              <motion.div variants={item}>
+                <label htmlFor="url" className="mb-2 block text-sm font-medium text-slate-700">
+                  Your website URL
+                </label>
+                <div className="flex h-11 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-200/50 transition focus-within:border-[var(--v2-primary)] focus-within:ring-2 focus-within:ring-[var(--v2-primary)]/20">
+                  <div className="flex h-full w-[7.5rem] shrink-0 flex-col">
+                    <Select
+                      value={protocol}
+                      onChange={setProtocol}
+                      options={[
+                        { value: 'https://', label: 'https://' },
+                        { value: 'http://', label: 'http://' },
+                      ]}
+                      compact
+                      segment
+                    />
+                  </div>
+                  <input
+                    id="url"
+                    type="text"
+                    value={url}
+                    onChange={(e) => handleUrlChange(e.target.value)}
+                    placeholder="yoursite.com"
+                    className="h-full min-w-0 flex-1 border-0 bg-transparent px-4 text-slate-900 placeholder:text-slate-400 focus:ring-0"
+                  />
+                </div>
+              </motion.div>
+
+              <motion.div variants={item}>
                 <Select
-                  value={protocol}
-                  onChange={setProtocol}
+                  id="useCase"
+                  label="Use-case"
+                  value={useCase}
+                  onChange={setUseCase}
                   options={[
-                    { value: 'https://', label: 'https://' },
-                    { value: 'http://', label: 'http://' },
+                    { value: 'general', label: 'General AI agent' },
+                    { value: 'support', label: 'Customer support' },
+                    { value: 'sales', label: 'Sales assistant' },
+                    { value: 'docs', label: 'Documentation' },
                   ]}
                   compact
-                  segment
                 />
-              </div>
-              <input
-                id="url"
-                type="text"
-                value={url}
-                onChange={(e) => handleUrlChange(e.target.value)}
-                placeholder="yoursite.com"
-                className="h-full min-w-0 flex-1 border-0 bg-transparent px-4 text-slate-900 placeholder:text-slate-400 focus:ring-0"
-              />
-            </div>
-          </motion.div>
+              </motion.div>
 
-          <motion.div variants={item}>
-            <Select
-              id="useCase"
-              label="Use-case"
-              value={useCase}
-              onChange={setUseCase}
-              options={[
-                { value: 'general', label: 'General AI agent' },
-                { value: 'support', label: 'Customer support' },
-                { value: 'sales', label: 'Sales assistant' },
-                { value: 'docs', label: 'Documentation' },
-              ]}
-              compact
-            />
-          </motion.div>
-
-          {crawlError && (
-            <motion.p variants={item} className="text-sm text-red-600">
-              {crawlError}
-            </motion.p>
-          )}
-          <motion.div variants={item} className="pt-2">
-            <button
-              type="button"
-              onClick={handleContinue}
-              disabled={!canContinue || isCrawling}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--v2-primary)] px-4 py-3.5 text-sm font-semibold text-[var(--v2-primary-foreground)] shadow-lg shadow-[var(--v2-primary)]/20 transition hover:bg-[var(--v2-primary-hover)] hover:shadow-xl hover:shadow-[var(--v2-primary)]/25 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
-            >
-              {isCrawling ? (
-                <>
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Crawling website…
-                </>
-              ) : (
-                <>
-                  Continue
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                  </svg>
-                </>
+              {crawlError && (
+                <motion.p variants={item} className="text-sm text-red-600">
+                  {crawlError}
+                </motion.p>
               )}
-            </button>
-          </motion.div>
+              <motion.div variants={item} className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleContinue}
+                  disabled={!canContinue || isCrawling}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--v2-primary)] px-4 py-3.5 text-sm font-semibold text-[var(--v2-primary-foreground)] shadow-lg shadow-[var(--v2-primary)]/20 transition hover:bg-[var(--v2-primary-hover)] hover:shadow-xl hover:shadow-[var(--v2-primary)]/25 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                >
+                  {isCrawling ? (
+                    <>
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      Crawling website…
+                    </>
+                  ) : (
+                    <>
+                      Continue
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                      </svg>
+                    </>
+                  )}
+                </button>
+              </motion.div>
+            </>
+          ) : (
+            <>
+              <motion.div variants={item}>
+                <p className="text-sm font-medium text-slate-800">Crawl successful</p>
+                <p className="mt-0.5 text-sm text-slate-600">
+                  Your website content is ready. Train the agent on it now, or skip and you can retrain later from Data sources.
+                </p>
+              </motion.div>
+              <motion.div variants={item} className="flex flex-col gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => handleTrainOrSkip(true)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--v2-primary)] px-4 py-3.5 text-sm font-semibold text-[var(--v2-primary-foreground)] shadow-lg shadow-[var(--v2-primary)]/20 transition hover:bg-[var(--v2-primary-hover)] hover:shadow-xl"
+                >
+                  Train agent
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTrainOrSkip(false)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
+                >
+                  Skip for now
+                </button>
+              </motion.div>
+            </>
+          )}
         </motion.div>
       </div>
 
@@ -379,23 +416,9 @@ export default function LinkStep({ nextPath, router, onForbidden }: LinkStepProp
               </svg>
             </div>
             <h3 className="mb-2 text-sm font-semibold text-slate-700">Add your website</h3>
-            <p className="mb-5 text-sm leading-relaxed text-slate-600">
-              Enter a URL and click Continue. We&apos;ll crawl the site and store title, description, logo and content to train your agent.
+            <p className="mb-4 text-sm leading-relaxed text-slate-600">
+              Enter a URL (e.g. your homepage) and click Continue. We&apos;ll use it as the entry point, follow internal links on the same domain, and extract text to train your agent.
             </p>
-            <ul className="space-y-2 text-left text-xs text-slate-500">
-              <li className="flex items-center gap-2">
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden />
-                Title & description
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden />
-                Logo & branding
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden />
-                Page content for training
-              </li>
-            </ul>
           </div>
         )}
       </motion.div>

@@ -37,13 +37,15 @@ function AppleIcon({ className }: { className?: string }) {
   )
 }
 
-const GOOGLE_ERROR_MESSAGES: Record<string, string> = {
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   google_not_configured: 'Sign in with Google is not configured.',
+  apple_not_configured: 'Sign in with Apple is not configured.',
   missing_code: 'Authorization was cancelled or invalid.',
-  token_exchange_failed: 'Google sign-in failed. Please try again.',
+  token_exchange_failed: 'Sign-in failed. Please try again.',
   no_access_token: 'Google did not return an access token.',
+  no_id_token: 'Apple did not return an identity token.',
   userinfo_failed: 'Could not load your Google profile.',
-  no_email: 'Your Google account has no email we can use.',
+  no_email: 'Your account has no email we can use.',
   account_disabled: 'Your account is disabled.',
   callback_failed: 'Something went wrong. Please try again.',
 }
@@ -59,7 +61,7 @@ function SigninForm() {
   useEffect(() => {
     const err = searchParams.get('error')
     if (err) {
-      setError(GOOGLE_ERROR_MESSAGES[err] || `Sign-in error: ${err}`)
+      setError(OAUTH_ERROR_MESSAGES[err] || `Sign-in error: ${err}`)
       window.history.replaceState({}, '', '/signin')
     }
   }, [searchParams])
@@ -155,6 +157,10 @@ function SigninForm() {
           </button>
           <button
             type="button"
+            onClick={() => {
+              const base = getApiBaseUrl();
+              window.location.href = `${base}/auth/apple`
+            }}
             className="flex w-full items-center justify-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-800 shadow-sm transition hover:bg-slate-100"
           >
             <AppleIcon className="h-5 w-5 shrink-0 text-slate-800" />

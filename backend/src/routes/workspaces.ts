@@ -11,6 +11,9 @@ import {
   getAgentsForWorkspace,
   canManageAgentsInWorkspace,
   createWorkspace,
+  updateWorkspace,
+  deleteWorkspace,
+  leaveWorkspace,
   createAgent,
   canManageAgent,
   deleteAgent,
@@ -190,8 +193,92 @@ router.post('/', async (req, res) => {
 });
 
 /**
+ * PATCH /api/v2/workspaces/:workspaceId
+ * Update workspace (e.g. name). Body: { name }. Only owner can update.
+ */
+router.patch('/:workspaceId', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    if (isNaN(workspaceId)) {
+      return res.status(400).json({ error: 'Invalid workspace ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { name } = req.body;
+    const workspace = await updateWorkspace(workspaceId, userId, { name: typeof name === 'string' ? name : undefined });
+    return res.json({ workspace });
+  } catch (error: any) {
+    if (error?.message === 'Only the workspace owner can update workspace settings') {
+      return res.status(403).json({ error: error.message });
+    }
+    if (error?.message === 'Workspace not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    console.error('Update workspace error:', error);
+    res.status(500).json({ error: 'Failed to update workspace', details: error?.message });
+  }
+});
+
+/**
+ * DELETE /api/v2/workspaces/:workspaceId
+ * Delete the workspace and all its data. Only the owner can delete.
+ */
+router.delete('/:workspaceId', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    if (isNaN(workspaceId)) {
+      return res.status(400).json({ error: 'Invalid workspace ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    await deleteWorkspace(workspaceId, userId);
+    return res.status(200).json({ message: 'Workspace deleted' });
+  } catch (error: any) {
+    if (error?.message === 'Only the workspace owner can delete the workspace') {
+      return res.status(403).json({ error: error.message });
+    }
+    if (error?.message === 'Workspace not found') {
+      return res.status(404).json({ error: error.message });
+    }
+    console.error('Delete workspace error:', error);
+    res.status(500).json({ error: 'Failed to delete workspace', details: error?.message });
+  }
+});
+
+/**
+ * POST /api/v2/workspaces/:workspaceId/leave
+ * Leave the workspace (remove current user's membership). Members only; owner cannot leave.
+ */
+router.post('/:workspaceId/leave', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    if (isNaN(workspaceId)) {
+      return res.status(400).json({ error: 'Invalid workspace ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    await leaveWorkspace(workspaceId, userId);
+    return res.status(200).json({ message: 'Left workspace' });
+  } catch (error: any) {
+    if (error?.message === 'You are not a member of this workspace') {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error?.message?.includes('Owners cannot leave')) {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error('Leave workspace error:', error);
+    res.status(500).json({ error: 'Failed to leave workspace', details: error?.message });
+  }
+});
+
+/**
  * GET /api/v2/workspaces/:workspaceId/generate-preprompt
  * Generate a pre-prompt using the workspace's latest crawl and the backend LLM.
+ * Pre-prompt instructs the agent to behave as a support assistant, based on gathered onboarding data.
+ * Query params: agentName (optional), for personalization from Configure step.
  */
 router.get('/:workspaceId/generate-preprompt', async (req, res) => {
   try {
@@ -207,12 +294,21 @@ router.get('/:workspaceId/generate-preprompt', async (req, res) => {
       return res.status(403).json({ error: 'Access denied to this workspace' });
     }
 
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { name: true },
+    });
+
     const crawl = await getLatestCrawlForWorkspace(workspaceId);
     if (!crawl?.trainingContent?.trim()) {
       return res.json({ prePrompt: '' });
     }
 
-    const prePrompt = await generatePrePromptFromWebsiteContent(crawl.trainingContent);
+    const agentName = typeof req.query.agentName === 'string' ? req.query.agentName : undefined;
+    const prePrompt = await generatePrePromptFromWebsiteContent(crawl.trainingContent, {
+      agentName: agentName || undefined,
+      companyName: workspace?.name ?? undefined,
+    });
     return res.json({ prePrompt: prePrompt || '' });
   } catch (error: any) {
     console.error('Generate pre-prompt error:', error);

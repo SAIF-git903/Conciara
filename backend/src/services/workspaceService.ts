@@ -164,6 +164,36 @@ export async function canManageWorkspaceSettings(userId: number, workspaceId: nu
 }
 
 /**
+ * Update workspace (name). Only owner can update. Returns updated workspace.
+ */
+export async function updateWorkspace(
+  workspaceId: number,
+  userId: number,
+  data: { name?: string }
+): Promise<WorkspaceWithRole> {
+  const canManage = await canManageWorkspaceSettings(userId, workspaceId);
+  if (!canManage) throw new Error('Only the workspace owner can update workspace settings');
+
+  const name = typeof data.name === 'string' ? data.name.trim() : undefined;
+  if (name === undefined) {
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { id: true, name: true, plan: true },
+    });
+    if (!workspace) throw new Error('Workspace not found');
+    return { id: workspace.id, name: workspace.name, plan: workspace.plan, role: 'owner' };
+  }
+  if (!name) throw new Error('Workspace name cannot be empty');
+
+  const workspace = await prisma.workspace.update({
+    where: { id: workspaceId },
+    data: { name },
+    select: { id: true, name: true, plan: true },
+  });
+  return { id: workspace.id, name: workspace.name, plan: workspace.plan, role: 'owner' };
+}
+
+/**
  * Check if user can manage agents in this workspace (owner or workspace-level member).
  * Members can: train, edit sources, view analytics, delete agents. They cannot change workspace settings or billing.
  */
@@ -411,5 +441,39 @@ export async function removeWorkspaceMember(
 
   await prisma.workspaceMember.delete({
     where: { id: memberToRemove.id },
+  });
+}
+
+/**
+ * Leave a workspace (remove current user's membership). Only members can leave; owner must delete the workspace or transfer ownership.
+ */
+export async function leaveWorkspace(workspaceId: number, userId: number): Promise<void> {
+  const member = await prisma.workspaceMember.findUnique({
+    where: { workspaceId_userId: { workspaceId, userId } },
+  });
+  if (!member) throw new Error('You are not a member of this workspace');
+  if (member.role === 'owner') {
+    throw new Error('Owners cannot leave. Delete the workspace or transfer ownership first.');
+  }
+  await prisma.workspaceMember.delete({
+    where: { id: member.id },
+  });
+}
+
+/**
+ * Delete a workspace and all its data (agents, members, invites, crawls, etc.). Only the owner can delete.
+ */
+export async function deleteWorkspace(workspaceId: number, userId: number): Promise<void> {
+  const canManage = await canManageWorkspaceSettings(userId, workspaceId);
+  if (!canManage) throw new Error('Only the workspace owner can delete the workspace');
+
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { id: true },
+  });
+  if (!workspace) throw new Error('Workspace not found');
+
+  await prisma.workspace.delete({
+    where: { id: workspaceId },
   });
 }

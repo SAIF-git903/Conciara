@@ -421,9 +421,16 @@ export async function trainPendingDocuments(agentId: number): Promise<number> {
   return trained;
 }
 
+/**
+ * List file-based documents for an agent (excludes the synthetic "Website crawl" document).
+ * Data Sources -> Files shows only user-uploaded files; Website crawl is shown in Data Sources -> Website.
+ */
 export async function listDocumentsByAgent(agentId: number): Promise<AgentDocument[]> {
   const list = await prisma.agentDocument.findMany({
-    where: { agentId },
+    where: {
+      agentId,
+      fileName: { not: WEBSITE_CRAWL_DOCUMENT_NAME },
+    },
     orderBy: { createdAt: 'desc' },
   });
   return list.map(mapDocument);
@@ -435,6 +442,14 @@ export async function getDocumentById(documentId: number): Promise<AgentDocument
 }
 
 export async function deleteDocument(documentId: number, agentId: number): Promise<boolean> {
+  const doc = await prisma.agentDocument.findFirst({
+    where: { id: documentId, agentId },
+    select: { fileName: true },
+  });
+  if (!doc) return false;
+  if (doc.fileName === WEBSITE_CRAWL_DOCUMENT_NAME) {
+    return false;
+  }
   const result = await prisma.agentDocument.deleteMany({
     where: { id: documentId, agentId },
   });

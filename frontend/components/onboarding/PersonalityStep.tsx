@@ -10,6 +10,7 @@ import {
   getOnboardingCrawlId,
   getOnboardingAgentName,
   getOnboardingAgentLogoUrl,
+  getOnboardingTrainOnCrawl,
 } from '@/lib/onboarding'
 
 const container = {
@@ -49,6 +50,7 @@ export default function PersonalityStep({
   const [prePrompt, setPrePrompt] = useState('')
   const [prePromptLoading, setPrePromptLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitStatus, setSubmitStatus] = useState<'creating' | 'training' | 'done'>('creating')
 
   useEffect(() => {
     api.get<{ models: ModelOption[] }>('/models').then(({ data }) => {
@@ -61,28 +63,12 @@ export default function PersonalityStep({
     }).catch(() => {})
   }, [])
 
-  useEffect(() => {
+  const fetchPrePrompt = (agentNameParam?: string | null) => {
     if (workspaceId == null) return
     setPrePromptLoading(true)
+    const params = agentNameParam?.trim() ? { agentName: agentNameParam.trim() } : {}
     api
-      .get<{ prePrompt: string }>(`/workspaces/${workspaceId}/generate-preprompt`)
-      .then(({ data }) => {
-        if (data.prePrompt?.trim()) setPrePrompt(data.prePrompt.trim())
-      })
-      .catch((err: unknown) => {
-        const status = err && typeof err === 'object' && 'response' in err
-          ? (err as { response?: { status?: number } }).response?.status
-          : 0
-        if (status === 403) onForbidden()
-      })
-      .finally(() => setPrePromptLoading(false))
-  }, [workspaceId, onForbidden])
-
-  const handleGeneratePrePrompt = () => {
-    if (workspaceId == null) return
-    setPrePromptLoading(true)
-    api
-      .get<{ prePrompt: string }>(`/workspaces/${workspaceId}/generate-preprompt`)
+      .get<{ prePrompt: string }>(`/workspaces/${workspaceId}/generate-preprompt`, { params })
       .then(({ data }) => {
         if (data.prePrompt?.trim()) setPrePrompt(data.prePrompt.trim())
       })
@@ -95,9 +81,20 @@ export default function PersonalityStep({
       .finally(() => setPrePromptLoading(false))
   }
 
+  useEffect(() => {
+    if (workspaceId == null) return
+    fetchPrePrompt(getOnboardingAgentName())
+  }, [workspaceId, onForbidden])
+
+  const handleGeneratePrePrompt = () => {
+    if (workspaceId == null) return
+    fetchPrePrompt(getOnboardingAgentName())
+  }
+
   const handleConfirm = async () => {
     if (workspaceId == null) return
     setIsSubmitting(true)
+    setSubmitStatus('creating')
     try {
       const name = getOnboardingAgentName()?.trim() || 'My Agent'
       const logoUrl = getOnboardingAgentLogoUrl() || ''
@@ -108,7 +105,16 @@ export default function PersonalityStep({
       const crawlId = getOnboardingCrawlId()
       if (crawlId != null) {
         await api.patch(`/workspaces/${workspaceId}/crawls/${crawlId}`, { agentId: data.agent.id })
+        if (getOnboardingTrainOnCrawl()) {
+          setSubmitStatus('training')
+          try {
+            await api.post(`/workspaces/${workspaceId}/agents/${data.agent.id}/train-from-crawls`)
+          } catch (_) {
+            // User can retrain from Data sources if needed
+          }
+        }
       }
+      setSubmitStatus('done')
       clearOnboardingKeys()
       onSuccess(data.agent.id)
     } catch (err: unknown) {
@@ -187,10 +193,10 @@ export default function PersonalityStep({
               value={prePrompt}
               onChange={(e) => setPrePrompt(e.target.value)}
               rows={5}
-              placeholder={prePromptLoading ? 'Generating pre-prompt from your website…' : "Enter a pre-prompt to guide your AI agent's behavior. Use \"Generate from website\" to create one from your crawled content."}
+              placeholder={prePromptLoading ? 'Generating pre-prompt from your website…' : 'Define how your agent behaves as a support assistant. Use "Generate from website" to create one from your crawled content and onboarding details.'}
               className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm ring-1 ring-slate-200/50 transition focus:border-[var(--v2-primary)] focus:ring-2 focus:ring-[var(--v2-primary)]/20"
             />
-            <p className="mt-1 text-xs text-slate-500">Pre-filled using your website content. Edit or regenerate as needed.</p>
+            <p className="mt-1 text-xs text-slate-500">Pre-filled as a support assistant based on your website and agent name. Edit or regenerate as needed.</p>
           </motion.div>
 
           <motion.div variants={item} className="pt-2">
@@ -203,11 +209,13 @@ export default function PersonalityStep({
               {isSubmitting ? (
                 <>
                   <motion.span
-                    className="h-4 w-4 rounded-full border-2 border-[var(--v2-primary-foreground)] border-t-transparent"
+                    className="h-4 w-4 shrink-0 rounded-full border-2 border-[var(--v2-primary-foreground)] border-t-transparent"
                     animate={{ rotate: 360 }}
                     transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
                   />
-                  {submittingLabel}
+                  {submitStatus === 'creating' && 'Creating your agent…'}
+                  {submitStatus === 'training' && 'Training on your content…'}
+                  {submitStatus === 'done' && submittingLabel}
                 </>
               ) : (
                 <>
@@ -230,9 +238,21 @@ export default function PersonalityStep({
       >
         <div className="flex flex-col items-center rounded-2xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-slate-100/80 p-10 shadow-inner">
           <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-slate-200/50">
-            <svg className="h-7 w-7 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
-            </svg>
+            {isSubmitting && submitStatus === 'training' ? (
+              <motion.div
+                animate={{ scale: [1, 1.1, 1], opacity: [0.8, 1, 0.8] }}
+                transition={{ duration: 1.2, repeat: Infinity }}
+                className="flex h-full w-full items-center justify-center"
+              >
+                <svg className="h-7 w-7 text-[var(--v2-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+              </motion.div>
+            ) : (
+              <svg className="h-7 w-7 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+              </svg>
+            )}
           </div>
           <div className="h-px w-20 bg-slate-300" />
           <motion.div
@@ -241,7 +261,15 @@ export default function PersonalityStep({
             animate={{ opacity: 1 }}
             transition={{ delay: 0.35, duration: 0.25 }}
           >
-            <p className="text-center text-sm font-semibold text-slate-600">Configuring...</p>
+            <p className="text-center text-sm font-semibold text-slate-600">
+              {isSubmitting
+                ? submitStatus === 'creating'
+                  ? 'Creating your agent…'
+                  : submitStatus === 'training'
+                    ? 'Training on your website content…'
+                    : 'Taking you to playground…'
+                : 'Configuring…'}
+            </p>
             <motion.div
               className="mx-auto mt-3 h-1 w-24 overflow-hidden rounded-full bg-slate-200"
               initial={{ opacity: 0 }}
@@ -251,8 +279,12 @@ export default function PersonalityStep({
               <motion.div
                 className="h-full rounded-full bg-[var(--v2-primary)]"
                 initial={{ width: 0 }}
-                animate={{ width: '100%' }}
-                transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 0.3 }}
+                animate={{ width: isSubmitting ? '100%' : 0 }}
+                transition={{
+                  duration: isSubmitting ? 1.5 : 0.3,
+                  repeat: isSubmitting ? Infinity : 0,
+                  repeatDelay: isSubmitting ? 0.3 : 0,
+                }}
               />
             </motion.div>
           </motion.div>
