@@ -6,6 +6,7 @@ export const ONBOARDING_LINK_DONE_KEY = 'onboarding_link_done'
 export const ONBOARDING_CRAWL_ID_KEY = 'onboarding_crawl_id'
 export const ONBOARDING_AGENT_NAME_KEY = 'onboarding_agent_name'
 export const ONBOARDING_AGENT_LOGO_KEY = 'onboarding_agent_logo_url'
+export const ONBOARDING_TRAIN_ON_CRAWL_KEY = 'onboarding_train_on_crawl'
 
 export function getOnboardingWorkspaceId(): number | null {
   if (typeof window === 'undefined') return null
@@ -64,6 +65,15 @@ export function setOnboardingAgentLogoUrl(url: string): void {
   if (typeof window !== 'undefined') sessionStorage.setItem(ONBOARDING_AGENT_LOGO_KEY, url)
 }
 
+export function getOnboardingTrainOnCrawl(): boolean {
+  if (typeof window === 'undefined') return false
+  return sessionStorage.getItem(ONBOARDING_TRAIN_ON_CRAWL_KEY) === '1'
+}
+
+export function setOnboardingTrainOnCrawl(train: boolean): void {
+  if (typeof window !== 'undefined') sessionStorage.setItem(ONBOARDING_TRAIN_ON_CRAWL_KEY, train ? '1' : '0')
+}
+
 export function clearOnboardingKeys(): void {
   if (typeof window !== 'undefined') {
     sessionStorage.removeItem(ONBOARDING_WORKSPACE_KEY)
@@ -72,6 +82,7 @@ export function clearOnboardingKeys(): void {
     sessionStorage.removeItem(ONBOARDING_CRAWL_ID_KEY)
     sessionStorage.removeItem(ONBOARDING_AGENT_NAME_KEY)
     sessionStorage.removeItem(ONBOARDING_AGENT_LOGO_KEY)
+    sessionStorage.removeItem(ONBOARDING_TRAIN_ON_CRAWL_KEY)
   }
 }
 
@@ -89,6 +100,7 @@ export function startNewAgentFlow(workspaceId: number): void {
   sessionStorage.removeItem(ONBOARDING_CRAWL_ID_KEY)
   sessionStorage.removeItem(ONBOARDING_AGENT_NAME_KEY)
   sessionStorage.removeItem(ONBOARDING_AGENT_LOGO_KEY)
+  sessionStorage.removeItem(ONBOARDING_TRAIN_ON_CRAWL_KEY)
 }
 
 /** Redirect to dashboard when new-agent flow has no/invalid workspace (e.g. 403). */
