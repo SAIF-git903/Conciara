@@ -144,6 +144,11 @@ input:disabled, textarea:disabled {
   }
 }
 
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
 .animate-slide-in {
   animation: slide-in 0.3s ease-out;
 }
