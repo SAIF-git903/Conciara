@@ -64,7 +64,7 @@ function cleanupAppleCompleteStore() {
   }
 }
 
-/** Generate Apple client_secret JWT (ES256) for token exchange */
+/** Generate Apple client_secret JWT (ES256) for token exchange. Must match Services ID used in authorize URL. */
 function getAppleClientSecret(): string {
   const now = Math.floor(Date.now() / 1000);
   const payload = {
@@ -74,7 +74,8 @@ function getAppleClientSecret(): string {
     aud: 'https://appleid.apple.com',
     sub: APPLE_CLIENT_ID,
   };
-  return jwt.sign(payload, APPLE_PRIVATE_KEY.replace(/\\n/g, '\n'), {
+  const key = APPLE_PRIVATE_KEY.replace(/\\n/g, '\n');
+  return jwt.sign(payload, key, {
     algorithm: 'ES256',
     keyid: APPLE_KEY_ID,
   });
@@ -687,7 +688,13 @@ router.post('/apple/callback', async (req, res) => {
     }
   }
   try {
-    const clientSecret = getAppleClientSecret();
+    let clientSecret: string;
+    try {
+      clientSecret = getAppleClientSecret();
+    } catch (secretErr: any) {
+      console.error('Apple client_secret JWT failed:', secretErr?.message || secretErr);
+      return res.redirect(302, `${FRONTEND_URL}/signin?error=token_exchange_failed`);
+    }
     const tokenRes = await fetch('https://appleid.apple.com/auth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -710,11 +717,18 @@ router.post('/apple/callback', async (req, res) => {
       return res.redirect(302, `${FRONTEND_URL}/signin?error=no_id_token`);
     }
     const JWKS = jose.createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
-    const { payload } = await jose.jwtVerify(idToken, JWKS, {
-      issuer: 'https://appleid.apple.com',
-      audience: APPLE_CLIENT_ID,
-    });
-    const email = payload.email as string | undefined;
+    let payload: { email?: string };
+    try {
+      const result = await jose.jwtVerify(idToken, JWKS, {
+        issuer: 'https://appleid.apple.com',
+        audience: APPLE_CLIENT_ID,
+      });
+      payload = result.payload as { email?: string };
+    } catch (verifyErr: any) {
+      console.error('Apple id_token verify failed:', verifyErr?.message || verifyErr, 'audience used:', APPLE_CLIENT_ID);
+      return res.redirect(302, `${FRONTEND_URL}/signin?error=token_exchange_failed`);
+    }
+    const email = payload.email;
     if (!email?.trim()) {
       return res.redirect(302, `${FRONTEND_URL}/signin?error=no_email`);
     }
@@ -768,7 +782,7 @@ router.post('/apple/callback', async (req, res) => {
     });
     res.redirect(302, `${FRONTEND_URL}/auth/callback?code=${encodeURIComponent(oneTimeCode)}&provider=apple`);
   } catch (err: any) {
-    console.error('Apple callback error:', err);
+    console.error('Apple callback error:', err?.message || err, err?.stack);
     res.redirect(302, `${FRONTEND_URL}/signin?error=callback_failed`);
   }
 });
