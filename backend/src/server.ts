@@ -46,6 +46,7 @@ app.use(cors({
 app.use('/api/integrations/slack', express.raw({ type: 'application/json' }), slackEventsRouter);
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Bypass login (no secret; remove later for production)
 app.get('/api/auth/bypass-users', async (req, res) => {

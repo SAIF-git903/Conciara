@@ -1,10 +1,12 @@
 /**
  * Authentication Routes
- * Handles login, logout, registration, token refresh, and Sign in with Google
+ * Handles login, logout, registration, token refresh, Sign in with Google, and Sign in with Apple
  */
 
 import crypto from 'crypto';
 import express from 'express';
+import jwt from 'jsonwebtoken';
+import * as jose from 'jose';
 import { getUserByEmail, getUserById, updateLastLogin, getBypassUsers, createUserFromOAuth } from '../services/userService.js';
 import {
   verifyPassword,
@@ -32,6 +34,12 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || '';
 
+const APPLE_CLIENT_ID = process.env.APPLE_CLIENT_ID || '';
+const APPLE_TEAM_ID = process.env.APPLE_TEAM_ID || '';
+const APPLE_KEY_ID = process.env.APPLE_KEY_ID || '';
+const APPLE_PRIVATE_KEY = process.env.APPLE_PRIVATE_KEY || '';
+const APPLE_REDIRECT_URI = process.env.APPLE_REDIRECT_URI || '';
+
 /** One-time codes for Google OAuth completion (code -> { token, refreshToken, user }); expire after 60s */
 const googleCompleteStore = new Map<
   string,
@@ -42,6 +50,34 @@ function cleanupGoogleCompleteStore() {
   for (const [code, data] of googleCompleteStore.entries()) {
     if (data.expiresAt < now) googleCompleteStore.delete(code);
   }
+}
+
+/** One-time codes for Apple OAuth completion; expire after 60s */
+const appleCompleteStore = new Map<
+  string,
+  { token: string; refreshToken: string; user: object; expiresAt: number }
+>();
+function cleanupAppleCompleteStore() {
+  const now = Date.now();
+  for (const [code, data] of appleCompleteStore.entries()) {
+    if (data.expiresAt < now) appleCompleteStore.delete(code);
+  }
+}
+
+/** Generate Apple client_secret JWT (ES256) for token exchange */
+function getAppleClientSecret(): string {
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    iss: APPLE_TEAM_ID,
+    iat: now,
+    exp: now + 86400 * 180, // 180 days max
+    aud: 'https://appleid.apple.com',
+    sub: APPLE_CLIENT_ID,
+  };
+  return jwt.sign(payload, APPLE_PRIVATE_KEY.replace(/\\n/g, '\n'), {
+    algorithm: 'ES256',
+    keyid: APPLE_KEY_ID,
+  });
 }
 
 /**
@@ -589,6 +625,169 @@ router.post('/google/complete', (req, res) => {
     return res.status(400).json({ error: 'Invalid or expired code' });
   }
   googleCompleteStore.delete(code.trim());
+  res.json({
+    token: data.token,
+    refreshToken: data.refreshToken,
+    user: data.user,
+  });
+});
+
+// ---------- Sign in with Apple ----------
+/**
+ * GET /api/auth/apple
+ * Redirects to Apple OAuth consent. Call from frontend via window.location.
+ */
+router.get('/apple', (req, res) => {
+  if (!APPLE_CLIENT_ID || !APPLE_REDIRECT_URI) {
+    return res.redirect(302, `${FRONTEND_URL}/signin?error=apple_not_configured`);
+  }
+  const state = crypto.randomBytes(24).toString('hex');
+  const params = new URLSearchParams({
+    client_id: APPLE_CLIENT_ID,
+    redirect_uri: APPLE_REDIRECT_URI,
+    response_type: 'code',
+    response_mode: 'form_post',
+    scope: 'name email',
+    state,
+  });
+  res.redirect(302, `https://appleid.apple.com/auth/authorize?${params.toString()}`);
+});
+
+/** GET /apple/callback - Apple uses POST (form_post); redirect if hit via GET */
+router.get('/apple/callback', (_req, res) => {
+  res.redirect(302, `${FRONTEND_URL}/signin?error=missing_code`);
+});
+
+/**
+ * POST /api/auth/apple/callback
+ * Apple POSTs here (response_mode=form_post) with code, id_token, user (optional), state, etc.
+ * Exchanges code for tokens, verifies id_token, finds or creates user, redirects to frontend with one-time code.
+ */
+router.post('/apple/callback', async (req, res) => {
+  if (!APPLE_CLIENT_ID || !APPLE_REDIRECT_URI || !APPLE_TEAM_ID || !APPLE_KEY_ID || !APPLE_PRIVATE_KEY) {
+    return res.redirect(302, `${FRONTEND_URL}/signin?error=apple_not_configured`);
+  }
+  const { code, state, error, error_description, user: userJson } = req.body || {};
+  if (error) {
+    const errMsg = typeof error_description === 'string' ? error_description : error;
+    return res.redirect(302, `${FRONTEND_URL}/signin?error=${encodeURIComponent(String(errMsg))}`);
+  }
+  if (typeof code !== 'string') {
+    return res.redirect(302, `${FRONTEND_URL}/signin?error=missing_code`);
+  }
+  let appleFullName: string | undefined;
+  if (typeof userJson === 'string' && userJson) {
+    try {
+      const parsed = JSON.parse(userJson) as { name?: { firstName?: string; lastName?: string } };
+      const first = parsed?.name?.firstName ?? '';
+      const last = parsed?.name?.lastName ?? '';
+      appleFullName = [first, last].filter(Boolean).join(' ').trim() || undefined;
+    } catch {
+      // ignore
+    }
+  }
+  try {
+    const clientSecret = getAppleClientSecret();
+    const tokenRes = await fetch('https://appleid.apple.com/auth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: APPLE_CLIENT_ID,
+        client_secret: clientSecret,
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: APPLE_REDIRECT_URI,
+      }).toString(),
+    });
+    if (!tokenRes.ok) {
+      const errText = await tokenRes.text();
+      console.error('Apple token exchange failed:', tokenRes.status, errText);
+      return res.redirect(302, `${FRONTEND_URL}/signin?error=token_exchange_failed`);
+    }
+    const tokenData = (await tokenRes.json()) as { id_token?: string };
+    const idToken = tokenData.id_token;
+    if (!idToken) {
+      return res.redirect(302, `${FRONTEND_URL}/signin?error=no_id_token`);
+    }
+    const JWKS = jose.createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
+    const { payload } = await jose.jwtVerify(idToken, JWKS, {
+      issuer: 'https://appleid.apple.com',
+      audience: APPLE_CLIENT_ID,
+    });
+    const email = payload.email as string | undefined;
+    if (!email?.trim()) {
+      return res.redirect(302, `${FRONTEND_URL}/signin?error=no_email`);
+    }
+    let user = await getUserByEmail(email.trim());
+    if (!user) {
+      user = await createUserFromOAuth(email.trim(), appleFullName ?? undefined);
+    }
+    if (!user.isActive) {
+      return res.redirect(302, `${FRONTEND_URL}/signin?error=account_disabled`);
+    }
+    await updateLastLogin(user.id);
+    const workspaces = await getWorkspacesForUser(user.id);
+    const token = generateJWT({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      fullName: user.fullName,
+    });
+    const refreshToken = generateRefreshToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      fullName: user.fullName,
+    });
+    try {
+      await createSession({
+        userId: user.id,
+        sessionToken: `session_${user.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        refreshToken,
+        expiresInDays: 7,
+        ipAddress: req.ip || (req.socket as any)?.remoteAddress,
+        userAgent: req.headers['user-agent'] || null,
+      });
+    } catch (err: any) {
+      console.warn('Failed to store session:', err.message);
+    }
+    cleanupAppleCompleteStore();
+    const oneTimeCode = crypto.randomBytes(24).toString('hex');
+    const TTL_MS = 60_000;
+    appleCompleteStore.set(oneTimeCode, {
+      token,
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+        workspaces,
+      },
+      expiresAt: Date.now() + TTL_MS,
+    });
+    res.redirect(302, `${FRONTEND_URL}/auth/callback?code=${encodeURIComponent(oneTimeCode)}&provider=apple`);
+  } catch (err: any) {
+    console.error('Apple callback error:', err);
+    res.redirect(302, `${FRONTEND_URL}/signin?error=callback_failed`);
+  }
+});
+
+/**
+ * POST /api/auth/apple/complete
+ * Body: { code }. Exchanges the one-time code from the redirect for token, refreshToken, user.
+ */
+router.post('/apple/complete', (req, res) => {
+  const { code } = req.body || {};
+  if (typeof code !== 'string' || !code.trim()) {
+    return res.status(400).json({ error: 'code is required' });
+  }
+  cleanupAppleCompleteStore();
+  const data = appleCompleteStore.get(code.trim());
+  if (!data) {
+    return res.status(400).json({ error: 'Invalid or expired code' });
+  }
+  appleCompleteStore.delete(code.trim());
   res.json({
     token: data.token,
     refreshToken: data.refreshToken,
