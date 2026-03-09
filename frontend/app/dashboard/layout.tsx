@@ -127,7 +127,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     if (workspaceIdFromPath != null) {
       const w = workspaces.find((x) => x.id === workspaceIdFromPath)
       if (w) {
-        setCurrentWorkspace((prev) => (prev.id === w.id ? prev : w))
+        setCurrentWorkspace((prev) => (prev.id === w.id && prev.name === w.name ? prev : w))
         setSelectedWorkspaceId(w.id)
         return
       }

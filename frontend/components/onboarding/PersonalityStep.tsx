@@ -61,11 +61,12 @@ export default function PersonalityStep({
     }).catch(() => {})
   }, [])
 
-  useEffect(() => {
+  const fetchPrePrompt = (agentNameParam?: string | null) => {
     if (workspaceId == null) return
     setPrePromptLoading(true)
+    const params = agentNameParam?.trim() ? { agentName: agentNameParam.trim() } : {}
     api
-      .get<{ prePrompt: string }>(`/workspaces/${workspaceId}/generate-preprompt`)
+      .get<{ prePrompt: string }>(`/workspaces/${workspaceId}/generate-preprompt`, { params })
       .then(({ data }) => {
         if (data.prePrompt?.trim()) setPrePrompt(data.prePrompt.trim())
       })
@@ -76,23 +77,16 @@ export default function PersonalityStep({
         if (status === 403) onForbidden()
       })
       .finally(() => setPrePromptLoading(false))
+  }
+
+  useEffect(() => {
+    if (workspaceId == null) return
+    fetchPrePrompt(getOnboardingAgentName())
   }, [workspaceId, onForbidden])
 
   const handleGeneratePrePrompt = () => {
     if (workspaceId == null) return
-    setPrePromptLoading(true)
-    api
-      .get<{ prePrompt: string }>(`/workspaces/${workspaceId}/generate-preprompt`)
-      .then(({ data }) => {
-        if (data.prePrompt?.trim()) setPrePrompt(data.prePrompt.trim())
-      })
-      .catch((err: unknown) => {
-        const status = err && typeof err === 'object' && 'response' in err
-          ? (err as { response?: { status?: number } }).response?.status
-          : 0
-        if (status === 403) onForbidden()
-      })
-      .finally(() => setPrePromptLoading(false))
+    fetchPrePrompt(getOnboardingAgentName())
   }
 
   const handleConfirm = async () => {
@@ -187,10 +181,10 @@ export default function PersonalityStep({
               value={prePrompt}
               onChange={(e) => setPrePrompt(e.target.value)}
               rows={5}
-              placeholder={prePromptLoading ? 'Generating pre-prompt from your website…' : "Enter a pre-prompt to guide your AI agent's behavior. Use \"Generate from website\" to create one from your crawled content."}
+              placeholder={prePromptLoading ? 'Generating pre-prompt from your website…' : 'Define how your agent behaves as a support assistant. Use "Generate from website" to create one from your crawled content and onboarding details.'}
               className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm ring-1 ring-slate-200/50 transition focus:border-[var(--v2-primary)] focus:ring-2 focus:ring-[var(--v2-primary)]/20"
             />
-            <p className="mt-1 text-xs text-slate-500">Pre-filled using your website content. Edit or regenerate as needed.</p>
+            <p className="mt-1 text-xs text-slate-500">Pre-filled as a support assistant based on your website and agent name. Edit or regenerate as needed.</p>
           </motion.div>
 
           <motion.div variants={item} className="pt-2">
