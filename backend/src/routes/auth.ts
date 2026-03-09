@@ -65,21 +65,21 @@ function cleanupAppleCompleteStore() {
 }
 
 /**
- * Normalize Apple .p8 private key from env (handles \\n, single-line PEM, etc.) so Node accepts it for ES256.
+ * Normalize Apple .p8 private key from env: fix newlines, strip invalid chars so PEM is valid for jose/crypto.
  */
 function normalizeApplePrivateKey(raw: string): string {
   if (!raw || !raw.trim()) return raw;
-  let key = raw.trim().replace(/\\n/g, '\n').replace(/\r\n/g, '\n');
+  const key = raw.trim().replace(/\\n/g, '\n').replace(/\r\n/g, '\n');
   const begin = '-----BEGIN PRIVATE KEY-----';
   const end = '-----END PRIVATE KEY-----';
   const beginIdx = key.indexOf(begin);
   const endIdx = key.indexOf(end);
   if (beginIdx === -1 || endIdx === -1 || endIdx <= beginIdx) return key;
-  const base64 = key.slice(beginIdx + begin.length, endIdx).replace(/\s/g, '');
+  const middle = key.slice(beginIdx + begin.length, endIdx);
+  const base64 = middle.replace(/[^A-Za-z0-9+/=]/g, '');
   if (!base64) return key;
   const lines = base64.match(/.{1,64}/g) || [base64];
-  const pem = begin + '\n' + lines.join('\n') + '\n' + end;
-  return pem;
+  return begin + '\n' + lines.join('\n') + '\n' + end;
 }
 
 /** Generate Apple client_secret JWT (ES256) for token exchange using jose (handles PKCS#8 .p8 keys). */
