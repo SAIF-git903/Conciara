@@ -23,9 +23,10 @@ model User {
 
   sessions         UserSession[]
   apiKeys          ApiKey[]
-  workspacesOwned  Workspace[]       @relation("WorkspaceOwner")
-  workspaceMembers WorkspaceMember[]
-  agentMembers     AgentMember[]
+  workspacesOwned    Workspace[]       @relation("WorkspaceOwner")
+  workspaceMembers   WorkspaceMember[]
+  workspaceInvitesSent WorkspaceInvite[]
+  agentMembers       AgentMember[]
 
   @@map("users")
 }
@@ -40,12 +41,28 @@ model Workspace {
 
   owner     User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members   WorkspaceMember[]
+  invites   WorkspaceInvite[]
   agents    Agent[]
   websiteCrawls WebsiteCrawl[]
   agentDocuments AgentDocument[]
   agentQaEntries AgentQa[]
 
   @@map("workspaces")
+}
+
+model WorkspaceInvite {
+  id              Int      @id @default(autoincrement())
+  workspaceId     Int      @map("workspace_id")
+  email           String   @map("email")
+  token           String   @unique @map("token")
+  invitedByUserId Int      @map("invited_by_user_id")
+  expiresAt       DateTime @map("expires_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invitedBy   User      @relation(fields: [invitedByUserId], references: [id], onDelete: Cascade)
+
+  @@map("workspace_invites")
 }
 
 model WorkspaceMember {
@@ -69,7 +86,9 @@ model Agent {
   model        String?  @map("model")
   prePrompt    String?  @map("pre_prompt")
   logoUrl      String?  @map("logo_url")
+  role         String?  @default("general") @map("role") // general | support | sales
   widgetConfig Json?    @map("widget_config")
+  integrations Json?    @map("integrations") // { slack?: { accessToken?, teamId?, teamName? }, ... }
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @default(now()) @map("updated_at")
 
@@ -122,10 +141,11 @@ model AgentDocument {
   mimeType     String    @map("mime_type")
   status       String    @default("pending") // pending | processing | ready | failed
   errorMessage String?   @map("error_message")
-  chunkCount   Int       @default(0) @map("chunk_count")
-  content      String?   @db.Text
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @default(now()) @map("updated_at")
+  chunkCount       Int       @default(0) @map("chunk_count")
+  trainedLinkCount Int?      @map("trained_link_count")
+  content          String?   @db.Text
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @default(now()) @map("updated_at")
 
   agent   Agent               @relation(fields: [agentId], references: [id], onDelete: Cascade)
   workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -188,6 +208,11 @@ model WebsiteCrawl {
   useCase         String   @default("general") @map("use_case")
   trainingContent String   @map("training_content")
   metadata        Json     @default("{}") @map("metadata")
+  pagesCrawled    Int      @default(1) @map("pages_crawled")
+  crawledPages    Json     @default("[]") @map("crawled_pages")
+  products        Json     @default("[]") @map("products")
+  supportLinks    Json     @default("[]") @map("support_links")
+  navLinks        Json     @default("[]") @map("nav_links")
   createdAt       DateTime @default(now()) @map("created_at")
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

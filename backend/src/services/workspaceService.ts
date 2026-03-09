@@ -192,3 +192,224 @@ export async function canManageAgent(userId: number, agentId: number): Promise<b
   });
   return !!agentMember;
 }
+
+export interface WorkspaceMemberInfo {
+  id: number;
+  userId: number;
+  email: string;
+  fullName: string | null;
+  role: WorkspaceRole;
+}
+
+/**
+ * List all members of a workspace (owner + members). Caller must have access to the workspace.
+ */
+export async function listWorkspaceMembers(workspaceId: number): Promise<WorkspaceMemberInfo[]> {
+  const members = await prisma.workspaceMember.findMany({
+    where: { workspaceId },
+    include: { user: { select: { id: true, email: true, fullName: true } } },
+    orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
+  });
+  return members.map((m: { id: number; userId: number; role: string; user: { id: number; email: string; fullName: string | null } }) => ({
+    id: m.id,
+    userId: m.userId,
+    email: m.user.email,
+    fullName: m.user.fullName,
+    role: m.role as WorkspaceRole,
+  }));
+}
+
+export interface PendingInviteInfo {
+  email: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+/**
+ * List pending invites for a workspace (invites not yet accepted). Caller must have access.
+ */
+export async function listPendingInvites(workspaceId: number): Promise<PendingInviteInfo[]> {
+  const invites = await prisma.workspaceInvite.findMany({
+    where: { workspaceId },
+    orderBy: { createdAt: 'desc' },
+  });
+  return invites.map((i: { email: string; expiresAt: Date; createdAt: Date }) => ({
+    email: i.email,
+    expiresAt: i.expiresAt.toISOString(),
+    createdAt: i.createdAt.toISOString(),
+  }));
+}
+
+/**
+ * Resend a workspace invite (new token, new email). Only owner. Email must have a pending invite.
+ */
+export async function resendWorkspaceInvite(
+  workspaceId: number,
+  email: string,
+  requestedByUserId: number
+): Promise<{ inviteLink: string; expiresAt: string }> {
+  const isOwner = await canManageWorkspaceSettings(requestedByUserId, workspaceId);
+  if (!isOwner) throw new Error('Only the workspace owner can resend invites');
+
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) throw new Error('Email is required');
+
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { id: true, name: true },
+  });
+  if (!workspace) throw new Error('Workspace not found');
+
+  const existing = await prisma.workspaceInvite.findFirst({
+    where: { workspaceId, email: normalizedEmail },
+  });
+  if (!existing) throw new Error('No pending invite found for this email');
+
+  const { generateInviteToken, getInviteExpiresAt } = await import('./workspaceInviteService.js');
+  const expiresAt = getInviteExpiresAt();
+  const inviteToken = generateInviteToken();
+
+  await prisma.workspaceInvite.update({
+    where: { id: existing.id },
+    data: { token: inviteToken, expiresAt },
+  });
+
+  const baseUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
+  const inviteLink = `${baseUrl}/signup?invite=${encodeURIComponent(inviteToken)}`;
+
+  try {
+    const { sendWorkspaceInviteEmail } = await import('./emailService.js');
+    await sendWorkspaceInviteEmail(normalizedEmail, workspace.name, inviteLink);
+  } catch (err) {
+    console.error('Failed to resend workspace invite email:', err);
+  }
+
+  return { inviteLink, expiresAt: expiresAt.toISOString() };
+}
+
+export interface InviteResultMember {
+  kind: 'member';
+  member: WorkspaceMemberInfo;
+}
+
+export interface InviteResultPendingInvite {
+  kind: 'pendingInvite';
+  inviteToken: string;
+  inviteLink: string;
+  expiresAt: string;
+}
+
+export type InviteResult = InviteResultMember | InviteResultPendingInvite;
+
+/**
+ * Invite a user to the workspace by email. Caller must be owner.
+ * - If user exists: add them as member and return { kind: 'member', member }.
+ * - If user doesn't exist: create a pending invite and return { kind: 'pendingInvite', inviteLink, ... }.
+ *   They sign up via the link to create an account and join the workspace.
+ */
+export async function inviteWorkspaceMember(
+  workspaceId: number,
+  email: string,
+  invitedByUserId: number
+): Promise<InviteResult> {
+  const isOwner = await canManageWorkspaceSettings(invitedByUserId, workspaceId);
+  if (!isOwner) throw new Error('Only the workspace owner can invite members');
+
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) throw new Error('Email is required');
+
+  const user = await prisma.user.findUnique({
+    where: { email: normalizedEmail },
+    select: { id: true, email: true, fullName: true },
+  });
+
+  if (user) {
+    const existing = await prisma.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId, userId: user.id } },
+    });
+    if (existing) throw new Error('This user is already a member of the workspace');
+
+    const member = await prisma.workspaceMember.create({
+      data: { workspaceId, userId: user.id, role: 'member' },
+      include: { user: { select: { id: true, email: true, fullName: true } } },
+    });
+    return {
+      kind: 'member',
+      member: {
+        id: member.id,
+        userId: member.userId,
+        email: member.user.email,
+        fullName: member.user.fullName,
+        role: 'member',
+      },
+    };
+  }
+
+  const { generateInviteToken, getInviteExpiresAt } = await import('./workspaceInviteService.js');
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { id: true, name: true },
+  });
+  if (!workspace) throw new Error('Workspace not found');
+
+  const expiresAt = getInviteExpiresAt();
+  const inviteToken = generateInviteToken();
+
+  await prisma.workspaceInvite.deleteMany({
+    where: { workspaceId, email: normalizedEmail },
+  });
+  await prisma.workspaceInvite.create({
+    data: {
+      workspaceId,
+      email: normalizedEmail,
+      token: inviteToken,
+      invitedByUserId,
+      expiresAt,
+    },
+  });
+
+  const baseUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
+  const inviteLink = `${baseUrl}/signup?invite=${encodeURIComponent(inviteToken)}`;
+
+  try {
+    const { sendWorkspaceInviteEmail } = await import('./emailService.js');
+    await sendWorkspaceInviteEmail(normalizedEmail, workspace.name, inviteLink);
+  } catch (err) {
+    console.error('Failed to send workspace invite email:', err);
+    // Still return the link so the owner can copy and send manually
+  }
+
+  return {
+    kind: 'pendingInvite',
+    inviteToken,
+    inviteLink,
+    expiresAt: expiresAt.toISOString(),
+  };
+}
+
+/**
+ * Remove a member from the workspace. Caller must be owner. Cannot remove the last owner (yourself).
+ */
+export async function removeWorkspaceMember(
+  workspaceId: number,
+  userIdToRemove: number,
+  requestedByUserId: number
+): Promise<void> {
+  const isOwner = await canManageWorkspaceSettings(requestedByUserId, workspaceId);
+  if (!isOwner) throw new Error('Only the workspace owner can remove members');
+
+  const memberToRemove = await prisma.workspaceMember.findUnique({
+    where: { workspaceId_userId: { workspaceId, userId: userIdToRemove } },
+  });
+  if (!memberToRemove) throw new Error('Member not found in this workspace');
+  if (memberToRemove.role === 'owner' && memberToRemove.userId === requestedByUserId) {
+    throw new Error('You cannot remove yourself as owner. Transfer ownership first or delete the workspace.');
+  }
+  if (memberToRemove.role === 'owner') {
+    throw new Error('Cannot remove the workspace owner');
+  }
+
+  await prisma.workspaceMember.delete({
+    where: { id: memberToRemove.id },
+  });
+}

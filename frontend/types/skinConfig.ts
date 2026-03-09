@@ -123,6 +123,8 @@ export interface SkinConfig {
   components?: ComponentsConfig;
   states?: StatesConfig;
   version?: string;
+  /** When true, unauthenticated visitors can use the chat widget on embedded sites. */
+  allowPublicEmbed?: boolean;
 }
 
 export interface VariationOverrides {

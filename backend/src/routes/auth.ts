@@ -1,27 +1,48 @@
 /**
  * Authentication Routes
- * Handles login, logout, registration, and token refresh
+ * Handles login, logout, registration, token refresh, and Sign in with Google
  */
 
+import crypto from 'crypto';
 import express from 'express';
-import { getUserByEmail, getUserById, updateLastLogin, getBypassUsers } from '../services/userService.js';
-import { 
-  verifyPassword, 
-  generateJWT, 
+import { getUserByEmail, getUserById, updateLastLogin, getBypassUsers, createUserFromOAuth } from '../services/userService.js';
+import {
+  verifyPassword,
+  generateJWT,
   generateRefreshToken,
   verifyRefreshToken,
   hashPassword,
+  generatePasswordResetToken,
+  verifyPasswordResetToken,
   revokeRefreshToken,
   revokeAllUserRefreshTokens,
   revokeSession,
   getUserSessions,
-  cleanupExpiredSessions
+  cleanupExpiredSessions,
 } from '../services/authService.js';
 import { requireAuth, requireAdmin } from '../middleware/authMiddleware.js';
 import { createSession, updateSessionRefresh } from '../services/authService.js';
 import { prisma } from '../db/prisma.js';
+import { getWorkspacesForUser } from '../services/workspaceService.js';
 
 const router = express.Router();
+
+const FRONTEND_URL = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || '';
+
+/** One-time codes for Google OAuth completion (code -> { token, refreshToken, user }); expire after 60s */
+const googleCompleteStore = new Map<
+  string,
+  { token: string; refreshToken: string; user: object; expiresAt: number }
+>();
+function cleanupGoogleCompleteStore() {
+  const now = Date.now();
+  for (const [code, data] of googleCompleteStore.entries()) {
+    if (data.expiresAt < now) googleCompleteStore.delete(code);
+  }
+}
 
 /**
  * @swagger
@@ -142,6 +163,156 @@ router.post('/login', async (req, res) => {
   } catch (error: any) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Login failed', details: error.message });
+  }
+});
+
+/**
+ * POST /api/auth/forgot-password
+ * Body: { email }. Sends a password reset link to the user's email if the account exists.
+ */
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    const trimmed = typeof email === 'string' ? email.trim() : '';
+    if (!trimmed) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+    const user = await getUserByEmail(trimmed);
+    if (!user || !user.isActive) {
+      return res.json({ message: 'If an account exists with this email, you will receive a reset link.' });
+    }
+    const token = generatePasswordResetToken(user.id, user.email);
+    const { sendPasswordResetEmail } = await import('../services/emailService.js');
+    const baseUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
+    const resetLink = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
+    await sendPasswordResetEmail(user.email, resetLink);
+    return res.json({ message: 'If an account exists with this email, you will receive a reset link.' });
+  } catch (error: any) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+/**
+ * POST /api/auth/reset-password
+ * Body: { token, newPassword }. Sets a new password using a valid reset token.
+ */
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body || {};
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: 'Reset token is required' });
+    }
+    const raw = typeof newPassword === 'string' ? newPassword : '';
+    if (!raw || raw.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    let payload: { userId: number; email: string };
+    try {
+      payload = verifyPasswordResetToken(token);
+    } catch (e: any) {
+      return res.status(400).json({ error: e.message || 'Invalid or expired reset link' });
+    }
+    const user = await getUserById(payload.userId);
+    if (!user || !user.isActive) {
+      return res.status(400).json({ error: 'Invalid or expired reset link' });
+    }
+    const passwordHash = await hashPassword(raw);
+    await prisma.user.update({
+      where: { id: payload.userId },
+      data: { passwordHash, updatedAt: new Date() },
+    });
+    return res.json({ message: 'Your password has been reset. You can sign in with your new password.' });
+  } catch (error: any) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+/**
+ * GET /api/auth/invite/validate?token=...
+ * Validate a workspace invite token. Returns { email, workspaceName, valid } if valid and not expired.
+ */
+router.get('/invite/validate', async (req, res) => {
+  try {
+    const token = typeof req.query?.token === 'string' ? req.query.token : '';
+    const { validateInviteToken } = await import('../services/workspaceInviteService.js');
+    const result = await validateInviteToken(token);
+    if (!result) {
+      return res.status(400).json({ valid: false, error: 'Invalid or expired invite link' });
+    }
+    return res.json(result);
+  } catch (error: any) {
+    console.error('Invite validate error:', error);
+    res.status(500).json({ valid: false, error: 'Something went wrong' });
+  }
+});
+
+/**
+ * POST /api/auth/invite/accept
+ * Accept a workspace invite: create account and join workspace. Body: { token, password, fullName? }.
+ * Returns same shape as signup (token, refreshToken, user with workspaces).
+ */
+router.post('/invite/accept', async (req, res) => {
+  try {
+    const { token, password, fullName } = req.body || {};
+    if (!token || !password) {
+      return res.status(400).json({ error: 'Token and password are required' });
+    }
+    const { acceptInvite } = await import('../services/workspaceInviteService.js');
+    const { getWorkspacesForUser } = await import('../services/workspaceService.js');
+
+    const result = await acceptInvite(token, password, fullName?.trim() || undefined);
+
+    await updateLastLogin(result.userId);
+    const workspaces = await getWorkspacesForUser(result.userId);
+
+    const jwt = generateJWT({
+      id: result.userId,
+      email: result.email,
+      role: 'member',
+      fullName: result.fullName ?? undefined,
+    });
+    const refreshToken = generateRefreshToken({
+      id: result.userId,
+      email: result.email,
+      role: 'member',
+      fullName: result.fullName ?? undefined,
+    });
+
+    try {
+      await createSession({
+        userId: result.userId,
+        sessionToken: `session_${result.userId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        refreshToken,
+        expiresInDays: 7,
+        ipAddress: req.ip || (req.socket as any)?.remoteAddress,
+        userAgent: req.headers['user-agent'] || null,
+      });
+    } catch (error: any) {
+      console.warn('Failed to store session:', error.message);
+    }
+
+    return res.status(201).json({
+      token: jwt,
+      refreshToken,
+      user: {
+        id: result.userId,
+        email: result.email,
+        fullName: result.fullName,
+        role: 'member',
+        workspaces,
+      },
+    });
+  } catch (error: any) {
+    if (error?.message === 'Invalid or expired invite link' || error?.message?.includes('expired')) {
+      return res.status(400).json({ error: error.message });
+    }
+    if (error?.message?.includes('already exists')) {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error('Invite accept error:', error);
+    res.status(500).json({ error: 'Failed to create account', details: error?.message });
   }
 });
 
@@ -276,6 +447,156 @@ router.post('/bypass', async (req, res) => {
   }
 });
 
+// ---------- Sign in with Google ----------
+/**
+ * GET /api/auth/google
+ * Redirects to Google OAuth consent. Call from frontend via window.location.
+ */
+router.get('/google', (req, res) => {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_REDIRECT_URI) {
+    return res.status(503).json({ error: 'Google sign-in is not configured' });
+  }
+  const state = crypto.randomBytes(24).toString('hex');
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: GOOGLE_REDIRECT_URI,
+    response_type: 'code',
+    scope: 'email profile openid',
+    state,
+    access_type: 'offline',
+    prompt: 'consent',
+  });
+  res.redirect(302, `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+});
+
+/**
+ * GET /api/auth/google/callback
+ * Google redirects here with ?code=...&state=... . Exchanges code for tokens, gets user info,
+ * finds or creates user, then redirects to frontend with a one-time code.
+ */
+router.get('/google/callback', async (req, res) => {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
+    return res.redirect(302, `${FRONTEND_URL}/signin?error=google_not_configured`);
+  }
+  const { code, state, error } = req.query;
+  if (error) {
+    return res.redirect(302, `${FRONTEND_URL}/signin?error=${encodeURIComponent(String(error))}`);
+  }
+  if (typeof code !== 'string') {
+    return res.redirect(302, `${FRONTEND_URL}/signin?error=missing_code`);
+  }
+  try {
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: GOOGLE_REDIRECT_URI,
+      }).toString(),
+    });
+    if (!tokenRes.ok) {
+      const errText = await tokenRes.text();
+      console.error('Google token exchange failed:', tokenRes.status, errText);
+      return res.redirect(302, `${FRONTEND_URL}/signin?error=token_exchange_failed`);
+    }
+    const tokenData = (await tokenRes.json()) as { access_token?: string };
+    const accessToken = tokenData.access_token;
+    if (!accessToken) {
+      return res.redirect(302, `${FRONTEND_URL}/signin?error=no_access_token`);
+    }
+    const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!userInfoRes.ok) {
+      console.error('Google userinfo failed:', userInfoRes.status);
+      return res.redirect(302, `${FRONTEND_URL}/signin?error=userinfo_failed`);
+    }
+    const userInfo = (await userInfoRes.json()) as { email?: string; name?: string };
+    const email = userInfo.email?.trim();
+    if (!email) {
+      return res.redirect(302, `${FRONTEND_URL}/signin?error=no_email`);
+    }
+    let user = await getUserByEmail(email);
+    if (!user) {
+      user = await createUserFromOAuth(email, userInfo.name ?? undefined);
+    }
+    if (!user.isActive) {
+      return res.redirect(302, `${FRONTEND_URL}/signin?error=account_disabled`);
+    }
+    await updateLastLogin(user.id);
+    const workspaces = await getWorkspacesForUser(user.id);
+    const token = generateJWT({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      fullName: user.fullName,
+    });
+    const refreshToken = generateRefreshToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      fullName: user.fullName,
+    });
+    try {
+      await createSession({
+        userId: user.id,
+        sessionToken: `session_${user.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        refreshToken,
+        expiresInDays: 7,
+        ipAddress: req.ip || (req.socket as any)?.remoteAddress,
+        userAgent: req.headers['user-agent'] || null,
+      });
+    } catch (err: any) {
+      console.warn('Failed to store session:', err.message);
+    }
+    cleanupGoogleCompleteStore();
+    const oneTimeCode = crypto.randomBytes(24).toString('hex');
+    const TTL_MS = 60_000;
+    googleCompleteStore.set(oneTimeCode, {
+      token,
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+        workspaces,
+      },
+      expiresAt: Date.now() + TTL_MS,
+    });
+    res.redirect(302, `${FRONTEND_URL}/auth/callback?code=${encodeURIComponent(oneTimeCode)}`);
+  } catch (err: any) {
+    console.error('Google callback error:', err);
+    res.redirect(302, `${FRONTEND_URL}/signin?error=callback_failed`);
+  }
+});
+
+/**
+ * POST /api/auth/google/complete
+ * Body: { code }. Exchanges the one-time code from the redirect for token, refreshToken, user.
+ */
+router.post('/google/complete', (req, res) => {
+  const { code } = req.body || {};
+  if (typeof code !== 'string' || !code.trim()) {
+    return res.status(400).json({ error: 'code is required' });
+  }
+  cleanupGoogleCompleteStore();
+  const data = googleCompleteStore.get(code.trim());
+  if (!data) {
+    return res.status(400).json({ error: 'Invalid or expired code' });
+  }
+  googleCompleteStore.delete(code.trim());
+  res.json({
+    token: data.token,
+    refreshToken: data.refreshToken,
+    user: data.user,
+  });
+});
+
+// ---------- /api/auth/logout ----------
 /**
  * @swagger
  * /api/auth/logout:

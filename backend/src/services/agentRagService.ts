@@ -29,7 +29,7 @@ export interface RetrievedChunk {
   similarity?: number;
 }
 
-const DEFAULT_TOP_K = 10;
+const DEFAULT_TOP_K = 20;
 const MIN_SIMILARITY = 0.5;
 
 /**

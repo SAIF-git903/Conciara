@@ -3,11 +3,12 @@
  * Uses the new versioned migration system
  */
 
-import { 
-  runMigrations, 
-  showMigrationStatus, 
-  rollbackLastMigration, 
-  initMigrationsTable 
+import {
+  runMigrations,
+  showMigrationStatus,
+  rollbackLastMigration,
+  initMigrationsTable,
+  loadMigrations,
 } from './migrationRunner.js';
 import { pool } from './connection.js';
 
@@ -58,15 +59,15 @@ async function checkExistingDatabase(): Promise<boolean> {
       return false; // Migration system already initialized
     }
     
-    // Check if any of our tables exist
+    // Check if any v2 tables exist
     const tablesCheck = await pool.query(`
       SELECT EXISTS (
         SELECT FROM information_schema.tables 
         WHERE table_schema = 'public' 
-        AND table_name IN ('dialog_trees', 'users', 'websites')
+        AND table_name IN ('users', 'workspaces', 'agents')
       );
     `);
-    
+
     return tablesCheck.rows[0].exists;
   } catch (error) {
     return false;
@@ -74,56 +75,17 @@ async function checkExistingDatabase(): Promise<boolean> {
 }
 
 /**
- * Mark all existing migrations as executed (for legacy databases)
+ * Mark all current v2 migrations as executed (for existing DBs that already have the schema).
  */
 async function markExistingMigrationsAsExecuted(): Promise<void> {
-  const migrations = [
-    '0001', '0002', '0003', '0004', '0005', '0006', '0007'
-  ];
-  
-  for (const version of migrations) {
-    // Check if corresponding tables exist
-    const shouldMark = await shouldMarkMigration(version);
-    if (shouldMark) {
-      await pool.query(
-        `INSERT INTO migrations (version, name) 
-         VALUES ($1, $2) 
-         ON CONFLICT (version) DO NOTHING`,
-        [version, `legacy_migration_${version}`]
-      );
-      console.log(`   ✅ Marked migration ${version} as executed`);
-    }
-  }
-}
-
-/**
- * Check if a migration should be marked as executed based on table existence
- */
-async function shouldMarkMigration(version: string): Promise<boolean> {
-  const tableChecks: Record<string, string[]> = {
-    '0001': ['dialog_trees', 'dialog_nodes', 'customer_types', 'websites'],
-    '0002': ['skins', 'ab_variations'],
-    '0003': ['preprompts', 'conversation_sessions', 'conversation_history'],
-    '0004': ['user_profiles', 'user_memory'],
-    '0005': ['traces', 'trace_events', 'conversation_trees'],
-    '0006': ['node_media', 'products'],
-    '0007': ['users', 'api_keys', 'user_sessions', 'user_tenants'],
-  };
-  
-  const tables = tableChecks[version] || [];
-  if (tables.length === 0) return false;
-  
-  // Check if at least one table from this migration exists
-  const placeholders = tables.map((_, i) => `$${i + 1}`).join(', ');
-  const result = await pool.query(`
-    SELECT EXISTS (
-      SELECT FROM information_schema.tables 
-      WHERE table_schema = 'public' 
-      AND table_name IN (${placeholders})
+  const migrations = await loadMigrations();
+  for (const m of migrations) {
+    await pool.query(
+      `INSERT INTO migrations (version, name) VALUES ($1, $2) ON CONFLICT (version) DO NOTHING`,
+      [m.version, m.name]
     );
-  `, tables);
-  
-  return result.rows[0].exists;
+    console.log(`   ✅ Marked migration ${m.version} (${m.name}) as executed`);
+  }
 }
 
 // CLI interface for migration commands

@@ -1,15 +1,15 @@
-# Database Migrations
+# Database Migrations (v2)
 
-This directory contains versioned database migrations for ConversaTree.
+This directory contains versioned database migrations for ConversaTree **v2** (workspaces, agents, website crawls, RAG, etc.). Older v1 migrations have been removed.
 
 ## Migration File Format
 
 Migration files follow the naming pattern: `XXXX_description.ts`
 
-- `XXXX` - 4-digit sequential version number (e.g., 0001, 0002, 0003)
-- `description` - Short description of what the migration does (e.g., `initial_schema`, `add_user_memory`)
+- `XXXX` - 4-digit version number (e.g., 0001, 0008, 0019)
+- `description` - Short description (e.g., `v2_baseline`, `v2_workspaces_agents`)
 
-Example: `0001_initial_schema.ts`
+Example: `0001_v2_baseline.ts`
 
 ## Migration Structure
 
@@ -85,10 +85,9 @@ Migrations are tracked in the `migrations` table:
 5. **Never modify existing migrations** - Create a new migration instead
 6. **Use IF NOT EXISTS** for idempotent migrations when possible
 
-## Legacy Database Support
+## Existing Database Support
 
-If you're upgrading from the old migration system, the new system will:
-1. Detect existing tables
-2. Initialize the migrations tracking table
-3. Mark all existing migrations as executed
-4. Only run new migrations going forward
+If the database has v2 tables (`users`, `workspaces`, or `agents`) but no `migrations` table, the runner will:
+1. Create the `migrations` table
+2. Mark all current migration versions as executed (so nothing is re-run)
+3. Future runs will only apply new migrations
