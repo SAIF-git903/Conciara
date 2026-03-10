@@ -16,6 +16,10 @@ const options: swaggerJsdoc.Options = {
         url: 'https://conversatreeapi.geniusai.biz',
         description: 'Production server',
       },
+      {
+        url: 'http://localhost:3009',
+        description: 'Local server',
+      },
     ],
     components: {
       securitySchemes: {
