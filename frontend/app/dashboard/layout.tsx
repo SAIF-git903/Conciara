@@ -116,7 +116,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   const [trainingStatus, setTrainingStatus] = useState<'idle' | 'training' | 'complete'>('idle')
   const [trainingProgress, setTrainingProgress] = useState<{ fedLinks: number; totalLinks: number }>({ fedLinks: 0, totalLinks: 0 })
   const trainingCompleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const socketRef = useRef<Socket | null>(null)
+  const [socket, setSocket] = useState<Socket | null>(null)
 
   useEffect(() => {
     if (loading) return
@@ -130,20 +130,20 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     }
   }, [user, loading, router])
 
-  // Socket: connect when user is present (dashboard)
+  // Socket: connect when user is present (dashboard); expose via context for e.g. Data sources page
   useEffect(() => {
     if (!user) return
     const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
     if (!token) return
-    const socket = ioClient(getSocketUrl(), {
+    const s = ioClient(getSocketUrl(), {
       path: '/socket.io',
       auth: { token },
       transports: ['websocket', 'polling'],
     })
-    socketRef.current = socket
+    setSocket(s)
     return () => {
-      socket.disconnect()
-      socketRef.current = null
+      s.disconnect()
+      setSocket(null)
     }
   }, [user])
 
@@ -154,7 +154,6 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     const onAgentPage = parsed.isAgentRoute && !!agentId && !!workspaceId
     if (!onAgentPage || typeof agentId !== 'string') return
 
-    const socket = socketRef.current
     if (!socket) return
 
     // Reset training UI for this agent so we never show another agent's progress
@@ -213,7 +212,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         trainingCompleteTimeoutRef.current = null
       }
     }
-  }, [currentWorkspace?.id, currentAgent?.id, parsed.isAgentRoute])
+  }, [currentWorkspace?.id, currentAgent?.id, parsed.isAgentRoute, socket])
 
   // Sync currentWorkspace from URL when path has workspaceId
   useEffect(() => {
@@ -530,7 +529,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
           paddingTop: 'max(2rem, env(safe-area-inset-top, 2rem))',
         }}
       >
-        <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete}>
+        <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete} socket={socket}>
           {children}
         </DashboardProvider>
       </div>
@@ -828,7 +827,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         {/* Main content area */}
         <div className="flex min-h-0 flex-1 flex-col">
           <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete}>
+            <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete} socket={socket}>
               {children}
             </DashboardProvider>
           </main>

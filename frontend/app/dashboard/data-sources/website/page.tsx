@@ -111,7 +111,7 @@ function baseUrlDisplay(url: string): string {
 }
 
 export default function DataSourcesWebsitePage() {
-  const { currentWorkspace, currentAgent } = useDashboard()
+  const { currentWorkspace, currentAgent, socket } = useDashboard()
   const workspaceId = currentWorkspace?.id
   const agentId = currentAgent?.id
 
@@ -197,6 +197,55 @@ export default function DataSourcesWebsitePage() {
     if (workspaceId && agentId) fetchCrawlStats()
   }, [workspaceId, agentId, fetchCrawlStats])
 
+  // Socket: real-time updates for the four Data sources cards during training (no polling when socket is used)
+  useEffect(() => {
+    if (!socket || !agentId || typeof agentId !== 'string') return
+    let cancelled = false
+
+    const onProgress = (payload: {
+      agentId: number
+      trainedLinksSoFar: number
+      totalLinks: number
+      trainedSizeBytesSoFar?: number
+    }) => {
+      if (cancelled || String(payload.agentId) !== agentId) return
+      setCrawlStats((prev) =>
+        prev
+          ? {
+              ...prev,
+              trainingInProgress: true,
+              trainedLinksSoFar: payload.trainedLinksSoFar,
+              totalLinksProgress: payload.totalLinks,
+              trainedSizeBytesSoFar: payload.trainedSizeBytesSoFar ?? prev.trainedSizeBytesSoFar ?? null,
+            }
+          : null
+      )
+    }
+    const onComplete = (payload: { agentId: number }) => {
+      if (cancelled || String(payload.agentId) !== agentId) return
+      setIsTraining(false)
+      fetchCrawlStats()
+    }
+    const onError = (payload: { agentId: number }) => {
+      if (cancelled || String(payload.agentId) !== agentId) return
+      setIsTraining(false)
+      fetchCrawlStats()
+    }
+
+    socket.emit('subscribe-agent', agentId)
+    socket.on('crawl-training-progress', onProgress)
+    socket.on('crawl-training-complete', onComplete)
+    socket.on('crawl-training-error', onError)
+
+    return () => {
+      cancelled = true
+      socket.emit('unsubscribe-agent', agentId)
+      socket.off('crawl-training-progress', onProgress)
+      socket.off('crawl-training-complete', onComplete)
+      socket.off('crawl-training-error', onError)
+    }
+  }, [socket, agentId, fetchCrawlStats])
+
   useEffect(() => {
     return () => {
       if (pollIntervalRef.current) {
@@ -219,16 +268,19 @@ export default function DataSourcesWebsitePage() {
         `/workspaces/${workspaceId}/agents/${agentId}/train-from-crawls`
       )
       await fetchCrawlStats()
-      pollIntervalRef.current = setInterval(async () => {
-        const next = await fetchCrawlStats()
-        if (next && !next.trainingInProgress) {
-          if (pollIntervalRef.current) {
-            clearInterval(pollIntervalRef.current)
-            pollIntervalRef.current = null
+      if (!socket) {
+        // Fallback: poll when socket is not available
+        pollIntervalRef.current = setInterval(async () => {
+          const next = await fetchCrawlStats()
+          if (next && !next.trainingInProgress) {
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current)
+              pollIntervalRef.current = null
+            }
+            setIsTraining(false)
           }
-          setIsTraining(false)
-        }
-      }, 1500)
+        }, 1500)
+      }
     } catch (e: unknown) {
       const msg =
         e && typeof e === 'object' && 'response' in e
@@ -238,7 +290,7 @@ export default function DataSourcesWebsitePage() {
       setTrainError(msg || (e instanceof Error ? e.message : 'Training failed'))
       setIsTraining(false)
     }
-  }, [workspaceId, agentId, fetchCrawlStats])
+  }, [workspaceId, agentId, fetchCrawlStats, socket])
 
   const addSite = useCallback(
     async (url: string) => {
