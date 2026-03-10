@@ -25,6 +25,8 @@ import {
   Trash2,
   AlertTriangle,
   LogOut,
+  Loader2,
+  X,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Suspense } from 'react'
@@ -109,6 +111,13 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   const isOwner = user?.role === 'owner'
   const dashboardNavItems = isOwner ? dashboardNavItemsOwner : dashboardNavItemsMember
 
+  // Training progress: floating message on all screens; only poll crawl-stats while training is in progress
+  const [trainingStatus, setTrainingStatus] = useState<'idle' | 'training' | 'complete'>('idle')
+  const [trainingProgress, setTrainingProgress] = useState<{ fedLinks: number; totalLinks: number }>({ fedLinks: 0, totalLinks: 0 })
+  const wasTrainingRef = useRef(false)
+  const trainingCompleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const CRAWL_STATS_POLL_MS = 2500
+
   useEffect(() => {
     if (loading) return
     if (!user) {
@@ -120,6 +129,63 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
       router.replace('/onboarding')
     }
   }, [user, loading, router])
+
+  // Crawl-stats: one initial fetch per agent; start polling only when trainingInProgress is true, stop when false
+  useEffect(() => {
+    const workspaceId = currentWorkspace?.id
+    const agentId = currentAgent?.id
+    if (!workspaceId || !agentId || typeof agentId !== 'string') return
+    let cancelled = false
+    let pollIntervalId: ReturnType<typeof setInterval> | null = null
+
+    const fetchCrawlStats = () => {
+      api
+        .get<{
+          trainingInProgress: boolean
+          trainedLinksSoFar: number | null
+          totalLinksProgress: number | null
+          linkCount: number
+        }>(`/workspaces/${workspaceId}/agents/${agentId}/crawl-stats`)
+        .then(({ data }) => {
+          if (cancelled) return
+          const inProgress = !!data.trainingInProgress
+          const fed = data.trainedLinksSoFar ?? 0
+          const total = data.totalLinksProgress ?? data.linkCount ?? 0
+          setTrainingProgress({ fedLinks: fed, totalLinks: total })
+          if (inProgress) {
+            wasTrainingRef.current = true
+            setTrainingStatus('training')
+            if (!pollIntervalId) {
+              pollIntervalId = setInterval(fetchCrawlStats, CRAWL_STATS_POLL_MS)
+            }
+          } else if (wasTrainingRef.current) {
+            wasTrainingRef.current = false
+            setTrainingStatus('complete')
+            if (pollIntervalId) {
+              clearInterval(pollIntervalId)
+              pollIntervalId = null
+            }
+            if (trainingCompleteTimeoutRef.current) clearTimeout(trainingCompleteTimeoutRef.current)
+            trainingCompleteTimeoutRef.current = setTimeout(() => {
+              setTrainingStatus('idle')
+              trainingCompleteTimeoutRef.current = null
+            }, 6000)
+          }
+        })
+        .catch(() => {})
+    }
+
+    fetchCrawlStats()
+
+    return () => {
+      cancelled = true
+      if (pollIntervalId) clearInterval(pollIntervalId)
+      if (trainingCompleteTimeoutRef.current) {
+        clearTimeout(trainingCompleteTimeoutRef.current)
+        trainingCompleteTimeoutRef.current = null
+      }
+    }
+  }, [currentWorkspace?.id, currentAgent?.id])
 
   // Sync currentWorkspace from URL when path has workspaceId
   useEffect(() => {
@@ -860,6 +926,60 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Training progress — shown on all dashboard screens; only poll crawl-stats while training */}
+      {(trainingStatus === 'training' || trainingStatus === 'complete') && (
+        <div className="fixed bottom-4 right-4 z-50 w-[320px] max-w-[calc(100vw-2rem)]" aria-live="polite">
+          {trainingStatus === 'training' ? (
+            <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-lg ring-1 ring-slate-200/50">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--v2-primary)]/10">
+                <Loader2 className="h-4 w-4 animate-spin text-[var(--v2-primary)]" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-slate-900">Training website content</p>
+                <p className="mt-0.5 text-xs text-slate-600">
+                  {trainingProgress.totalLinks > 0
+                    ? `${trainingProgress.fedLinks}/${trainingProgress.totalLinks} links (${Math.min(100, Math.round((trainingProgress.fedLinks / trainingProgress.totalLinks) * 100))}%). `
+                    : ''}
+                  You can chat now.
+                </p>
+                {trainingProgress.totalLinks > 0 && (
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                    <div
+                      className="h-full rounded-full bg-[var(--v2-primary)] transition-all duration-300"
+                      style={{ width: `${Math.min(100, Math.round((trainingProgress.fedLinks / trainingProgress.totalLinks) * 100))}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-lg ring-1 ring-slate-200/50">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100">
+                <Check className="h-4 w-4 text-emerald-600" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-slate-900">Training complete</p>
+                <p className="mt-0.5 text-xs text-slate-600">Website content is ready.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (trainingCompleteTimeoutRef.current) {
+                    clearTimeout(trainingCompleteTimeoutRef.current)
+                    trainingCompleteTimeoutRef.current = null
+                  }
+                  setTrainingStatus('idle')
+                }}
+                className="shrink-0 rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                aria-label="Dismiss"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
