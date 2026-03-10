@@ -10,6 +10,12 @@ export function getApiBaseUrl(): string {
   return url.replace(/\/+$/, '');
 }
 
+/** Origin for Socket.IO (no /api path). */
+export function getSocketUrl(): string {
+  const base = getApiBaseUrl();
+  return base.replace(/\/api\/?$/, '') || base;
+}
+
 const api = axios.create({
   baseURL: getApiBaseUrl(),
   headers: { 'Content-Type': 'application/json' },

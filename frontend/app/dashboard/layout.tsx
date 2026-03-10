@@ -4,7 +4,8 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import api from '@/lib/api'
+import api, { getSocketUrl } from '@/lib/api'
+import { io as ioClient, type Socket } from 'socket.io-client'
 import {
   Bot,
   ChevronDown,
@@ -111,12 +112,11 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   const isOwner = user?.role === 'owner'
   const dashboardNavItems = isOwner ? dashboardNavItemsOwner : dashboardNavItemsMember
 
-  // Training progress: floating message on all screens; only poll crawl-stats while training is in progress
+  // Training progress: shown only on agent pages (not on agents list); driven by socket + one initial crawl-stats
   const [trainingStatus, setTrainingStatus] = useState<'idle' | 'training' | 'complete'>('idle')
   const [trainingProgress, setTrainingProgress] = useState<{ fedLinks: number; totalLinks: number }>({ fedLinks: 0, totalLinks: 0 })
-  const wasTrainingRef = useRef(false)
   const trainingCompleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const CRAWL_STATS_POLL_MS = 2500
+  const socketRef = useRef<Socket | null>(null)
 
   useEffect(() => {
     if (loading) return
@@ -130,62 +130,90 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     }
   }, [user, loading, router])
 
-  // Crawl-stats: one initial fetch per agent; start polling only when trainingInProgress is true, stop when false
+  // Socket: connect when user is present (dashboard)
+  useEffect(() => {
+    if (!user) return
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
+    if (!token) return
+    const socket = ioClient(getSocketUrl(), {
+      path: '/socket.io',
+      auth: { token },
+      transports: ['websocket', 'polling'],
+    })
+    socketRef.current = socket
+    return () => {
+      socket.disconnect()
+      socketRef.current = null
+    }
+  }, [user])
+
+  // Agent page only: one initial crawl-stats + subscribe to socket for training progress; show progress only here
   useEffect(() => {
     const workspaceId = currentWorkspace?.id
     const agentId = currentAgent?.id
-    if (!workspaceId || !agentId || typeof agentId !== 'string') return
-    let cancelled = false
-    let pollIntervalId: ReturnType<typeof setInterval> | null = null
+    const onAgentPage = parsed.isAgentRoute && !!agentId && !!workspaceId
+    if (!onAgentPage || typeof agentId !== 'string') return
 
-    const fetchCrawlStats = () => {
-      api
-        .get<{
-          trainingInProgress: boolean
-          trainedLinksSoFar: number | null
-          totalLinksProgress: number | null
-          linkCount: number
-        }>(`/workspaces/${workspaceId}/agents/${agentId}/crawl-stats`)
-        .then(({ data }) => {
-          if (cancelled) return
-          const inProgress = !!data.trainingInProgress
-          const fed = data.trainedLinksSoFar ?? 0
-          const total = data.totalLinksProgress ?? data.linkCount ?? 0
-          setTrainingProgress({ fedLinks: fed, totalLinks: total })
-          if (inProgress) {
-            wasTrainingRef.current = true
-            setTrainingStatus('training')
-            if (!pollIntervalId) {
-              pollIntervalId = setInterval(fetchCrawlStats, CRAWL_STATS_POLL_MS)
-            }
-          } else if (wasTrainingRef.current) {
-            wasTrainingRef.current = false
-            setTrainingStatus('complete')
-            if (pollIntervalId) {
-              clearInterval(pollIntervalId)
-              pollIntervalId = null
-            }
-            if (trainingCompleteTimeoutRef.current) clearTimeout(trainingCompleteTimeoutRef.current)
-            trainingCompleteTimeoutRef.current = setTimeout(() => {
-              setTrainingStatus('idle')
-              trainingCompleteTimeoutRef.current = null
-            }, 6000)
-          }
-        })
-        .catch(() => {})
+    const socket = socketRef.current
+    if (!socket) return
+
+    // Reset training UI for this agent so we never show another agent's progress
+    setTrainingStatus('idle')
+    setTrainingProgress({ fedLinks: 0, totalLinks: 0 })
+
+    let cancelled = false
+
+    const onProgress = (payload: { agentId: number; trainedLinksSoFar: number; totalLinks: number }) => {
+      if (cancelled || String(payload.agentId) !== agentId) return
+      setTrainingProgress({ fedLinks: payload.trainedLinksSoFar, totalLinks: payload.totalLinks })
+      setTrainingStatus('training')
+    }
+    const onComplete = (payload: { agentId: number }) => {
+      if (cancelled || String(payload.agentId) !== agentId) return
+      setTrainingStatus('complete')
+      if (trainingCompleteTimeoutRef.current) clearTimeout(trainingCompleteTimeoutRef.current)
+      trainingCompleteTimeoutRef.current = setTimeout(() => {
+        setTrainingStatus('idle')
+        trainingCompleteTimeoutRef.current = null
+      }, 6000)
     }
 
-    fetchCrawlStats()
+    api
+      .get<{
+        trainingInProgress: boolean
+        trainedLinksSoFar: number | null
+        totalLinksProgress: number | null
+        linkCount: number
+      }>(`/workspaces/${workspaceId}/agents/${agentId}/crawl-stats`)
+      .then(({ data }) => {
+        if (cancelled) return
+        const fed = data.trainedLinksSoFar ?? 0
+        const total = data.totalLinksProgress ?? data.linkCount ?? 0
+        setTrainingProgress({ fedLinks: fed, totalLinks: total })
+        if (data.trainingInProgress) {
+          setTrainingStatus('training')
+        } else {
+          // This agent is not training — clear any stale state from another agent
+          setTrainingStatus('idle')
+        }
+      })
+      .catch(() => {})
+
+    socket.emit('subscribe-agent', agentId)
+    socket.on('crawl-training-progress', onProgress)
+    socket.on('crawl-training-complete', onComplete)
 
     return () => {
       cancelled = true
-      if (pollIntervalId) clearInterval(pollIntervalId)
+      socket.emit('unsubscribe-agent', agentId)
+      socket.off('crawl-training-progress', onProgress)
+      socket.off('crawl-training-complete', onComplete)
       if (trainingCompleteTimeoutRef.current) {
         clearTimeout(trainingCompleteTimeoutRef.current)
         trainingCompleteTimeoutRef.current = null
       }
     }
-  }, [currentWorkspace?.id, currentAgent?.id])
+  }, [currentWorkspace?.id, currentAgent?.id, parsed.isAgentRoute])
 
   // Sync currentWorkspace from URL when path has workspaceId
   useEffect(() => {
@@ -929,8 +957,8 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      {/* Training progress — shown on all dashboard screens; only poll crawl-stats while training */}
-      {(trainingStatus === 'training' || trainingStatus === 'complete') && (
+      {/* Training progress — only on agent pages (not on agents list); real-time via socket */}
+      {parsed.isAgentRoute && (trainingStatus === 'training' || trainingStatus === 'complete') && (
         <div className="fixed bottom-4 right-4 z-50 w-[320px] max-w-[calc(100vw-2rem)]" aria-live="polite">
           {trainingStatus === 'training' ? (
             <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-lg ring-1 ring-slate-200/50">

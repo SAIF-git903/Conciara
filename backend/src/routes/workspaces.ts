@@ -48,6 +48,7 @@ import {
   setWebsiteCrawlTrainedLinkCount,
   deleteWebsiteCrawlDocuments,
 } from '../services/agentDocumentService.js';
+import { getSocketIo, agentRoom } from '../socket.js';
 import { retrieveChunks } from '../services/agentRagService.js';
 import {
   listQaByAgent,
@@ -1294,12 +1295,25 @@ router.post('/:workspaceId/agents/:agentId/train-from-crawls', async (req, res) 
                 trainedLinksSoFar,
                 totalLinks: totalLinksAfter,
               });
+              const io = getSocketIo();
+              if (io) {
+                io.to(agentRoom(agentId)).emit('crawl-training-progress', {
+                  agentId,
+                  trainedLinksSoFar: trainedLinksSoFar,
+                  totalLinks: totalLinksAfter,
+                  trainedSizeBytesSoFar: baseSize + cumulativeSizeBytes,
+                });
+              }
             }
           );
           await setWebsiteCrawlTrainedLinkCount(agentId, totalLinksAfter);
         } catch (err) {
           console.error('Train from crawls background error:', err);
+          const io = getSocketIo();
+          if (io) io.to(agentRoom(agentId)).emit('crawl-training-error', { agentId, message: (err as Error)?.message });
         } finally {
+          const io = getSocketIo();
+          if (io) io.to(agentRoom(agentId)).emit('crawl-training-complete', { agentId });
           crawlTrainingProgress.delete(agentId);
         }
       });
@@ -1341,13 +1355,26 @@ router.post('/:workspaceId/agents/:agentId/train-from-crawls', async (req, res) 
               trainedLinksSoFar,
               totalLinks: totalLinksForProgress,
             });
+            const io = getSocketIo();
+            if (io) {
+              io.to(agentRoom(agentId)).emit('crawl-training-progress', {
+                agentId,
+                trainedLinksSoFar,
+                totalLinks: totalLinksForProgress,
+                trainedSizeBytesSoFar: cumulativeSizeBytes,
+              });
+            }
           }
         );
         const { linkCount: finalLinkCount } = await getCrawlStatsForAgent(agentId);
         await setWebsiteCrawlTrainedLinkCount(agentId, finalLinkCount);
       } catch (err) {
         console.error('Train from crawls background error:', err);
+        const io = getSocketIo();
+        if (io) io.to(agentRoom(agentId)).emit('crawl-training-error', { agentId, message: (err as Error)?.message });
       } finally {
+        const io = getSocketIo();
+        if (io) io.to(agentRoom(agentId)).emit('crawl-training-complete', { agentId });
         crawlTrainingProgress.delete(agentId);
       }
     });

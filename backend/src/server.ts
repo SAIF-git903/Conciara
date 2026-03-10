@@ -1,7 +1,9 @@
+import http from 'http';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import swaggerUi from 'swagger-ui-express';
+import { Server as SocketServer } from 'socket.io';
 import { swaggerSpec } from './config/swagger.js';
 // Import connection early to validate DATABASE_URL
 import './db/connection.js';
@@ -15,7 +17,9 @@ import { SUPPORTED_LLM_MODELS } from './services/llmService.js';
 import { injectPresignedWidgetHeaderIcon } from './services/s3Service.js';
 import { getBypassUsers, getUserById, updateLastLogin } from './services/userService.js';
 import { getWorkspacesForUser } from './services/workspaceService.js';
-import { generateJWT, generateRefreshToken } from './services/authService.js';
+import { generateJWT, generateRefreshToken, verifyJWT } from './services/authService.js';
+import { canManageAgent } from './services/workspaceService.js';
+import { setSocketIo, agentRoom } from './socket.js';
 
 dotenv.config();
 
@@ -165,7 +169,52 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Dialog Tree API is running' });
 });
 
-app.listen(PORT, () => {
+const server = http.createServer(app);
+const io = new SocketServer(server, {
+  cors: { origin: true, credentials: true },
+  path: '/socket.io',
+});
+setSocketIo(io);
+
+io.use((socket, next) => {
+  const token =
+    (socket.handshake.auth as { token?: string })?.token ||
+    (socket.handshake.query?.token as string | undefined);
+  if (!token) {
+    return next(new Error('Authentication required'));
+  }
+  try {
+    const payload = verifyJWT(token);
+    (socket.data as { userId: number }).userId = payload.id;
+    next();
+  } catch {
+    next(new Error('Invalid token'));
+  }
+});
+
+io.on('connection', (socket) => {
+  socket.on('subscribe-agent', async (agentId: number | string, cb?: (res: { ok: boolean }) => void) => {
+    const userId = (socket.data as { userId: number }).userId;
+    const id = typeof agentId === 'string' ? parseInt(agentId, 10) : agentId;
+    if (isNaN(id)) {
+      cb?.({ ok: false });
+      return;
+    }
+    try {
+      const ok = await canManageAgent(userId, id);
+      if (ok) socket.join(agentRoom(id));
+      cb?.({ ok: !!ok });
+    } catch {
+      cb?.({ ok: false });
+    }
+  });
+  socket.on('unsubscribe-agent', (agentId: number | string) => {
+    const id = typeof agentId === 'string' ? parseInt(agentId, 10) : agentId;
+    if (!isNaN(id)) socket.leave(agentRoom(id));
+  });
+});
+
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
