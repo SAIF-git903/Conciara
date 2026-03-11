@@ -33,6 +33,37 @@ router.get('/models', (_req, res) => {
   res.json({ models: SUPPORTED_LLM_MODELS.map((m) => ({ id: m.id, label: m.label })) });
 });
 
+const PLAN_DISPLAY_ORDER = ['free', 'hobby', 'standard', 'pro'];
+
+/** List all plans (for pricing page). Returns same structure as seed. Enterprise excluded for now. */
+router.get('/plans', async (_req, res) => {
+  try {
+    const rows = await prisma.plan.findMany({
+      where: { name: { not: 'enterprise' } },
+    });
+    const plans = [...rows].sort(
+      (a, b) => PLAN_DISPLAY_ORDER.indexOf(a.name) - PLAN_DISPLAY_ORDER.indexOf(b.name)
+    );
+    res.json({
+      plans: plans.map((p) => ({
+        id: p.id,
+        name: p.name,
+        displayName: p.displayName,
+        priceMonthly: p.priceMonthly,
+        priceYearly: p.priceYearly,
+        messageCredits: p.messageCredits,
+        maxAgents: p.maxAgents,
+        maxMembers: p.maxMembers,
+        maxTrainingBytes: Number(p.maxTrainingBytes),
+        apiAccess: p.apiAccess,
+      })),
+    });
+  } catch (e) {
+    console.error('Plans list error:', e);
+    res.status(500).json({ error: 'Failed to load plans' });
+  }
+});
+
 router.get('/public/widget-config', async (req, res) => {
   try {
     const workspaceId = parseInt(String(req.query.workspaceId ?? ''), 10);

@@ -21,12 +21,13 @@ model User {
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @default(now()) @map("updated_at")
 
-  sessions         UserSession[]
-  apiKeys          ApiKey[]
-  workspacesOwned    Workspace[]       @relation("WorkspaceOwner")
-  workspaceMembers   WorkspaceMember[]
-  workspaceInvitesSent WorkspaceInvite[]
-  agentMembers       AgentMember[]
+  sessions              UserSession[]
+  apiKeys               ApiKey[]
+  workspacesOwned       Workspace[]         @relation("WorkspaceOwner")
+  workspaceMembers      WorkspaceMember[]
+  workspaceInvitesSent  WorkspaceInvite[]
+  agentMembers          AgentMember[]
+  createdWorkspaceApiKeys WorkspaceApiKey[]
 
   @@map("users")
 }
@@ -34,18 +35,21 @@ model User {
 model Workspace {
   id        Int      @id @default(autoincrement())
   name      String   @map("name")
-  plan      String   @default("free") @map("plan")
+  plan      String   @default("free") @map("plan") // denormalized from subscription for quick checks
   ownerId   Int      @map("owner_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @map("updated_at")
 
-  owner     User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  members   WorkspaceMember[]
-  invites   WorkspaceInvite[]
-  agents    Agent[]
+  owner         User                    @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members       WorkspaceMember[]
+  invites       WorkspaceInvite[]
+  agents        Agent[]
   websiteCrawls WebsiteCrawl[]
   agentDocuments AgentDocument[]
   agentQaEntries AgentQa[]
+  subscription  WorkspaceSubscription?
+  credits       WorkspaceCredits?
+  workspaceApiKeys WorkspaceApiKey[]
 
   @@map("workspaces")
 }
@@ -119,12 +123,13 @@ model AgentChatSession {
 }
 
 model AgentChatMessage {
-  id        Int      @id @default(autoincrement())
-  sessionId Int      @map("session_id")
-  agentId   Int      @map("agent_id")
-  role      String   // 'user' | 'assistant'
-  content   String   @db.Text
-  createdAt DateTime @default(now()) @map("created_at")
+  id          Int      @id @default(autoincrement())
+  sessionId   Int      @map("session_id")
+  agentId     Int      @map("agent_id")
+  role        String   // 'user' | 'assistant'
+  content     String   @db.Text
+  creditsUsed Int      @default(0) @map("credits_used") // message credits consumed for this response
+  createdAt   DateTime @default(now()) @map("created_at")
 
   session AgentChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   agent   Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
@@ -263,4 +268,78 @@ model ApiKey {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("api_keys")
+}
+
+// ——— Pricing & plans (workspace-level) ———
+
+model Plan {
+  id                   String   @id @default(cuid())
+  name                 String   @unique // free | hobby | standard | pro | enterprise
+  displayName          String   @map("display_name")
+  priceMonthly         Float    @map("price_monthly")
+  priceYearly          Float    @map("price_yearly")
+  messageCredits       Int      @map("message_credits") // per month
+  maxAgents            Int      @map("max_agents")
+  maxMembers           Int      @map("max_members")
+  maxTrainingBytes     BigInt   @map("max_training_bytes") // per agent
+  apiAccess            Boolean  @map("api_access")
+  paddlePriceIdMonthly String?  @map("paddle_price_id_monthly")
+  paddlePriceIdYearly  String?  @map("paddle_price_id_yearly")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  subscriptions WorkspaceSubscription[]
+
+  @@map("plans")
+}
+
+model WorkspaceSubscription {
+  id                   String   @id @default(cuid())
+  workspaceId          Int      @unique @map("workspace_id")
+  planId               String   @map("plan_id")
+  paddleCustomerId     String?  @map("paddle_customer_id")
+  paddleSubscriptionId String?  @map("paddle_subscription_id")
+  status               String   // active | canceled | past_due | trialing
+  billingCycle         String   @map("billing_cycle") // monthly | yearly
+  currentPeriodStart   DateTime @map("current_period_start")
+  currentPeriodEnd     DateTime @map("current_period_end")
+  cancelAtPeriodEnd    Boolean  @default(false) @map("cancel_at_period_end")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  plan      Plan      @relation(fields: [planId], references: [id])
+
+  @@map("workspace_subscriptions")
+}
+
+model WorkspaceCredits {
+  id              String   @id @default(cuid())
+  workspaceId     Int      @unique @map("workspace_id")
+  includedCredits Int      @map("included_credits") // resets monthly from plan
+  bonusCredits    Int      @default(0) @map("bonus_credits") // non-expiring purchased
+  usedCredits     Int      @default(0) @map("used_credits") // resets monthly
+  periodStart     DateTime @map("period_start")
+  periodEnd       DateTime @map("period_end")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("workspace_credits")
+}
+
+model WorkspaceApiKey {
+  id        String    @id @default(cuid())
+  workspaceId Int     @map("workspace_id")
+  name      String    @map("name")
+  keyHash   String    @unique @map("key_hash")
+  keyPrefix String    @map("key_prefix") // first 12 chars for display
+  lastUsedAt DateTime? @map("last_used_at")
+  createdById Int     @map("created_by_id")
+  createdAt DateTime  @default(now()) @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@map("workspace_api_keys")
 }

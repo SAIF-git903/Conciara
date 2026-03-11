@@ -5,6 +5,7 @@ import { Plus, Mail, Trash2, Loader2, Copy, Check, Send } from 'lucide-react'
 import { useDashboard } from '@/contexts/DashboardContext'
 import { useAuth } from '@/contexts/AuthContext'
 import api from '@/lib/api'
+import { PLAN_LIMIT_CODES } from '@/lib/planLimitErrors'
 
 type WorkspaceRole = 'owner' | 'member'
 
@@ -33,7 +34,7 @@ const ROLE_COLORS: Record<WorkspaceRole, string> = {
 }
 
 export default function MembersPage() {
-  const { currentWorkspace } = useDashboard()
+  const { currentWorkspace, workspaceLimits, openMemberLimitModal, refreshWorkspaceLimits } = useDashboard()
   const { user } = useAuth()
   const [members, setMembers] = useState<Member[]>([])
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([])
@@ -81,9 +82,23 @@ export default function MembersPage() {
     fetchMembers()
   }, [fetchMembers])
 
+  const handleInviteClick = () => {
+    if (workspaceLimits?.canInviteMember === false) {
+      openMemberLimitModal?.()
+      return
+    }
+    setInviteOpen(true)
+    setInviteError(null)
+    setInviteEmail('')
+  }
+
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!currentWorkspace?.id || !inviteEmail.trim()) return
+    if (workspaceLimits?.canInviteMember === false) {
+      openMemberLimitModal?.()
+      return
+    }
     setInviteError(null)
     setLastInviteLink(null)
     setInviting(true)
@@ -96,14 +111,23 @@ export default function MembersPage() {
         setInviteEmail('')
         setInviteOpen(false)
         await fetchMembers()
+        await refreshWorkspaceLimits()
       } else if (data.pendingInvite && data.inviteLink) {
         setLastInviteLink(data.inviteLink)
         setInviteEmail('')
         await fetchMembers()
+        await refreshWorkspaceLimits()
       }
     } catch (e: unknown) {
-      const res = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setInviteError(res || (e instanceof Error ? e.message : 'Failed to invite'))
+      const res = e as { response?: { data?: { code?: string; error?: string; message?: string } } }
+      const data = res?.response?.data
+      if (data?.code === PLAN_LIMIT_CODES.MEMBER_LIMIT_REACHED) {
+        openMemberLimitModal?.()
+        await refreshWorkspaceLimits()
+        setInviteError(null)
+      } else {
+        setInviteError(data?.message ?? data?.error ?? (e instanceof Error ? e.message : 'Failed to invite'))
+      }
     } finally {
       setInviting(false)
     }
@@ -175,11 +199,7 @@ export default function MembersPage() {
           {isOwner && (
             <button
               type="button"
-              onClick={() => {
-                setInviteOpen(true)
-                setInviteError(null)
-                setInviteEmail('')
-              }}
+              onClick={handleInviteClick}
               className="inline-flex items-center gap-2 rounded-lg bg-[var(--v2-primary)] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90"
             >
               <Plus className="h-4 w-4" />

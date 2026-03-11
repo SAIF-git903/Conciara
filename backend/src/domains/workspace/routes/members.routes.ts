@@ -12,6 +12,7 @@ import {
   removeWorkspaceMember,
   resendWorkspaceInvite,
 } from '../workspace.service.js';
+import { PlanLimitError, sendPlanLimitError } from '../../../common/errors/planLimit.js';
 
 const router = express.Router();
 
@@ -79,15 +80,19 @@ router.post('/:workspaceId/members', async (req, res) => {
       inviteLink: result.inviteLink,
       expiresAt: result.expiresAt,
     });
-  } catch (error: any) {
-    if (error?.message === 'Only the workspace owner can invite members') {
-      return res.status(403).json({ error: error.message });
+  } catch (error: unknown) {
+    if (error instanceof PlanLimitError) {
+      return sendPlanLimitError(res, error);
     }
-    if (error?.message === 'This user is already a member of the workspace') {
-      return res.status(409).json({ error: error.message });
+    const err = error as Error;
+    if (err?.message === 'Only the workspace owner can invite members') {
+      return res.status(403).json({ error: err.message });
+    }
+    if (err?.message === 'This user is already a member of the workspace') {
+      return res.status(409).json({ error: err.message });
     }
     console.error('Invite member error:', error);
-    res.status(500).json({ error: 'Failed to invite member', details: error?.message });
+    res.status(500).json({ error: 'Failed to invite member', details: err?.message });
   }
 });
 

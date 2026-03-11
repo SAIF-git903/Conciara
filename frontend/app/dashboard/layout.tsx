@@ -31,10 +31,11 @@ import {
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Suspense } from 'react'
-import { DashboardProvider } from '@/contexts/DashboardContext'
+import { DashboardProvider, type WorkspaceLimits } from '@/contexts/DashboardContext'
 import { getSelectedWorkspaceId, setSelectedWorkspaceId } from '@/lib/workspace-selection'
 import { startNewAgentFlow } from '@/lib/onboarding'
 import { parseDashboardPath, buildDashboardUrl } from '@/lib/dashboard-url'
+import PlansModal from '@/components/PlansModal'
 
 // Sidebar when on dashboard (Agents list). Members cannot access workspace settings or billing.
 const dashboardNavItemsOwner = [
@@ -105,6 +106,12 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   const [createWorkspaceName, setCreateWorkspaceName] = useState('')
   const [createWorkspaceLoading, setCreateWorkspaceLoading] = useState(false)
   const [createWorkspaceError, setCreateWorkspaceError] = useState('')
+  const [plansModal, setPlansModal] = useState<{ open: boolean; title: string; description: string }>({
+    open: false,
+    title: '',
+    description: '',
+  })
+  const [workspaceLimits, setWorkspaceLimits] = useState<WorkspaceLimits | null>(null)
   const createWorkspaceInputRef = useRef<HTMLInputElement>(null)
   const workspaceRef = useRef<HTMLDivElement>(null)
   const agentRef = useRef<HTMLDivElement>(null)
@@ -117,6 +124,71 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   const [trainingProgress, setTrainingProgress] = useState<{ fedLinks: number; totalLinks: number }>({ fedLinks: 0, totalLinks: 0 })
   const trainingCompleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [socket, setSocket] = useState<Socket | null>(null)
+
+  // Credits usage for sidebar (current workspace)
+  const [usage, setUsage] = useState<{
+    includedCredits: number
+    bonusCredits: number
+    usedCredits: number
+    remaining: number
+    periodEnd: string
+  } | null>(null)
+  const [usageLoading, setUsageLoading] = useState(false)
+  const fetchUsage = useCallback(async () => {
+    const workspaceId = currentWorkspace?.id
+    if (workspaceId == null || workspaceId === 0) {
+      setUsage(null)
+      return
+    }
+    setUsageLoading(true)
+    try {
+      const { data } = await api.get<{ includedCredits: number; bonusCredits: number; usedCredits: number; remaining: number; periodEnd: string }>(
+        `/workspaces/${workspaceId}/usage`
+      )
+      setUsage(data ?? null)
+    } catch {
+      setUsage(null)
+    } finally {
+      setUsageLoading(false)
+    }
+  }, [currentWorkspace?.id])
+  useEffect(() => {
+    fetchUsage()
+  }, [fetchUsage])
+
+  // Workspace limits (plan gates): fetch once per workspace, refresh after create agent / invite
+  const fetchWorkspaceLimits = useCallback(async () => {
+    if (currentWorkspace.id == null || currentWorkspace.id === 0) {
+      setWorkspaceLimits(null)
+      return
+    }
+    try {
+      const { data } = await api.get<WorkspaceLimits>(`/workspaces/${currentWorkspace.id}/limits`)
+      setWorkspaceLimits(data ?? null)
+    } catch {
+      setWorkspaceLimits(null)
+    }
+  }, [currentWorkspace.id])
+  useEffect(() => {
+    fetchWorkspaceLimits()
+  }, [fetchWorkspaceLimits])
+
+  // Refetch usage and limits when window gains focus (e.g. after sending a message, or returning from pricing)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onFocus = () => {
+      if (currentWorkspace?.id) {
+        fetchUsage()
+        fetchWorkspaceLimits()
+      }
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [currentWorkspace?.id, fetchUsage, fetchWorkspaceLimits])
+
+  const usagePeriodEndFormatted = usage?.periodEnd
+    ? new Date(usage.periodEnd).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : null
 
   useEffect(() => {
     if (loading) return
@@ -366,11 +438,12 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
       const agent = res.data.agent
       const newAgent = { id: String(agent.id), name: agent.name, workspaceId: agent.workspaceId }
       setAgents((prev) => [...prev, newAgent])
+      await fetchWorkspaceLimits()
       return newAgent
     } catch {
       return null
     }
-  }, [currentWorkspace.id])
+  }, [currentWorkspace.id, fetchWorkspaceLimits])
 
   useEffect(() => {
     if (agentToDelete) setDeleteConfirmText('')
@@ -509,6 +582,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     if (item.href === '/dashboard/playground') return agentBase('playground')
     if (item.href === '/dashboard/connected-apps') return agentBase('connected-apps')
     if (item.href === '/dashboard/settings/chatbot') return agentBase('settings/chatbot')
+    if (item.label === 'Usage' && currentWorkspace.id) return buildDashboardUrl(currentWorkspace.id, { subPath: 'usage' })
     if (item.href === '#') return item.href
     if (isWorkspaceNav) return dashboardBase
     return agentBase('playground')
@@ -529,7 +603,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
           paddingTop: 'max(2rem, env(safe-area-inset-top, 2rem))',
         }}
       >
-        <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete} socket={socket}>
+        <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete} socket={socket} refreshUsage={fetchUsage} openAgentLimitModal={undefined} openMemberLimitModal={undefined} workspaceLimits={null} refreshWorkspaceLimits={async () => {}}>
           {children}
         </DashboardProvider>
       </div>
@@ -638,9 +712,13 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                     <button
                       type="button"
                       onClick={() => {
-                        startNewAgentFlow(currentWorkspace.id)
                         setOpenDropdown(null)
-                        router.push('/dashboard/new-agent/link')
+                        if (workspaceLimits?.canCreateAgent === false) {
+                          setPlansModal({ open: true, title: 'Agent limit reached', description: 'The Free plan includes 1 agent. Upgrade your plan to create more agents.' })
+                        } else {
+                          startNewAgentFlow(currentWorkspace.id)
+                          router.push('/dashboard/new-agent/link')
+                        }
                       }}
                       className="flex w-full items-center justify-center gap-1 rounded border border-[var(--v2-primary)] py-1.5 text-xs font-medium text-[var(--v2-primary)] hover:bg-[var(--v2-primary)]/10"
                     >
@@ -813,10 +891,23 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
             })}
           </nav>
           <div className="border-t border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-medium text-slate-500">Credits 0 / 50</p>
-            <p className="mt-0.5 text-xs text-slate-400">Resets on Apr 1, 2026 at 5:00 AM</p>
+           {usage ? (
+              <>
+                <p className="text-xs font-medium text-slate-500">
+                  Credits {usage.usedCredits} / {usage.includedCredits + usage.bonusCredits}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  {usagePeriodEndFormatted ? `Resets ${usagePeriodEndFormatted}` : '—'}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs font-medium text-slate-500">Credits —</p>
+                <p className="mt-0.5 text-xs text-slate-400">Select a workspace</p>
+              </>
+            )}
             <Link
-              href="/pricing"
+              href={currentWorkspace.id ? `/pricing?workspaceId=${currentWorkspace.id}` : '/pricing'}
               className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
             >
               <span>↑</span> Upgrade
@@ -827,7 +918,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         {/* Main content area */}
         <div className="flex min-h-0 flex-1 flex-col">
           <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete} socket={socket}>
+            <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete} socket={socket} refreshUsage={fetchUsage} openAgentLimitModal={() => setPlansModal({ open: true, title: 'Agent limit reached', description: 'The Free plan includes 1 agent. Upgrade your plan to create more agents.' })} openMemberLimitModal={() => setPlansModal({ open: true, title: 'Member limit reached', description: 'The Free plan includes 1 member. Upgrade your plan to invite more members.' })} workspaceLimits={workspaceLimits} refreshWorkspaceLimits={fetchWorkspaceLimits}>
               {children}
             </DashboardProvider>
           </main>
@@ -882,6 +973,15 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
           </div>
         </div>
       )}
+
+      {/* Plans modal (agent or member limit reached) */}
+      <PlansModal
+        open={plansModal.open}
+        onClose={() => setPlansModal((p) => ({ ...p, open: false }))}
+        title={plansModal.title}
+        description={plansModal.description}
+        workspaceId={currentWorkspace?.id}
+      />
 
       {/* Create workspace modal */}
       {createWorkspaceOpen && (

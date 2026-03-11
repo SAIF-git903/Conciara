@@ -16,6 +16,18 @@ export interface DashboardAgent {
   workspaceId: number
 }
 
+/** Workspace plan limits from API (in-memory, refreshed on login / create agent / invite). */
+export interface WorkspaceLimits {
+  plan: string
+  maxAgents: number
+  currentAgents: number
+  canCreateAgent: boolean
+  maxMembers: number
+  currentMembers: number
+  canInviteMember: boolean
+  hasApiAccess: boolean
+}
+
 interface DashboardContextType {
   currentWorkspace: DashboardWorkspace
   agents: DashboardAgent[]
@@ -25,6 +37,14 @@ interface DashboardContextType {
   setAgentToDelete: (agent: { id: string; name: string } | null) => void
   /** Socket for real-time training progress (null until connected). */
   socket: Socket | null
+  /** Refresh sidebar credits/usage (e.g. after sending a message in playground). */
+  refreshUsage?: () => void
+  /** Show "upgrade plan" modal when agent limit reached. */
+  openAgentLimitModal?: () => void
+  /** Show "upgrade plan" modal when member limit reached. */
+  openMemberLimitModal?: () => void
+  workspaceLimits: WorkspaceLimits | null
+  refreshWorkspaceLimits: () => Promise<void>
 }
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined)
@@ -36,6 +56,11 @@ export function DashboardProvider({
   createAgent,
   setAgentToDelete,
   socket,
+  refreshUsage,
+  openAgentLimitModal,
+  openMemberLimitModal,
+  workspaceLimits,
+  refreshWorkspaceLimits,
   children,
 }: {
   currentWorkspace: DashboardWorkspace
@@ -44,10 +69,15 @@ export function DashboardProvider({
   createAgent: (name?: string) => Promise<DashboardAgent | null>
   setAgentToDelete: (agent: { id: string; name: string } | null) => void
   socket: Socket | null
+  refreshUsage?: () => void
+  openAgentLimitModal?: () => void
+  openMemberLimitModal?: () => void
+  workspaceLimits: WorkspaceLimits | null
+  refreshWorkspaceLimits: () => Promise<void>
   children: ReactNode
 }) {
   return (
-    <DashboardContext.Provider value={{ currentWorkspace, agents, currentAgent, createAgent, setAgentToDelete, socket }}>
+    <DashboardContext.Provider value={{ currentWorkspace, agents, currentAgent, createAgent, setAgentToDelete, socket, refreshUsage, openAgentLimitModal, openMemberLimitModal, workspaceLimits, refreshWorkspaceLimits }}>
       {children}
     </DashboardContext.Provider>
   )

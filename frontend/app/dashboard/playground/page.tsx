@@ -62,7 +62,7 @@ const PLAYGROUND_WELCOME: { id: string; type: 'bot'; content: string; timestamp:
 ]
 
 export default function PlaygroundPage() {
-  const { currentWorkspace, currentAgent } = useDashboard()
+  const { currentWorkspace, currentAgent, refreshUsage } = useDashboard()
   const messagesRef = useRef<{ id: string; type: 'user' | 'bot'; content: string; timestamp: Date }[]>([])
   const sessionIdRef = useRef<string | null>(null)
   const [config, setConfig] = useState<MergedSkinConfig | null>(null)
@@ -203,13 +203,15 @@ export default function PlaygroundPage() {
             }
           }
         }
-        return full.trim() || ''
+        const reply = full.trim() || ''
+        refreshUsage?.()
+        return reply
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : 'Failed to get reply.'
         return msg
       }
     },
-    [currentWorkspace, currentAgent]
+    [currentWorkspace, currentAgent, refreshUsage]
   )
 
   if (!currentAgent) {

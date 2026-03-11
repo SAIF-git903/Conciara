@@ -5,6 +5,8 @@
 
 import { prisma } from '../../db/prisma.js';
 import { canManageWorkspaceSettings } from '../agents/agent.service.js';
+import { checkMemberLimit, getPlanForWorkspace } from '../billing/plan.service.js';
+import { PlanLimitError, PLAN_LIMIT_CODES } from '../../common/errors/planLimit.js';
 
 export type WorkspaceRole = 'owner' | 'member';
 
@@ -98,6 +100,20 @@ export async function createWorkspace(
     plan: workspace.plan,
     role: 'owner',
   };
+}
+
+/**
+ * Check if user is a member of the workspace (owner or member). Returns membership or null.
+ */
+export async function getWorkspaceMember(
+  workspaceId: number,
+  userId: number
+): Promise<{ role: WorkspaceRole } | null> {
+  const m = await prisma.workspaceMember.findUnique({
+    where: { workspaceId_userId: { workspaceId, userId } },
+    select: { role: true },
+  });
+  return m ? { role: m.role as WorkspaceRole } : null;
 }
 
 /**
@@ -239,6 +255,15 @@ export async function inviteWorkspaceMember(
 ): Promise<InviteResult> {
   const isOwner = await canManageWorkspaceSettings(invitedByUserId, workspaceId);
   if (!isOwner) throw new Error('Only the workspace owner can invite members');
+  const memberLimit = await checkMemberLimit(workspaceId);
+  if (!memberLimit.allowed) {
+    const plan = await getPlanForWorkspace(workspaceId);
+    throw new PlanLimitError(PLAN_LIMIT_CODES.MEMBER_LIMIT_REACHED, 'Member limit reached', {
+      current: memberLimit.current,
+      limit: memberLimit.max,
+      plan: plan.name,
+    });
+  }
 
   const normalizedEmail = email.trim().toLowerCase();
   if (!normalizedEmail) throw new Error('Email is required');
