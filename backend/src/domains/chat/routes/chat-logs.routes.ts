@@ -66,11 +66,21 @@ router.get('/:workspaceId/agents/:agentId/chat-logs', async (req, res) => {
       return res.status(404).json({ error: 'Agent not found' });
     }
 
-    const limit = Math.min(100, parseInt(String(req.query.limit || 50), 10) || 50);
+    const limit = Math.min(100, parseInt(String(req.query.limit || 20), 10) || 20);
     const offset = parseInt(String(req.query.offset || 0), 10) || 0;
     const search = typeof req.query.search === 'string' ? req.query.search : null;
+    const fromParam = typeof req.query.fromDate === 'string' ? req.query.fromDate : null;
+    const toParam = typeof req.query.toDate === 'string' ? req.query.toDate : null;
+    const fromDate = fromParam ? new Date(fromParam) : null;
+    const toDate = toParam ? new Date(toParam) : null;
+    if (fromParam && (!fromDate || isNaN(fromDate.getTime()))) {
+      return res.status(400).json({ error: 'Invalid fromDate' });
+    }
+    if (toParam && (!toDate || isNaN(toDate.getTime()))) {
+      return res.status(400).json({ error: 'Invalid toDate' });
+    }
 
-    const sessions = await listSessionsByAgent(agentId, limit, offset, search);
+    const sessions = await listSessionsByAgent(agentId, limit, offset, search, fromDate, toDate);
     return res.json({ sessions });
   } catch (error: any) {
     console.error('Chat logs list error:', error);

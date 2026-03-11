@@ -57,17 +57,26 @@ export async function appendMessage(
 
 export async function listSessionsByAgent(
   agentId: number,
-  limit: number = 50,
+  limit: number = 20,
   offset: number = 0,
-  search?: string | null
+  search?: string | null,
+  fromDate?: Date | null,
+  toDate?: Date | null
 ): Promise<AgentChatSessionSummary[]> {
-  const where: { agentId: number; messages?: { some: { content: { contains: string; mode: 'insensitive' } } } } = {
-    agentId,
-  };
+  const where: {
+    agentId: number;
+    messages?: { some: { content: { contains: string; mode: 'insensitive' } } };
+    createdAt?: { gte?: Date; lte?: Date };
+  } = { agentId };
   if (search?.trim()) {
     where.messages = {
       some: { content: { contains: search.trim(), mode: 'insensitive' } },
     };
+  }
+  if (fromDate || toDate) {
+    where.createdAt = {};
+    if (fromDate) where.createdAt.gte = fromDate;
+    if (toDate) where.createdAt.lte = toDate;
   }
 
   const sessions = await prisma.agentChatSession.findMany({
