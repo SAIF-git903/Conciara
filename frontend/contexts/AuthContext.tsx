@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import api from '@/lib/api';
+import api, { setTokenRefreshCallback } from '@/lib/api';
 
 export type UserRole = 'owner' | 'member';
 
@@ -59,6 +59,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     setLoading(false);
+  }, []);
+
+  // When api refreshes tokens (after 401), update state so UI and logout use the new token
+  useEffect(() => {
+    setTokenRefreshCallback((newToken, newRefreshToken) => {
+      setToken(newToken);
+      localStorage.setItem(AUTH_TOKEN, newToken);
+      localStorage.setItem(AUTH_REFRESH, newRefreshToken);
+    });
+    return () => setTokenRefreshCallback(null);
   }, []);
 
   const login = useCallback(
