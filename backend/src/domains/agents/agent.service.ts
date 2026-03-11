@@ -12,6 +12,12 @@ export interface AgentInfo {
   name: string;
 }
 
+export interface AgentDetails extends AgentInfo {
+  model: string | null;
+  prePrompt: string | null;
+  logoUrl: string | null;
+}
+
 /**
  * Create an agent in a workspace. Caller must have access to the workspace.
  * Optional model, prePrompt, logoUrl (e.g. from onboarding).
@@ -62,6 +68,49 @@ export async function getAgentsForWorkspace(workspaceId: number): Promise<AgentI
     workspaceId: a.workspaceId,
     name: a.name,
   }));
+}
+
+/**
+ * Get a single agent by id (must belong to workspace). Returns full details including model and prePrompt.
+ */
+export async function getAgent(
+  agentId: number,
+  workspaceId: number
+): Promise<AgentDetails | null> {
+  const agent = await prisma.agent.findFirst({
+    where: { id: agentId, workspaceId },
+  });
+  if (!agent) return null;
+  return {
+    id: agent.id,
+    workspaceId: agent.workspaceId,
+    name: agent.name,
+    model: agent.model,
+    prePrompt: agent.prePrompt,
+    logoUrl: agent.logoUrl,
+  };
+}
+
+/**
+ * Update agent settings (model, prePrompt, name, logoUrl). Only provided fields are updated.
+ */
+export async function updateAgent(
+  agentId: number,
+  workspaceId: number,
+  updates: { model?: string; prePrompt?: string; name?: string; logoUrl?: string }
+): Promise<AgentDetails | null> {
+  const data: { model?: string; prePrompt?: string; name?: string; logoUrl?: string } = {};
+  if (updates.model !== undefined) data.model = updates.model?.trim() || null;
+  if (updates.prePrompt !== undefined) data.prePrompt = updates.prePrompt?.trim() || null;
+  if (updates.name !== undefined) data.name = updates.name.trim() || undefined;
+  if (updates.logoUrl !== undefined) data.logoUrl = updates.logoUrl?.trim() || null;
+
+  const result = await prisma.agent.updateMany({
+    where: { id: agentId, workspaceId },
+    data,
+  });
+  if (result.count === 0) return null;
+  return getAgent(agentId, workspaceId);
 }
 
 /**

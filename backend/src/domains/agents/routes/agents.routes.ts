@@ -5,6 +5,8 @@
 import express from 'express';
 import {
   getAgentsForWorkspace,
+  getAgent,
+  updateAgent,
   canManageAgentsInWorkspace,
   createAgent,
   deleteAgent,
@@ -59,6 +61,57 @@ router.post('/:workspaceId/agents', async (req, res) => {
   } catch (error: any) {
     console.error('Create agent error:', error);
     res.status(500).json({ error: 'Failed to create agent', details: error.message });
+  }
+});
+
+router.get('/:workspaceId/agents/:agentId', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgentsInWorkspace(userId, workspaceId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied to this workspace' });
+
+    const agent = await getAgent(agentId, workspaceId);
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
+    return res.json({ agent });
+  } catch (error: any) {
+    console.error('Get agent error:', error);
+    res.status(500).json({ error: 'Failed to get agent' });
+  }
+});
+
+router.patch('/:workspaceId/agents/:agentId', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgentsInWorkspace(userId, workspaceId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied to this workspace' });
+
+    const { name, model, prePrompt, logoUrl } = req.body;
+    const updates: { model?: string; prePrompt?: string; name?: string; logoUrl?: string } = {};
+    if (typeof name === 'string') updates.name = name;
+    if (typeof model === 'string') updates.model = model;
+    if (typeof prePrompt === 'string') updates.prePrompt = prePrompt;
+    if (typeof logoUrl === 'string') updates.logoUrl = logoUrl;
+
+    const agent = await updateAgent(agentId, workspaceId, updates);
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
+    return res.json({ agent });
+  } catch (error: any) {
+    console.error('Update agent error:', error);
+    res.status(500).json({ error: 'Failed to update agent', details: error?.message });
   }
 });
 

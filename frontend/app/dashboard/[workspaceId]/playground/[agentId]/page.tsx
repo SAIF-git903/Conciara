@@ -2,7 +2,7 @@
 
 import { useRef, useCallback, useState, useEffect } from 'react'
 import Link from 'next/link'
-import { ChevronDown, Bot, FileText } from 'lucide-react'
+import { Bot, FileText, Loader2 } from 'lucide-react'
 import { useDashboard } from '@/contexts/DashboardContext'
 import { getApiBaseUrl } from '@/lib/api'
 import SkinRenderer from '@/components/SkinRenderer'
@@ -12,6 +12,7 @@ import api from '@/lib/api'
 import { DEFAULT_WINDOW, DEFAULT_THEME, CHAT_WIDGET_PREVIEW_MIN_WIDTH, CHAT_WIDGET_PREVIEW_MAX_WIDTH } from '@/lib/chat-widget-layout'
 import ChatWidgetPreviewSkeleton from '@/components/ChatWidgetPreviewSkeleton'
 import { buildDashboardUrl } from '@/lib/dashboard-url'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 function buildPlaygroundConfig(agentName: string, agentLogoUrl?: string | null): MergedSkinConfig {
   return {
@@ -49,16 +50,82 @@ const PLAYGROUND_WELCOME: { id: string; type: 'bot'; content: string; timestamp:
   { id: 'welcome', type: 'bot', content: "Hi! Ask me anything. I use your trained data when available.", timestamp: new Date() },
 ]
 
+const DEFAULT_LLM_MODEL = 'gpt-4o-mini'
+
+interface LLMModel {
+  id: string
+  label: string
+}
+
+interface AgentDetails {
+  id: number
+  name: string
+  workspaceId: number
+  model: string | null
+  prePrompt: string | null
+  logoUrl: string | null
+}
+
 export default function PlaygroundAgentPage() {
   const { currentWorkspace, currentAgent } = useDashboard()
   const messagesRef = useRef<{ id: string; type: 'user' | 'bot'; content: string; timestamp: Date }[]>([])
   const sessionIdRef = useRef<string | null>(null)
   const [config, setConfig] = useState<MergedSkinConfig | null>(null)
   const [configLoading, setConfigLoading] = useState(true)
+  const [models, setModels] = useState<LLMModel[]>([])
+  const [agentDetails, setAgentDetails] = useState<AgentDetails | null>(null)
+  const [agentDetailsLoading, setAgentDetailsLoading] = useState(false)
+  const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_LLM_MODEL)
+  const [prePrompt, setPrePrompt] = useState('')
+  const [saveLoading, setSaveLoading] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     sessionIdRef.current = null
   }, [currentAgent?.id, currentWorkspace?.id])
+
+  // Fetch available LLM models (public)
+  useEffect(() => {
+    let cancelled = false
+    fetch(`${getApiBaseUrl()}/models`)
+      .then((res) => res.json())
+      .then((data: { models?: LLMModel[] }) => {
+        if (cancelled || !Array.isArray(data.models)) return
+        setModels(data.models)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  // Fetch agent details (model, prePrompt) for playground settings
+  useEffect(() => {
+    if (!currentWorkspace?.id || !currentAgent?.id) {
+      setAgentDetails(null)
+      setAgentDetailsLoading(false)
+      return
+    }
+    let cancelled = false
+    setAgentDetailsLoading(true)
+    api
+      .get<{ agent: AgentDetails }>(`/workspaces/${currentWorkspace.id}/agents/${currentAgent.id}`)
+      .then(({ data }) => {
+        if (cancelled) return
+        setAgentDetails(data.agent)
+        setSelectedModel(data.agent.model?.trim() || DEFAULT_LLM_MODEL)
+        setPrePrompt(data.agent.prePrompt ?? '')
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAgentDetails(null)
+          setSelectedModel(DEFAULT_LLM_MODEL)
+          setPrePrompt('')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAgentDetailsLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [currentWorkspace?.id, currentAgent?.id])
 
   useEffect(() => {
     if (!currentWorkspace?.id || !currentAgent?.id) {
@@ -86,6 +153,24 @@ export default function PlaygroundAgentPage() {
       })
     return () => { cancelled = true }
   }, [currentWorkspace?.id, currentAgent?.id, currentAgent?.name, (currentAgent as { logoUrl?: string | null })?.logoUrl])
+
+  const handleSaveLLM = useCallback(async () => {
+    if (!currentWorkspace?.id || !currentAgent?.id) return
+    setSaveLoading(true)
+    setSaveError(null)
+    try {
+      const { data } = await api.patch<{ agent: AgentDetails }>(
+        `/workspaces/${currentWorkspace.id}/agents/${currentAgent.id}`,
+        { model: selectedModel, prePrompt: prePrompt.trim() }
+      )
+      setAgentDetails(data.agent)
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'response' in e ? (e as { response?: { data?: { error?: string } } }).response?.data?.error : null
+      setSaveError(msg || (e instanceof Error ? e.message : 'Failed to update'))
+    } finally {
+      setSaveLoading(false)
+    }
+  }, [currentWorkspace?.id, currentAgent?.id, selectedModel, prePrompt])
 
   const handleMessagesChange = useCallback((messages: { id: string; type: 'user' | 'bot'; content: string; timestamp: Date }[]) => {
     messagesRef.current = messages
@@ -178,9 +263,6 @@ export default function PlaygroundAgentPage() {
     <div className="flex min-h-0 flex-1 overflow-hidden">
       <div className="flex min-w-0 shrink-0 flex-col overflow-auto border-r border-slate-200 bg-white p-6 lg:w-[400px]">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">Playground</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Chat with <span className="font-medium text-slate-700">{currentAgent.name}</span>. The look matches your Chat widget settings.
-        </p>
         <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3">
           <h2 className="text-sm font-semibold text-slate-900">Training data</h2>
           <p className="mt-1 text-xs text-slate-600">Upload files in Data sources → Files so the agent can answer from your documents.</p>
@@ -189,25 +271,54 @@ export default function PlaygroundAgentPage() {
           </Link>
         </div>
         <div className="mt-8">
-          <h2 className="text-sm font-semibold text-slate-900">Model</h2>
-          <div className="mt-2 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-slate-200/50">
-                <Bot className="h-5 w-5 text-slate-600" />
-              </div>
-              <span className="font-medium text-slate-900">Agent model</span>
+          <h2 className="text-sm font-semibold text-slate-900">AI model & system prompt</h2>
+          <p className="mt-1 text-xs text-slate-500">Choose the LLM and instructions for this chatbot. Changes apply to the next message.</p>
+          <div className="mt-3 space-y-3">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-slate-600">Model</label>
+              {agentDetailsLoading ? (
+                <div className="flex h-10 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-500">
+                  Loading…
+                </div>
+              ) : (
+                <Select value={selectedModel} onValueChange={setSelectedModel}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {models.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
-            <button type="button" className="rounded p-1 text-slate-400 hover:bg-slate-200/50 hover:text-slate-600" aria-label="Expand">
-              <ChevronDown className="h-5 w-5" />
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-slate-600">System prompt (optional)</label>
+              <textarea
+                value={prePrompt}
+                onChange={(e) => setPrePrompt(e.target.value)}
+                placeholder="e.g. You are a helpful support assistant for Acme Corp. Be concise and friendly."
+                rows={10}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[var(--v2-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--v2-primary)]/20"
+              />
+            </div>
+            {saveError && <p className="text-xs text-red-600">{saveError}</p>}
+            <button
+              type="button"
+              onClick={handleSaveLLM}
+              disabled={saveLoading || agentDetailsLoading}
+              className="inline-flex items-center gap-2 rounded-lg bg-[var(--v2-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {saveLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
+              {saveLoading ? 'Saving…' : 'Update AI settings'}
             </button>
           </div>
         </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-l border-slate-200 bg-slate-50">
-        <div className="shrink-0 flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
-          <span className="text-sm font-semibold text-slate-800">Preview</span>
-          <span className="text-sm text-slate-500">· Same as embed on your site</span>
-        </div>
         <div
           className="flex flex-1 min-h-0 flex-col overflow-hidden p-6 bg-slate-100/80"
           style={{ backgroundImage: 'linear-gradient(to right, rgb(148 163 184 / 0.4) 1px, transparent 1px), linear-gradient(to bottom, rgb(148 163 184 / 0.4) 1px, transparent 1px)', backgroundSize: '64px 64px' }}
