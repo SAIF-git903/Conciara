@@ -51,7 +51,7 @@ export async function getOrCreateCreditsRow(workspaceId: number) {
   return row;
 }
 
-/** Returns remaining credits; if period ended, resets and returns new remaining. */
+/** Returns remaining credits; if period ended or plan changed, resets and returns new remaining. */
 export async function getRemainingCredits(workspaceId: number): Promise<{
   includedCredits: number;
   bonusCredits: number;
@@ -62,7 +62,10 @@ export async function getRemainingCredits(workspaceId: number): Promise<{
 }> {
   const row = await getOrCreateCreditsRow(workspaceId);
   const nowDate = now();
-  if (nowDate >= row.periodEnd) {
+  const plan = await getPlanForWorkspace(workspaceId);
+  const periodEnded = nowDate >= row.periodEnd;
+  const planChanged = row.includedCredits !== plan.messageCredits;
+  if (periodEnded || planChanged) {
     await resetPeriod(workspaceId);
     const next = await getOrCreateCreditsRow(workspaceId);
     const remaining = next.includedCredits + next.bonusCredits - next.usedCredits;

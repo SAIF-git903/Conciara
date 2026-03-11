@@ -50,6 +50,7 @@ model Workspace {
   subscription  WorkspaceSubscription?
   credits       WorkspaceCredits?
   workspaceApiKeys WorkspaceApiKey[]
+  billingTransactions WorkspaceBillingTransaction[]
 
   @@map("workspaces")
 }
@@ -312,6 +313,21 @@ model WorkspaceSubscription {
   @@map("workspace_subscriptions")
 }
 
+model WorkspaceBillingTransaction {
+  id                  String   @id @default(cuid())
+  workspaceId         Int      @map("workspace_id")
+  paddleTransactionId String   @map("paddle_transaction_id")
+  amountCents         Int?     @map("amount_cents")
+  currencyCode        String?  @map("currency_code")
+  status              String   @default("completed")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, paddleTransactionId])
+  @@map("workspace_billing_transactions")
+}
+
 model WorkspaceCredits {
   id              String   @id @default(cuid())
   workspaceId     Int      @unique @map("workspace_id")
@@ -342,4 +358,15 @@ model WorkspaceApiKey {
   createdBy User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   @@map("workspace_api_keys")
+}
+
+model CheckoutContext {
+  id          Int      @id @default(autoincrement())
+  userEmail   String   @unique @map("user_email")
+  workspaceId Int      @map("workspace_id")
+  expiresAt   DateTime @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("checkout_context")
 }

@@ -31,11 +31,11 @@ import {
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Suspense } from 'react'
-import { DashboardProvider, type WorkspaceLimits } from '@/contexts/DashboardContext'
+import { DashboardProvider } from '@/contexts/DashboardContext'
 import { getSelectedWorkspaceId, setSelectedWorkspaceId } from '@/lib/workspace-selection'
 import { startNewAgentFlow } from '@/lib/onboarding'
 import { parseDashboardPath, buildDashboardUrl } from '@/lib/dashboard-url'
-import PlansModal from '@/components/PlansModal'
+// Removed PlansModal import - no longer used for frontend permissions
 
 // Sidebar when on dashboard (Agents list). Members cannot access workspace settings or billing.
 const dashboardNavItemsOwner = [
@@ -60,7 +60,7 @@ const childPathMap: Record<string, Record<string, string>> = {
   'Workspace settings': {
     General: 'settings/general',
     Members: 'members',
-    Plans: '/pricing',
+    Plans: 'settings/plans',
     Billing: 'settings/billing',
     'API keys': 'settings/api-keys',
   },
@@ -106,12 +106,8 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   const [createWorkspaceName, setCreateWorkspaceName] = useState('')
   const [createWorkspaceLoading, setCreateWorkspaceLoading] = useState(false)
   const [createWorkspaceError, setCreateWorkspaceError] = useState('')
-  const [plansModal, setPlansModal] = useState<{ open: boolean; title: string; description: string }>({
-    open: false,
-    title: '',
-    description: '',
-  })
-  const [workspaceLimits, setWorkspaceLimits] = useState<WorkspaceLimits | null>(null)
+  // Removed plansModal state - no longer used for frontend permissions
+  // Removed workspace limits state - no longer used for frontend permissions
   const createWorkspaceInputRef = useRef<HTMLInputElement>(null)
   const workspaceRef = useRef<HTMLDivElement>(null)
   const agentRef = useRef<HTMLDivElement>(null)
@@ -156,35 +152,35 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     fetchUsage()
   }, [fetchUsage])
 
-  // Workspace limits (plan gates): fetch once per workspace, refresh after create agent / invite
-  const fetchWorkspaceLimits = useCallback(async () => {
-    if (currentWorkspace.id == null || currentWorkspace.id === 0) {
-      setWorkspaceLimits(null)
-      return
-    }
-    try {
-      const { data } = await api.get<WorkspaceLimits>(`/workspaces/${currentWorkspace.id}/limits`)
-      setWorkspaceLimits(data ?? null)
-    } catch {
-      setWorkspaceLimits(null)
-    }
-  }, [currentWorkspace.id])
-  useEffect(() => {
-    fetchWorkspaceLimits()
-  }, [fetchWorkspaceLimits])
+  // Removed workspace limits fetching - no longer used for frontend permissions
 
-  // Refetch usage and limits when window gains focus (e.g. after sending a message, or returning from pricing)
+  // Refetch usage when window gains focus (e.g. after sending a message, or returning from pricing)
   useEffect(() => {
     if (typeof window === 'undefined') return
     const onFocus = () => {
       if (currentWorkspace?.id) {
         fetchUsage()
-        fetchWorkspaceLimits()
       }
     }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [currentWorkspace?.id, fetchUsage, fetchWorkspaceLimits])
+  }, [currentWorkspace?.id, fetchUsage])
+
+  // Listen for subscription updates from billing page
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    
+    const handleSubscriptionUpdate = (event: CustomEvent) => {
+      const { workspaceId: updatedWorkspaceId } = event.detail
+      if (updatedWorkspaceId === currentWorkspace?.id) {
+        console.log('[Dashboard] Subscription updated, refreshing usage data')
+        fetchUsage()
+      }
+    }
+    
+    window.addEventListener('subscription-updated', handleSubscriptionUpdate as EventListener)
+    return () => window.removeEventListener('subscription-updated', handleSubscriptionUpdate as EventListener)
+  }, [currentWorkspace?.id, fetchUsage])
 
   const usagePeriodEndFormatted = usage?.periodEnd
     ? new Date(usage.periodEnd).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
@@ -430,6 +426,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
 
   const createAgent = useCallback(async (name?: string): Promise<{ id: string; name: string; workspaceId: number } | null> => {
     if (currentWorkspace.id === 0) return null
+    
     try {
       const res = await api.post<{ agent: { id: number; workspaceId: number; name: string } }>(
         `/workspaces/${currentWorkspace.id}/agents`,
@@ -438,12 +435,12 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
       const agent = res.data.agent
       const newAgent = { id: String(agent.id), name: agent.name, workspaceId: agent.workspaceId }
       setAgents((prev) => [...prev, newAgent])
-      await fetchWorkspaceLimits()
+      // Removed fetchWorkspaceLimits call
       return newAgent
     } catch {
       return null
     }
-  }, [currentWorkspace.id, fetchWorkspaceLimits])
+  }, [currentWorkspace.id])
 
   useEffect(() => {
     if (agentToDelete) setDeleteConfirmText('')
@@ -603,7 +600,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
           paddingTop: 'max(2rem, env(safe-area-inset-top, 2rem))',
         }}
       >
-        <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete} socket={socket} refreshUsage={fetchUsage} openAgentLimitModal={undefined} openMemberLimitModal={undefined} workspaceLimits={null} refreshWorkspaceLimits={async () => {}}>
+        <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete} socket={socket} refreshUsage={fetchUsage} openAgentLimitModal={undefined} openMemberLimitModal={undefined} workspaceLimits={null} workspaceLimitsLoading={false} refreshWorkspaceLimits={async () => {}}>
           {children}
         </DashboardProvider>
       </div>
@@ -713,12 +710,8 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                       type="button"
                       onClick={() => {
                         setOpenDropdown(null)
-                        if (workspaceLimits?.canCreateAgent === false) {
-                          setPlansModal({ open: true, title: 'Agent limit reached', description: 'The Free plan includes 1 agent. Upgrade your plan to create more agents.' })
-                        } else {
-                          startNewAgentFlow(currentWorkspace.id)
-                          router.push('/dashboard/new-agent/link')
-                        }
+                        startNewAgentFlow(currentWorkspace.id)
+                        router.push('/dashboard/new-agent/link')
                       }}
                       className="flex w-full items-center justify-center gap-1 rounded border border-[var(--v2-primary)] py-1.5 text-xs font-medium text-[var(--v2-primary)] hover:bg-[var(--v2-primary)]/10"
                     >
@@ -918,7 +911,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         {/* Main content area */}
         <div className="flex min-h-0 flex-1 flex-col">
           <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete} socket={socket} refreshUsage={fetchUsage} openAgentLimitModal={() => setPlansModal({ open: true, title: 'Agent limit reached', description: 'The Free plan includes 1 agent. Upgrade your plan to create more agents.' })} openMemberLimitModal={() => setPlansModal({ open: true, title: 'Member limit reached', description: 'The Free plan includes 1 member. Upgrade your plan to invite more members.' })} workspaceLimits={workspaceLimits} refreshWorkspaceLimits={fetchWorkspaceLimits}>
+            <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete} socket={socket} refreshUsage={fetchUsage} openAgentLimitModal={undefined} openMemberLimitModal={undefined} workspaceLimits={null} workspaceLimitsLoading={false} refreshWorkspaceLimits={async () => {}}>
               {children}
             </DashboardProvider>
           </main>
@@ -974,14 +967,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      {/* Plans modal (agent or member limit reached) */}
-      <PlansModal
-        open={plansModal.open}
-        onClose={() => setPlansModal((p) => ({ ...p, open: false }))}
-        title={plansModal.title}
-        description={plansModal.description}
-        workspaceId={currentWorkspace?.id}
-      />
+      {/* Removed PlansModal - no longer used for frontend permissions */}
 
       {/* Create workspace modal */}
       {createWorkspaceOpen && (

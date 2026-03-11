@@ -5,7 +5,7 @@ import { Plus, Mail, Trash2, Loader2, Copy, Check, Send } from 'lucide-react'
 import { useDashboard } from '@/contexts/DashboardContext'
 import { useAuth } from '@/contexts/AuthContext'
 import api from '@/lib/api'
-import { PLAN_LIMIT_CODES } from '@/lib/planLimitErrors'
+// Removed PLAN_LIMIT_CODES import - no longer used for frontend permissions
 
 type WorkspaceRole = 'owner' | 'member'
 
@@ -34,7 +34,7 @@ const ROLE_COLORS: Record<WorkspaceRole, string> = {
 }
 
 export default function MembersPage() {
-  const { currentWorkspace, workspaceLimits, openMemberLimitModal, refreshWorkspaceLimits } = useDashboard()
+  const { currentWorkspace } = useDashboard()
   const { user } = useAuth()
   const [members, setMembers] = useState<Member[]>([])
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([])
@@ -83,10 +83,6 @@ export default function MembersPage() {
   }, [fetchMembers])
 
   const handleInviteClick = () => {
-    if (workspaceLimits?.canInviteMember === false) {
-      openMemberLimitModal?.()
-      return
-    }
     setInviteOpen(true)
     setInviteError(null)
     setInviteEmail('')
@@ -95,10 +91,6 @@ export default function MembersPage() {
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!currentWorkspace?.id || !inviteEmail.trim()) return
-    if (workspaceLimits?.canInviteMember === false) {
-      openMemberLimitModal?.()
-      return
-    }
     setInviteError(null)
     setLastInviteLink(null)
     setInviting(true)
@@ -121,13 +113,7 @@ export default function MembersPage() {
     } catch (e: unknown) {
       const res = e as { response?: { data?: { code?: string; error?: string; message?: string } } }
       const data = res?.response?.data
-      if (data?.code === PLAN_LIMIT_CODES.MEMBER_LIMIT_REACHED) {
-        openMemberLimitModal?.()
-        await refreshWorkspaceLimits()
-        setInviteError(null)
-      } else {
-        setInviteError(data?.message ?? data?.error ?? (e instanceof Error ? e.message : 'Failed to invite'))
-      }
+      setInviteError(data?.message ?? data?.error ?? (e instanceof Error ? e.message : 'Failed to invite'))
     } finally {
       setInviting(false)
     }

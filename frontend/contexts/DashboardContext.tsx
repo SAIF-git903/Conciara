@@ -18,6 +18,7 @@ export interface DashboardAgent {
 
 /** Workspace plan limits from API (in-memory, refreshed on login / create agent / invite). */
 export interface WorkspaceLimits {
+  workspaceId: number
   plan: string
   maxAgents: number
   currentAgents: number
@@ -44,6 +45,7 @@ interface DashboardContextType {
   /** Show "upgrade plan" modal when member limit reached. */
   openMemberLimitModal?: () => void
   workspaceLimits: WorkspaceLimits | null
+  workspaceLimitsLoading: boolean
   refreshWorkspaceLimits: () => Promise<void>
 }
 
@@ -60,6 +62,7 @@ export function DashboardProvider({
   openAgentLimitModal,
   openMemberLimitModal,
   workspaceLimits,
+  workspaceLimitsLoading,
   refreshWorkspaceLimits,
   children,
 }: {
@@ -73,11 +76,12 @@ export function DashboardProvider({
   openAgentLimitModal?: () => void
   openMemberLimitModal?: () => void
   workspaceLimits: WorkspaceLimits | null
+  workspaceLimitsLoading: boolean
   refreshWorkspaceLimits: () => Promise<void>
   children: ReactNode
 }) {
   return (
-    <DashboardContext.Provider value={{ currentWorkspace, agents, currentAgent, createAgent, setAgentToDelete, socket, refreshUsage, openAgentLimitModal, openMemberLimitModal, workspaceLimits, refreshWorkspaceLimits }}>
+    <DashboardContext.Provider value={{ currentWorkspace, agents, currentAgent, createAgent, setAgentToDelete, socket, refreshUsage, openAgentLimitModal, openMemberLimitModal, workspaceLimits, workspaceLimitsLoading, refreshWorkspaceLimits }}>
       {children}
     </DashboardContext.Provider>
   )

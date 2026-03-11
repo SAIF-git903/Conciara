@@ -92,8 +92,32 @@ function ensurePaddle(): Promise<void> {
 export async function openPaddleCheckout(priceId: string, workspaceId: number | null): Promise<void> {
   const hostedUrl = getHostedCheckoutUrl()
   if (hostedUrl) {
+    // Store checkout context for hosted checkout to preserve workspace context
+    if (workspaceId != null) {
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/checkout-context`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        if (!response.ok) {
+          console.warn('[Paddle] Failed to store checkout context:', response.statusText);
+        }
+      } catch (e) {
+        console.warn('[Paddle] Failed to store checkout context:', e);
+      }
+    }
+    
     const sep = hostedUrl.includes('?') ? '&' : '?'
-    const url = `${hostedUrl}${sep}price_id=${encodeURIComponent(priceId)}`
+    let url = `${hostedUrl}${sep}price_id=${encodeURIComponent(priceId)}`
+    
+    // Include workspace ID in the checkout URL for hosted checkout (for reference)
+    if (workspaceId != null) {
+      url += `&workspace_id=${workspaceId}`
+    }
+    
     if (typeof window !== 'undefined') window.location.href = url
     return
   }

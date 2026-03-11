@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useState, useCallback, useEffect } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { PLANS, formatPlanBytes } from '@/lib/plans'
 import { openPaddleCheckout, isPaddleConfigured } from '@/lib/paddle'
@@ -23,12 +23,20 @@ function CheckIcon() {
 
 export default function PricingPage() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const [interval, setInterval] = useState<BillingInterval>('yearly')
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null)
 
   const workspaceIdParam = searchParams.get('workspaceId')
   const workspaceId = workspaceIdParam ? parseInt(workspaceIdParam, 10) : getSelectedWorkspaceId()
   const effectiveWorkspaceId = Number.isNaN(workspaceId) ? null : workspaceId
+
+  // Redirect to workspace plans page if workspace context is available
+  useEffect(() => {
+    if (effectiveWorkspaceId) {
+      router.replace(`/dashboard/${effectiveWorkspaceId}/settings/plans`)
+    }
+  }, [effectiveWorkspaceId, router])
 
   const handleIntervalChange = (newInterval: BillingInterval) => {
     if (newInterval === interval) return

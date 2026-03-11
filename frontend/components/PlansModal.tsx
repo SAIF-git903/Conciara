@@ -24,7 +24,7 @@ export interface PlansModalProps {
 }
 
 export default function PlansModal({ open, onClose, title, description, workspaceId }: PlansModalProps) {
-  const pricingHref = workspaceId != null ? `/pricing?workspaceId=${workspaceId}` : '/pricing'
+  const pricingHref = workspaceId != null ? `/dashboard/${workspaceId}/settings/plans` : '/pricing'
   if (!open) return null
 
   return (

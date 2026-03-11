@@ -10,17 +10,13 @@ import { buildDashboardUrl } from '@/lib/dashboard-url'
 
 export default function WorkspaceHomePage() {
   const router = useRouter()
-  const { currentWorkspace, agents, setAgentToDelete, openAgentLimitModal, workspaceLimits } = useDashboard()
+  const { currentWorkspace, agents, setAgentToDelete } = useDashboard()
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const handleNewAgent = () => {
-    if (workspaceLimits?.canCreateAgent === false) {
-      openAgentLimitModal?.()
-    } else {
-      startNewAgentFlow(currentWorkspace.id)
-      router.push('/dashboard/new-agent/link')
-    }
+    startNewAgentFlow(currentWorkspace.id)
+    router.push('/dashboard/new-agent/link')
   }
 
   useEffect(() => {

@@ -19,8 +19,10 @@ npm run seed-plans
 
 ## 2. Paddle configuration
 
-- **Env vars**
-  - **Backend**: `PADDLE_WEBHOOK_SECRET` – Secret key for your Paddle notification destination (Developer Tools → Notifications → your webhook → Secret key).
+- **Env vars (required for plan upgrades and billing history)**
+  - **Backend** (in `.env`):
+    - `PADDLE_WEBHOOK_SECRET` – **Required.** Secret key from Paddle: Developer Tools → Notifications → your destination URL → Secret key. Without this, webhooks return 503 and no subscription or billing data is saved.
+    - `PADDLE_API_KEY` – **Recommended.** Paddle API key (sandbox: `sdbx_...`). Used to link subscriptions by customer email when `custom_data.workspace_id` is missing (e.g. Hosted Checkout), to sync subscription from `transaction.completed` if `subscription.created` was missed, and for billing. Get it from Paddle Dashboard → Developer Tools → Authentication.
   - **Default payment link (required for all checkouts)**  
   Paddle will return `transaction_default_checkout_url_not_set` until you set this. In the Paddle dashboard:
   - **Sandbox**: open [Checkout settings](https://sandbox-vendors.paddle.com/checkout-settings). Under **Default payment link**, enter a URL (e.g. your app’s pricing page, or `http://localhost:3002/pricing` for local dev). Save.
@@ -32,8 +34,8 @@ npm run seed-plans
   - **Overlay (Paddle.js)**: `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN` – Client-side token for Paddle.js. Optional: `NEXT_PUBLIC_PADDLE_ENVIRONMENT=production` for production.
 
 - **Webhook endpoint**: `POST https://<your-backend>/api/integrations/paddle/webhook`
-  - The URL **must be publicly reachable**. If your backend runs on localhost, Paddle cannot send events to it — use a tunnel (e.g. [ngrok](https://ngrok.com)) or deploy the backend so the webhook URL is reachable from the internet. Until the webhook receives `subscription.created`, no row is created in `workspace_subscriptions` and Settings → Billing will not show subscription or billing history.
-  - In Paddle: Developer Tools → Notifications → create or edit a destination (URL type). Set the destination URL to your public webhook URL (e.g. `https://your-ngrok-subdomain.ngrok-free.app/api/integrations/paddle/webhook` for local testing).
+  - The URL **must be publicly reachable**. If your backend runs on localhost, Paddle cannot send events to it — use a tunnel (e.g. [ngrok](https://ngrok.com)) or deploy the backend so the webhook URL is reachable from the internet. **If Paddle cannot reach this URL, no subscription or billing data is written to your DB**, so plan upgrades and billing history will not appear.
+  - In Paddle: Developer Tools → Notifications → create or edit a destination (URL type). Set the destination URL to your **public** webhook URL (e.g. `https://your-ngrok-subdomain.ngrok-free.app/api/integrations/paddle/webhook` for local testing, or `https://your-api.example.com/api/integrations/paddle/webhook` in production).
   - Subscribe to: `subscription.created`, `subscription.updated`, `subscription.activated`, `subscription.resumed`, `subscription.canceled`, `subscription.past_due`, `transaction.completed`.
   - **Local testing (ngrok)**: If you get "Webhook signature verification failed", either fix the secret (copy the **Secret key** for this notification destination from Paddle; no extra spaces) or, for local use only, set `PADDLE_WEBHOOK_SKIP_VERIFY=1` in the backend `.env`. With skip-verify, webhooks are accepted without checking the signature so you can see the full flow; do **not** use this in production.
 
@@ -42,7 +44,7 @@ npm run seed-plans
   - `subscription.updated` / `activated` / `resumed`: updates status, current period, and `cancel_at_period_end`; keeps or resets `workspace.plan`.
   - `subscription.canceled`: sets subscription status to `canceled` and `workspace.plan` to `free`.
   - `subscription.past_due`: sets subscription status to `past_due`.
-  - `transaction.completed`: if the transaction has a `subscription_id`, calls `resetPeriod(workspaceId)` for that subscription’s workspace (resets monthly credits).
+  - `transaction.completed`: if the transaction has a `subscription_id`, finds or creates the workspace subscription (by fetching the subscription from Paddle if needed), records the transaction in billing history, and calls `resetPeriod(workspaceId)` for that workspace (resets monthly credits).
 
 - **Creating subscriptions**: The app does **not** create Paddle Checkout sessions. When a user upgrades:
   - Create a Paddle Checkout (or use Paddle.js) with the chosen price and **custom_data** including `workspace_id` (or `workspaceId`) so the webhook can link the subscription to the workspace.

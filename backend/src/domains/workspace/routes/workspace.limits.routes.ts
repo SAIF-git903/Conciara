@@ -26,6 +26,7 @@ router.get('/:workspaceId/limits', async (req, res) => {
     ]);
 
     return res.json({
+      workspaceId,
       plan: plan.name,
       maxAgents: plan.maxAgents,
       currentAgents: agentLimit.current,
