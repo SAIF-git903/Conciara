@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, Suspense } from 'react'
 import Link from 'next/link'
 import { useDashboard } from '@/contexts/DashboardContext'
 import { useAuth } from '@/contexts/AuthContext'
@@ -28,7 +28,7 @@ type BillingTransaction = {
   createdAt: string
 }
 
-export default function WorkspaceSettingsBillingPage() {
+function WorkspaceSettingsBillingContent() {
   const params = useParams()
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -479,5 +479,13 @@ export default function WorkspaceSettingsBillingPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function WorkspaceSettingsBillingPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" /></div>}>
+      <WorkspaceSettingsBillingContent />
+    </Suspense>
   )
 }

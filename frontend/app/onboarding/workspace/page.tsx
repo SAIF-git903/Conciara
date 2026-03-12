@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { LayoutDashboard, CheckCircle2, Link2, Settings, Bot } from 'lucide-react'
@@ -27,7 +27,7 @@ const stepsPreview = [
   { label: 'Set agent personality', Icon: Bot },
 ]
 
-export default function OnboardingWorkspacePage() {
+function OnboardingWorkspaceContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { refreshUser } = useAuth()
@@ -225,5 +225,13 @@ export default function OnboardingWorkspacePage() {
         </div>
       </motion.div>
     </div>
+  )
+}
+
+export default function OnboardingWorkspacePage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-[50vh] items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--v2-primary)] border-t-transparent" /></div>}>
+      <OnboardingWorkspaceContent />
+    </Suspense>
   )
 }
