@@ -1,14 +1,17 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import { type ReactNode, useState, useEffect } from 'react'
 import { useScroll } from 'framer-motion'
 import Header from './Header'
+import { getSelectedWorkspaceId } from '@/lib/workspace-selection'
 
 const HEADER_HEIGHT = 72
 
 export default function LayoutShell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const isOnboarding = pathname?.startsWith('/onboarding')
   const isDashboard = pathname?.startsWith('/dashboard')
   const isSettings = pathname === '/account' || pathname?.startsWith('/dashboard/settings')
@@ -17,6 +20,21 @@ export default function LayoutShell({ children }: { children: ReactNode }) {
 
   const [headerDark, setHeaderDark] = useState(false)
   const { scrollY } = useScroll()
+
+  // Paddle Hosted Checkout may redirect to default payment link (e.g. /) with transaction_id.
+  // Redirect immediately to billing so user never sees the home page.
+  const txnId = searchParams.get('transaction_id')
+  const isPostCheckoutReturn = isLanding && !!txnId
+
+  useEffect(() => {
+    if (!txnId) return
+    const workspaceId = getSelectedWorkspaceId()
+    const target =
+      workspaceId != null
+        ? `/dashboard/${workspaceId}/settings/billing?checkout_success=1`
+        : '/dashboard?checkout_success=1'
+    window.location.replace(target)
+  }, [txnId])
 
   useEffect(() => {
     if (!isLanding) {
@@ -37,6 +55,15 @@ export default function LayoutShell({ children }: { children: ReactNode }) {
     const unsub = scrollY.on('change', update)
     return () => unsub()
   }, [isLanding, scrollY])
+
+  // After payment, show minimal "Redirecting..." so we never render the full home page
+  if (isPostCheckoutReturn) {
+    return (
+      <div className="v2-theme flex min-h-screen items-center justify-center bg-white text-slate-600">
+        <p className="text-sm">Redirecting to billing…</p>
+      </div>
+    )
+  }
 
   return (
     <div className="v2-theme min-h-screen bg-white text-slate-900">

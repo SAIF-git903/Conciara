@@ -11,6 +11,8 @@ import {
   createAgent,
   deleteAgent,
 } from '../agent.service.js';
+import { PlanLimitError, sendPlanLimitError } from '../../../common/errors/planLimit.js';
+import { requirePermission } from '../../../middleware/permissions.js';
 
 const router = express.Router();
 
@@ -36,7 +38,7 @@ router.get('/:workspaceId/agents', async (req, res) => {
   }
 });
 
-router.post('/:workspaceId/agents', async (req, res) => {
+router.post('/:workspaceId/agents', requirePermission({ feature: 'createAgent' }), async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
     if (isNaN(workspaceId)) {
@@ -58,9 +60,12 @@ router.post('/:workspaceId/agents', async (req, res) => {
       logoUrl: typeof logoUrl === 'string' ? logoUrl : undefined,
     });
     return res.status(201).json({ agent });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (error instanceof PlanLimitError) {
+      return sendPlanLimitError(res, error);
+    }
     console.error('Create agent error:', error);
-    res.status(500).json({ error: 'Failed to create agent', details: error.message });
+    res.status(500).json({ error: 'Failed to create agent', details: (error as Error).message });
   }
 });
 

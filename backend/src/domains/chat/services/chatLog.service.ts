@@ -42,11 +42,18 @@ export async function appendMessage(
   sessionRowId: number,
   agentId: number,
   role: 'user' | 'assistant',
-  content: string
+  content: string,
+  creditsUsed?: number
 ): Promise<void> {
   await prisma.$transaction([
     prisma.agentChatMessage.create({
-      data: { sessionId: sessionRowId, agentId, role, content },
+      data: {
+        sessionId: sessionRowId,
+        agentId,
+        role,
+        content,
+        creditsUsed: creditsUsed ?? 0,
+      },
     }),
     prisma.agentChatSession.update({
       where: { id: sessionRowId },

@@ -12,7 +12,10 @@ import {
   deleteDocument,
   trainPendingDocuments,
 } from '../../training/services/document.service.js';
+import { checkTrainingBytesLimit, getPlanForWorkspace } from '../../billing/plan.service.js';
+import { PLAN_LIMIT_CODES } from '../../../common/errors/planLimit.js';
 import { upload } from '../../../common/uploads.js';
+import { requireFileUploadPermission } from '../../../middleware/permissions.js';
 
 const router = express.Router();
 
@@ -42,7 +45,7 @@ router.get('/:workspaceId/agents/:agentId/documents', async (req, res) => {
   }
 });
 
-router.post('/:workspaceId/agents/:agentId/documents', upload.single('file'), async (req, res) => {
+router.post('/:workspaceId/agents/:agentId/documents', requireFileUploadPermission(), upload.single('file'), async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
     const agentId = parseInt(req.params.agentId, 10);
@@ -63,6 +66,18 @@ router.post('/:workspaceId/agents/:agentId/documents', upload.single('file'), as
     const file = req.file;
     if (!file || !file.buffer) {
       return res.status(400).json({ error: 'No file uploaded. Use form field "file".' });
+    }
+
+    const limit = await checkTrainingBytesLimit(workspaceId, agentId, BigInt(file.buffer.length));
+    if (!limit.allowed) {
+      const plan = await getPlanForWorkspace(workspaceId);
+      return res.status(403).json({
+        code: PLAN_LIMIT_CODES.STORAGE_LIMIT_REACHED,
+        message: 'Training storage limit exceeded for this agent',
+        current: Number(limit.current),
+        limit: Number(limit.max),
+        plan: plan.name,
+      });
     }
 
     const mimeType = resolveMimeType(file.mimetype || '', file.originalname || '');

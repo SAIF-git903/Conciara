@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Mail, Trash2, Loader2, Copy, Check, Send } from 'lucide-react'
 import { useDashboard } from '@/contexts/DashboardContext'
 import { useAuth } from '@/contexts/AuthContext'
+import PermissionButton from '@/components/PermissionButton'
 import api from '@/lib/api'
 
 type WorkspaceRole = 'owner' | 'member'
@@ -33,7 +34,7 @@ const ROLE_COLORS: Record<WorkspaceRole, string> = {
 }
 
 export default function MembersPage() {
-  const { currentWorkspace } = useDashboard()
+  const { currentWorkspace, refreshWorkspaceLimits } = useDashboard()
   const { user } = useAuth()
   const [members, setMembers] = useState<Member[]>([])
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([])
@@ -81,6 +82,12 @@ export default function MembersPage() {
     fetchMembers()
   }, [fetchMembers])
 
+  const handleInviteClick = () => {
+    setInviteOpen(true)
+    setInviteError(null)
+    setInviteEmail('')
+  }
+
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!currentWorkspace?.id || !inviteEmail.trim()) return
@@ -96,14 +103,17 @@ export default function MembersPage() {
         setInviteEmail('')
         setInviteOpen(false)
         await fetchMembers()
+        await refreshWorkspaceLimits()
       } else if (data.pendingInvite && data.inviteLink) {
         setLastInviteLink(data.inviteLink)
         setInviteEmail('')
         await fetchMembers()
+        await refreshWorkspaceLimits()
       }
     } catch (e: unknown) {
-      const res = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setInviteError(res || (e instanceof Error ? e.message : 'Failed to invite'))
+      const res = e as { response?: { data?: { code?: string; error?: string; message?: string } } }
+      const data = res?.response?.data
+      setInviteError(data?.message ?? data?.error ?? (e instanceof Error ? e.message : 'Failed to invite'))
     } finally {
       setInviting(false)
     }
@@ -144,6 +154,7 @@ export default function MembersPage() {
       )
       setRemoveTarget(null)
       await fetchMembers()
+      await refreshWorkspaceLimits()
     } catch (e: unknown) {
       const res = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
       setError(res || (e instanceof Error ? e.message : 'Failed to remove member'))
@@ -165,26 +176,24 @@ export default function MembersPage() {
       <div className="shrink-0 border-b border-slate-200 px-6 py-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-xl font-semibold text-slate-900">Members</h1>
-            <p className="mt-0.5 text-sm text-slate-500">
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Members</h1>
+            <p className="mt-1 text-sm text-slate-500">
               {isOwner
                 ? 'People in this workspace. As owner, you can invite and remove members.'
                 : 'People in this workspace. Only the owner can invite or remove members.'}
             </p>
           </div>
           {isOwner && (
-            <button
-              type="button"
-              onClick={() => {
-                setInviteOpen(true)
-                setInviteError(null)
-                setInviteEmail('')
-              }}
-              className="inline-flex items-center gap-2 rounded-lg bg-[var(--v2-primary)] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90"
+            <PermissionButton
+              feature="inviteMembers"
+              onClick={handleInviteClick}
+              variant="primary"
+              className="bg-[var(--v2-primary)] text-white shadow-sm hover:opacity-90"
+              showCrownIcon
             >
               <Plus className="h-4 w-4" />
               Invite member
-            </button>
+            </PermissionButton>
           )}
         </div>
       </div>
@@ -197,8 +206,22 @@ export default function MembersPage() {
             </div>
           )}
           {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="divide-y divide-slate-100">
+                {[1, 2, 3, 4].map((i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-4 px-4 py-3"
+                  >
+                    <div className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-slate-200" />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="h-4 w-32 animate-pulse rounded bg-slate-200" />
+                      <div className="h-3 w-48 animate-pulse rounded bg-slate-100" />
+                    </div>
+                    <div className="h-6 w-14 shrink-0 animate-pulse rounded-full bg-slate-100" />
+                  </div>
+                ))}
+              </div>
             </div>
           ) : (
             <div className="rounded-xl border border-slate-200 bg-white shadow-sm">

@@ -14,6 +14,7 @@
     "migrate:check": "tsx src/db/checkMigrationTables.ts",
     "setup-db": "tsx src/db/setup.ts",
     "seed-admin": "tsx src/db/seedAdmin.ts",
+    "seed-plans": "tsx src/db/seedPlans.ts",
     "postinstall": "prisma generate"
   },
   "keywords": [
@@ -26,6 +27,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.490.0",
     "@aws-sdk/s3-request-presigner": "^3.490.0",
+    "@paddle/paddle-node-sdk": "^3.6.0",
     "@prisma/client": "^5.22.0",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",

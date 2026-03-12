@@ -5,6 +5,8 @@
 
 import { prisma } from '../../db/prisma.js';
 import { linkLatestCrawlToAgent } from '../websites/crawl.service.js';
+import { checkAgentLimit, getPlanForWorkspace } from '../billing/plan.service.js';
+import { PlanLimitError, PLAN_LIMIT_CODES } from '../../common/errors/planLimit.js';
 
 export interface AgentInfo {
   id: number;
@@ -27,6 +29,15 @@ export async function createAgent(
   name: string,
   options?: { model?: string; prePrompt?: string; logoUrl?: string }
 ): Promise<AgentInfo> {
+  const limit = await checkAgentLimit(workspaceId);
+  if (!limit.allowed) {
+    const plan = await getPlanForWorkspace(workspaceId);
+    throw new PlanLimitError(PLAN_LIMIT_CODES.AGENT_LIMIT_REACHED, 'Agent limit reached', {
+      current: limit.current,
+      limit: limit.max,
+      plan: plan.name,
+    });
+  }
   const agent = await prisma.agent.create({
     data: {
       workspaceId,
@@ -99,7 +110,7 @@ export async function updateAgent(
   workspaceId: number,
   updates: { model?: string; prePrompt?: string; name?: string; logoUrl?: string }
 ): Promise<AgentDetails | null> {
-  const data: { model?: string; prePrompt?: string; name?: string; logoUrl?: string } = {};
+  const data: { model?: string | null; prePrompt?: string | null; name?: string; logoUrl?: string | null } = {};
   if (updates.model !== undefined) data.model = updates.model?.trim() || null;
   if (updates.prePrompt !== undefined) data.prePrompt = updates.prePrompt?.trim() || null;
   if (updates.name !== undefined) data.name = updates.name.trim() || undefined;

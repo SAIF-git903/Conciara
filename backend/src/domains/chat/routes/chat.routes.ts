@@ -16,6 +16,9 @@ import {
   deriveSessionState,
 } from '../services/intent.service.js';
 import { buildAgentChatSystemContent } from '../chatHelpers.js';
+import { getRemainingCredits, deductCredits } from '../../billing/credits.service.js';
+import { getCreditsForModel } from '../../billing/model-credits.js';
+import { emitCreditsUpdated } from '../../../socket/index.js';
 
 const router = express.Router();
 
@@ -77,6 +80,17 @@ export async function runAgentChatStream(
   });
 
   const modelId = agent.model || 'gpt-4o-mini';
+  const creditCost = getCreditsForModel(modelId);
+  const workspaceId = agent.workspaceId;
+
+  const { remaining } = await getRemainingCredits(workspaceId);
+  if (remaining < creditCost) {
+    res.status(402).json({
+      code: 'CREDITS_EXHAUSTED',
+      message: 'Message credits exhausted',
+    });
+    return;
+  }
 
   if (!isConversational && qaMatches.length > 0) {
     await recordQaUsage(qaMatches.map((q) => q.id)).catch((err) => console.error('Record Q&A usage:', err));
@@ -99,9 +113,12 @@ export async function runAgentChatStream(
       if (typeof (res as any).flush === 'function') (res as any).flush();
     }
     const replyText = fullReply.trim();
+    const deducted = await deductCredits(workspaceId, creditCost);
+    const creditsUsed = deducted ? creditCost : 0;
     const { sessionIdExternal, sessionRowId } = await createOrGetSession(agentId, bodySessionId ?? null);
     await appendMessage(sessionRowId, agentId, 'user', userMessage);
-    await appendMessage(sessionRowId, agentId, 'assistant', replyText);
+    await appendMessage(sessionRowId, agentId, 'assistant', replyText, creditsUsed);
+    if (deducted) void emitCreditsUpdated(workspaceId);
     res.write(`data: ${JSON.stringify({ sessionId: sessionIdExternal })}\n\n`);
     res.write('data: [DONE]\n\n');
   } catch (streamErr: any) {
@@ -174,6 +191,13 @@ export async function getAgentReply(
   });
 
   const modelId = agent.model || 'gpt-4o-mini';
+  const creditCost = getCreditsForModel(modelId);
+  const workspaceId = agent.workspaceId;
+  const { remaining } = await getRemainingCredits(workspaceId);
+  if (remaining < creditCost) {
+    throw new Error('Message credits exhausted. Please upgrade your plan or add credits.');
+  }
+
   const reply = await chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
     maxTokens: 1024,
     temperature: 0.7,
@@ -183,9 +207,12 @@ export async function getAgentReply(
     await recordQaUsage(qaMatches.map((q) => q.id)).catch((err) => console.error('Record Q&A usage:', err));
   }
 
+  const deducted = await deductCredits(workspaceId, creditCost);
+  const creditsUsed = deducted ? creditCost : 0;
   const { sessionRowId } = await createOrGetSession(agentId, bodySessionId ?? null);
   await appendMessage(sessionRowId, agentId, 'user', userMessage);
-  await appendMessage(sessionRowId, agentId, 'assistant', reply);
+  await appendMessage(sessionRowId, agentId, 'assistant', reply, creditsUsed);
+  if (deducted) void emitCreditsUpdated(workspaceId);
 
   return reply;
 }

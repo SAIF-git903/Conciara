@@ -67,7 +67,7 @@ interface AgentDetails {
 }
 
 export default function PlaygroundAgentPage() {
-  const { currentWorkspace, currentAgent } = useDashboard()
+  const { currentWorkspace, currentAgent, refreshUsage } = useDashboard()
   const messagesRef = useRef<{ id: string; type: 'user' | 'bot'; content: string; timestamp: Date }[]>([])
   const sessionIdRef = useRef<string | null>(null)
   const [config, setConfig] = useState<MergedSkinConfig | null>(null)
@@ -240,12 +240,14 @@ export default function PlaygroundAgentPage() {
             }
           }
         }
-        return full.trim() || ''
+        const reply = full.trim() || ''
+        refreshUsage?.()
+        return reply
       } catch (e: unknown) {
         return e instanceof Error ? e.message : 'Failed to get reply.'
       }
     },
-    [currentWorkspace, currentAgent]
+    [currentWorkspace, currentAgent, refreshUsage]
   )
 
   if (!currentAgent) {

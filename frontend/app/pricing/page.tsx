@@ -1,66 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback, useEffect } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
+import { PLANS, formatPlanBytes } from '@/lib/plans'
+import { openPaddleCheckout, isPaddleConfigured } from '@/lib/paddle'
+import { getSelectedWorkspaceId } from '@/lib/workspace-selection'
 
-const tiers = [
-  {
-    name: 'Free',
-    planLabel: 'Free',
-    monthly: 0,
-    yearly: 0,
-    description: 'Get started with one agent.',
-    cta: 'Get started',
-    highlight: false,
-  },
-  {
-    name: 'Starter',
-    planLabel: 'Starter',
-    monthly: 19,
-    yearly: 16,
-    description: 'For small teams.',
-    cta: 'Start trial',
-    highlight: false,
-  },
-  {
-    name: 'Pro',
-    planLabel: 'Pro',
-    monthly: 59,
-    yearly: 49,
-    description: 'For growing teams.',
-    cta: 'Get started',
-    highlight: true,
-  },
-  {
-    name: 'Business',
-    planLabel: 'Business',
-    monthly: 149,
-    yearly: 124,
-    description: 'For organizations with advanced needs.',
-    cta: 'Get started',
-    highlight: false,
-  },
-]
-
-// Feature comparison: Free, Starter, Pro, Business
-// value can be true (check), false (dash), or string
-const featureRows: Array<{
-  label: string
-  free: boolean | string
-  starter: boolean | string
-  pro: boolean | string
-  business: boolean | string
-}> = [
-  { label: 'Messages', free: '100', starter: '500', pro: '3,000', business: '10,000' },
-  { label: 'Training', free: '5MB', starter: '50MB', pro: '200MB', business: '1GB' },
-  { label: 'Agents / members', free: '1 agent', starter: '3 members', pro: '10 members', business: '20 members' },
-  { label: 'Watermark', free: true, starter: false, pro: false, business: false },
-  { label: 'Basic analytics', free: false, starter: true, pro: false, business: false },
-  { label: 'Chat customization', free: false, starter: false, pro: true, business: true },
-  { label: 'Integrations', free: false, starter: false, pro: true, business: true },
-  { label: 'Advanced analytics', free: false, starter: false, pro: false, business: true },
-  { label: 'API access', free: false, starter: false, pro: false, business: true },
-]
+function formatCredits(n: number): string {
+  return n.toLocaleString()
+}
 
 type BillingInterval = 'monthly' | 'yearly'
 
@@ -73,12 +22,41 @@ function CheckIcon() {
 }
 
 export default function PricingPage() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const [interval, setInterval] = useState<BillingInterval>('yearly')
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null)
+
+  const workspaceIdParam = searchParams.get('workspaceId')
+  const workspaceId = workspaceIdParam ? parseInt(workspaceIdParam, 10) : getSelectedWorkspaceId()
+  const effectiveWorkspaceId = Number.isNaN(workspaceId) ? null : workspaceId
+
+  // Redirect to workspace plans page if workspace context is available
+  useEffect(() => {
+    if (effectiveWorkspaceId) {
+      router.replace(`/dashboard/${effectiveWorkspaceId}/settings/plans`)
+    }
+  }, [effectiveWorkspaceId, router])
 
   const handleIntervalChange = (newInterval: BillingInterval) => {
     if (newInterval === interval) return
     setInterval(newInterval)
   }
+
+  const handleUpgrade = useCallback(
+    async (plan: (typeof PLANS)[number]) => {
+      const priceId =
+        interval === 'monthly' ? plan.paddlePriceIdMonthly : plan.paddlePriceIdYearly
+      if (!priceId) return
+      setCheckoutLoading(plan.id)
+      try {
+        await openPaddleCheckout(priceId, effectiveWorkspaceId)
+      } finally {
+        setCheckoutLoading(null)
+      }
+    },
+    [interval, effectiveWorkspaceId]
+  )
 
   return (
     <div className="space-y-14">
@@ -87,7 +65,7 @@ export default function PricingPage() {
           Pricing plans
         </h1>
         <p className="text-sm text-slate-600 max-w-xl mx-auto sm:text-base">
-          Try our starter plan risk free for 30 days. Switch plans or cancel any time.
+          Message credits reset monthly. Upgrade or downgrade any time.
         </p>
 
         <div className="flex justify-center pt-2">
@@ -121,15 +99,15 @@ export default function PricingPage() {
 
       <section>
         <div className="grid gap-6 items-stretch sm:grid-cols-2 lg:grid-cols-4">
-          {tiers.map((tier) => {
-            const price = interval === 'monthly' ? tier.monthly : tier.yearly
-            const isFree = tier.monthly === 0
+          {PLANS.map((plan) => {
+            const price = interval === 'monthly' ? plan.priceMonthly : plan.priceYearly
+            const isFree = plan.priceMonthly === 0
 
             return (
               <div
-                key={tier.name}
+                key={plan.id}
                 className={`group flex h-full flex-col rounded-2xl bg-white transition-all duration-200 ${
-                  tier.highlight
+                  plan.name === 'standard'
                     ? 'border border-slate-200 shadow-lg lg:-translate-y-1'
                     : 'border border-slate-200 shadow-md hover:shadow-lg'
                 }`}
@@ -141,9 +119,11 @@ export default function PricingPage() {
                     </svg>
                   </div>
                   <h2 className="text-lg font-semibold tracking-tight text-slate-900 pr-8 sm:pr-10">
-                    {tier.planLabel}
+                    {plan.displayName}
                   </h2>
-                  <p className="mt-1 text-sm text-slate-500">{tier.description}</p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {plan.messageCredits.toLocaleString()} credits/mo · {plan.maxAgents} agent · {plan.maxMembers} member{plan.maxMembers !== 1 ? 's' : ''}
+                  </p>
 
                   <div className="mt-6 mb-6 flex items-baseline gap-2">
                     {isFree ? (
@@ -183,7 +163,7 @@ export default function PricingPage() {
                       }`}
                     >
                       {interval === 'yearly' ? (
-                        <>Billed ${(tier.yearly * 12).toLocaleString()} annually</>
+                        <>Billed ${plan.priceYearly.toLocaleString()} annually</>
                       ) : (
                         'billed annually'
                       )}
@@ -193,9 +173,19 @@ export default function PricingPage() {
 
                   <button
                     type="button"
-                    className="mt-auto w-full rounded-lg bg-[var(--v2-primary)] px-5 py-3 text-sm font-medium text-[var(--v2-primary-foreground)] shadow-sm transition hover:bg-[var(--v2-primary-hover)] hover:shadow-md active:scale-[0.98]"
+                    disabled={!isFree && (checkoutLoading !== null || !isPaddleConfigured())}
+                    onClick={() =>
+                      isFree ? undefined : handleUpgrade(plan)
+                    }
+                    className="mt-auto w-full rounded-lg bg-[var(--v2-primary)] px-5 py-3 text-sm font-medium text-[var(--v2-primary-foreground)] shadow-sm transition hover:bg-[var(--v2-primary-hover)] hover:shadow-md active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    {tier.cta}
+                    {isFree
+                      ? 'Get started'
+                      : checkoutLoading === plan.id
+                        ? 'Opening…'
+                        : !isPaddleConfigured()
+                          ? 'Configure Paddle'
+                          : 'Upgrade'}
                   </button>
                 </div>
               </div>
@@ -209,43 +199,44 @@ export default function PricingPage() {
           <thead>
             <tr className="border-b border-slate-200">
               <th className="py-4 pl-6 font-semibold text-slate-900">Features</th>
-              <th className="py-4 px-3 font-semibold text-slate-900">Free</th>
-              <th className="py-4 px-3 font-semibold text-slate-900">Starter</th>
-              <th className="py-4 px-3 font-semibold text-slate-900">Pro</th>
-              <th className="py-4 pr-6 pl-3 font-semibold text-slate-900">Business</th>
+              {PLANS.map((p) => (
+                <th key={p.id} className="py-4 px-3 font-semibold text-slate-900">{p.displayName}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {featureRows.map((row, i) => (
-              <tr
-                key={row.label}
-                className={`border-b border-slate-100 last:border-b-0 ${i % 2 === 0 ? 'bg-slate-50/50' : ''}`}
-              >
-                <td className="py-3 pl-6 text-slate-700">
-                  <span className="inline-flex items-center gap-1.5">{row.label}</span>
+            <tr className="border-b border-slate-100 bg-slate-50/50">
+              <td className="py-3 pl-6 text-slate-700">Message credits / month</td>
+              {PLANS.map((p) => (
+                <td key={p.id} className="py-3 px-3 text-slate-600">{formatCredits(p.messageCredits)}</td>
+              ))}
+            </tr>
+            <tr className="border-b border-slate-100">
+              <td className="py-3 pl-6 text-slate-700">Agents</td>
+              {PLANS.map((p) => (
+                <td key={p.id} className="py-3 px-3 text-slate-600">{formatCredits(p.maxAgents)}</td>
+              ))}
+            </tr>
+            <tr className="border-b border-slate-100 bg-slate-50/50">
+              <td className="py-3 pl-6 text-slate-700">Members</td>
+              {PLANS.map((p) => (
+                <td key={p.id} className="py-3 px-3 text-slate-600">{formatCredits(p.maxMembers)}</td>
+              ))}
+            </tr>
+            <tr className="border-b border-slate-100">
+              <td className="py-3 pl-6 text-slate-700">Training per agent</td>
+              {PLANS.map((p) => (
+                <td key={p.id} className="py-3 px-3 text-slate-600">{formatPlanBytes(p.maxTrainingBytes)}</td>
+              ))}
+            </tr>
+            <tr className="border-b border-slate-100 bg-slate-50/50">
+              <td className="py-3 pl-6 text-slate-700">API access</td>
+              {PLANS.map((p) => (
+                <td key={p.id} className="py-3 px-3 text-slate-600">
+                  {p.apiAccess ? <CheckIcon /> : <span className="text-slate-300">—</span>}
                 </td>
-                <td className="py-3 px-3 text-slate-600">
-                  {row.free === true && <CheckIcon />}
-                  {row.free === false && <span className="text-slate-300">—</span>}
-                  {typeof row.free === 'string' && row.free}
-                </td>
-                <td className="py-3 px-3 text-slate-600">
-                  {row.starter === true && <CheckIcon />}
-                  {row.starter === false && <span className="text-slate-300">—</span>}
-                  {typeof row.starter === 'string' && row.starter}
-                </td>
-                <td className="py-3 px-3 text-slate-600">
-                  {row.pro === true && <CheckIcon />}
-                  {row.pro === false && <span className="text-slate-300">—</span>}
-                  {typeof row.pro === 'string' && row.pro}
-                </td>
-                <td className="py-3 pr-6 pl-3 text-slate-600">
-                  {row.business === true && <CheckIcon />}
-                  {row.business === false && <span className="text-slate-300">—</span>}
-                  {typeof row.business === 'string' && row.business}
-                </td>
-              </tr>
-            ))}
+              ))}
+            </tr>
           </tbody>
         </table>
       </section>

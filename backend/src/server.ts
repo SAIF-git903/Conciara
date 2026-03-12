@@ -37,8 +37,20 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning']
 }));
+
+// Paddle hosted checkout success redirect: Paddle sends user to backend URL with ?price_id=&workspace_id=&transaction_id=...
+// Redirect to frontend billing page so user sees success state instead of "Cannot GET /"
+const FRONTEND_URL = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
+app.get('/', (req, res) => {
+  const workspaceId = req.query.workspace_id ?? req.query.workspaceId;
+  if (workspaceId != null && String(workspaceId).trim() !== '') {
+    const id = String(workspaceId).trim();
+    return res.redirect(302, `${FRONTEND_URL}/dashboard/${id}/settings/billing?checkout_success=1`);
+  }
+  res.status(404).json({ error: 'Not found' });
+});
 
 // Integrations (webhooks, OAuth callbacks) need raw body for signature verification (must be before express.json())
 app.use('/api/integrations', express.raw({ type: 'application/json' }), integrationsRouter);
