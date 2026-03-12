@@ -12,6 +12,7 @@ import {
   deleteAgent,
 } from '../agent.service.js';
 import { PlanLimitError, sendPlanLimitError } from '../../../common/errors/planLimit.js';
+import { requirePermission } from '../../../middleware/permissions.js';
 
 const router = express.Router();
 
@@ -37,7 +38,7 @@ router.get('/:workspaceId/agents', async (req, res) => {
   }
 });
 
-router.post('/:workspaceId/agents', async (req, res) => {
+router.post('/:workspaceId/agents', requirePermission({ feature: 'createAgent' }), async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
     if (isNaN(workspaceId)) {

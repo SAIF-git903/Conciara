@@ -136,7 +136,6 @@ export default function WorkspaceSettingsBillingPage() {
     
     const refreshWithRetry = async () => {
       try {
-        console.log(`[Billing] Refreshing contexts after checkout (attempt ${retryCount + 1}/${maxRetries + 1})`)
         setRefreshingContexts(true)
         
         // Fetch subscription first to check if it's updated
@@ -146,7 +145,6 @@ export default function WorkspaceSettingsBillingPage() {
         // If subscription is still free and we haven't exceeded retries, try again
         if ((!sub || sub.planName === 'free') && retryCount < maxRetries) {
           retryCount++
-          console.log(`[Billing] Subscription still free, retrying in 2s (attempt ${retryCount + 1}/${maxRetries + 1})`)
           setTimeout(refreshWithRetry, 2000)
           return
         }
@@ -164,7 +162,6 @@ export default function WorkspaceSettingsBillingPage() {
           }))
         }
         
-        console.log('[Billing] All contexts refreshed after checkout success')
         setRefreshingContexts(false)
       } catch (e) {
         console.error('[Billing] Error refreshing contexts after checkout:', e)
@@ -187,10 +184,8 @@ export default function WorkspaceSettingsBillingPage() {
     if (workspaceId == null) return
     setRefreshing(true)
     try {
-      console.log('[Billing] Manual refresh triggered')
-      
       // Refresh subscription and billing data
-      const [sub, history] = await Promise.all([
+      const [sub] = await Promise.all([
         fetchSubscription(), 
         fetchBillingHistory()
       ])
@@ -207,8 +202,6 @@ export default function WorkspaceSettingsBillingPage() {
           detail: { workspaceId, subscription: sub } 
         }))
       }
-      
-      console.log('[Billing] Manual refresh completed:', { subscription: sub, historyCount: history.length })
     } catch (e) {
       console.error('[Billing] Manual refresh failed:', e)
     } finally {

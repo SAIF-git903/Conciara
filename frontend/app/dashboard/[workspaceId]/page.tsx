@@ -7,10 +7,11 @@ import { Plus, MoreHorizontal, MessageCircle, Bot, Settings, Trash2 } from 'luci
 import { useDashboard } from '@/contexts/DashboardContext'
 import { startNewAgentFlow } from '@/lib/onboarding'
 import { buildDashboardUrl } from '@/lib/dashboard-url'
+import PermissionButton from '@/components/PermissionButton'
 
 export default function WorkspaceHomePage() {
   const router = useRouter()
-  const { currentWorkspace, agents, setAgentToDelete } = useDashboard()
+  const { currentWorkspace, agents, agentsLoading, setAgentToDelete } = useDashboard()
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -35,18 +36,35 @@ export default function WorkspaceHomePage() {
           <p className="text-sm font-medium text-slate-500">{currentWorkspace.name}</p>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Agents</h1>
         </div>
-        <button
-          type="button"
+        <PermissionButton
+          feature="createAgent"
           onClick={handleNewAgent}
-          className="flex items-center gap-2 rounded-lg bg-[var(--v2-primary)] px-4 py-2.5 text-sm font-semibold text-[var(--v2-primary-foreground)] shadow-sm transition hover:bg-[var(--v2-primary-hover)]"
+          variant="primary"
+          className="bg-[var(--v2-primary)] text-[var(--v2-primary-foreground)] shadow-sm hover:bg-[var(--v2-primary-hover)]"
+          showCrownIcon
         >
           <Plus className="h-4 w-4" />
           New AI agent
-        </button>
+        </PermissionButton>
       </div>
 
       <div className="flex-1 p-6">
-        {agents.length === 0 ? (
+        {agentsLoading ? (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="flex flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-4 aspect-video animate-pulse rounded-lg bg-slate-100" />
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="h-5 w-3/4 animate-pulse rounded bg-slate-200" />
+                    <div className="h-3 w-1/2 animate-pulse rounded bg-slate-100" />
+                  </div>
+                  <div className="h-8 w-8 shrink-0 animate-pulse rounded bg-slate-100" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : agents.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 py-16 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-slate-200 text-slate-500">
               <MessageCircle className="h-7 w-7" />
@@ -55,14 +73,16 @@ export default function WorkspaceHomePage() {
             <p className="mt-1 max-w-sm text-sm text-slate-500">
               Create your first AI agent to start building chatbots and assistants.
             </p>
-            <button
-              type="button"
+            <PermissionButton
+              feature="createAgent"
               onClick={handleNewAgent}
-              className="mt-6 flex items-center gap-2 rounded-lg bg-[var(--v2-primary)] px-4 py-2.5 text-sm font-semibold text-[var(--v2-primary-foreground)] hover:bg-[var(--v2-primary-hover)]"
+              variant="primary"
+              className="mt-6 bg-[var(--v2-primary)] text-[var(--v2-primary-foreground)] hover:bg-[var(--v2-primary-hover)]"
+              showCrownIcon
             >
               <Plus className="h-4 w-4" />
               New AI agent
-            </button>
+            </PermissionButton>
           </div>
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -121,7 +141,7 @@ export default function WorkspaceHomePage() {
           </div>
         )}
 
-        {agents.length > 0 && (
+        {!agentsLoading && agents.length > 0 && (
           <p className="mt-6 text-center text-xs text-slate-400">
             Click a card to open Playground · {agents.length} agent{agents.length !== 1 ? 's' : ''}
           </p>

@@ -15,6 +15,7 @@ import {
 import { checkTrainingBytesLimit, getPlanForWorkspace } from '../../billing/plan.service.js';
 import { PLAN_LIMIT_CODES } from '../../../common/errors/planLimit.js';
 import { upload } from '../../../common/uploads.js';
+import { requireFileUploadPermission } from '../../../middleware/permissions.js';
 
 const router = express.Router();
 
@@ -44,7 +45,7 @@ router.get('/:workspaceId/agents/:agentId/documents', async (req, res) => {
   }
 });
 
-router.post('/:workspaceId/agents/:agentId/documents', upload.single('file'), async (req, res) => {
+router.post('/:workspaceId/agents/:agentId/documents', requireFileUploadPermission(), upload.single('file'), async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
     const agentId = parseInt(req.params.agentId, 10);

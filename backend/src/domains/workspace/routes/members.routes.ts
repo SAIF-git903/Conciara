@@ -13,6 +13,7 @@ import {
   resendWorkspaceInvite,
 } from '../workspace.service.js';
 import { PlanLimitError, sendPlanLimitError } from '../../../common/errors/planLimit.js';
+import { requirePermission } from '../../../middleware/permissions.js';
 
 const router = express.Router();
 
@@ -61,7 +62,7 @@ router.post('/:workspaceId/invites/resend', async (req, res) => {
   }
 });
 
-router.post('/:workspaceId/members', async (req, res) => {
+router.post('/:workspaceId/members', requirePermission({ feature: 'inviteMembers', requireOwner: true }), async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
     if (isNaN(workspaceId)) return res.status(400).json({ error: 'Invalid workspace ID' });

@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Mail, Trash2, Loader2, Copy, Check, Send } from 'lucide-react'
 import { useDashboard } from '@/contexts/DashboardContext'
 import { useAuth } from '@/contexts/AuthContext'
+import PermissionButton from '@/components/PermissionButton'
 import api from '@/lib/api'
-// Removed PLAN_LIMIT_CODES import - no longer used for frontend permissions
 
 type WorkspaceRole = 'owner' | 'member'
 
@@ -34,7 +34,7 @@ const ROLE_COLORS: Record<WorkspaceRole, string> = {
 }
 
 export default function MembersPage() {
-  const { currentWorkspace } = useDashboard()
+  const { currentWorkspace, refreshWorkspaceLimits } = useDashboard()
   const { user } = useAuth()
   const [members, setMembers] = useState<Member[]>([])
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([])
@@ -183,14 +183,16 @@ export default function MembersPage() {
             </p>
           </div>
           {isOwner && (
-            <button
-              type="button"
+            <PermissionButton
+              feature="inviteMembers"
               onClick={handleInviteClick}
-              className="inline-flex items-center gap-2 rounded-lg bg-[var(--v2-primary)] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90"
+              variant="primary"
+              className="bg-[var(--v2-primary)] text-white shadow-sm hover:opacity-90"
+              showCrownIcon
             >
               <Plus className="h-4 w-4" />
               Invite member
-            </button>
+            </PermissionButton>
           )}
         </div>
       </div>

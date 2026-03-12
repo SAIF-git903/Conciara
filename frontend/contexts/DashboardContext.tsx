@@ -32,6 +32,8 @@ export interface WorkspaceLimits {
 interface DashboardContextType {
   currentWorkspace: DashboardWorkspace
   agents: DashboardAgent[]
+  /** True while agents for the current workspace are being fetched (e.g. after switching workspace). */
+  agentsLoading: boolean
   currentAgent: DashboardAgent | null
   createAgent: (name?: string) => Promise<DashboardAgent | null>
   /** Open the delete-agent confirmation modal (used from layout dropdown and dashboard card menu) */
@@ -54,6 +56,7 @@ const DashboardContext = createContext<DashboardContextType | undefined>(undefin
 export function DashboardProvider({
   currentWorkspace,
   agents,
+  agentsLoading,
   currentAgent,
   createAgent,
   setAgentToDelete,
@@ -68,6 +71,7 @@ export function DashboardProvider({
 }: {
   currentWorkspace: DashboardWorkspace
   agents: DashboardAgent[]
+  agentsLoading?: boolean
   currentAgent: DashboardAgent | null
   createAgent: (name?: string) => Promise<DashboardAgent | null>
   setAgentToDelete: (agent: { id: string; name: string } | null) => void
@@ -81,7 +85,7 @@ export function DashboardProvider({
   children: ReactNode
 }) {
   return (
-    <DashboardContext.Provider value={{ currentWorkspace, agents, currentAgent, createAgent, setAgentToDelete, socket, refreshUsage, openAgentLimitModal, openMemberLimitModal, workspaceLimits, workspaceLimitsLoading, refreshWorkspaceLimits }}>
+    <DashboardContext.Provider value={{ currentWorkspace, agents, agentsLoading: agentsLoading ?? false, currentAgent, createAgent, setAgentToDelete, socket, refreshUsage, openAgentLimitModal, openMemberLimitModal, workspaceLimits, workspaceLimitsLoading, refreshWorkspaceLimits }}>
       {children}
     </DashboardContext.Provider>
   )
@@ -93,4 +97,9 @@ export function useDashboard() {
     throw new Error('useDashboard must be used within DashboardProvider')
   }
   return ctx
+}
+
+/** Safe version that returns undefined when outside DashboardProvider (e.g. permission components used in other layouts). */
+export function useDashboardOptional(): DashboardContextType | undefined {
+  return useContext(DashboardContext)
 }

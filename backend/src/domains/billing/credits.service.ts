@@ -133,3 +133,20 @@ export async function addBonusCredits(workspaceId: number, amount: number): Prom
     data: { bonusCredits: { increment: amount }, updatedAt: now() },
   });
 }
+
+export async function getWorkspaceCredits(workspaceId: number): Promise<{
+  monthlyUsed: number;
+  monthlyRemaining: number;
+  bonusCredits: number;
+  resetDate: Date;
+}> {
+  const row = await getOrCreateCreditsRow(workspaceId);
+  const plan = await getPlanForWorkspace(workspaceId);
+  
+  return {
+    monthlyUsed: row.usedCredits,
+    monthlyRemaining: Math.max(0, plan.messageCredits - row.usedCredits),
+    bonusCredits: row.bonusCredits,
+    resetDate: row.periodEnd
+  };
+}

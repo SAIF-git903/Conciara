@@ -184,7 +184,7 @@ async function applySubscriptionToWorkspace(sub: PaddleSubscriptionData): Promis
             select: { 
               id: true, 
               updatedAt: true,
-              workspaceSubscription: {
+              subscription: {
                 select: { 
                   id: true, 
                   status: true,
@@ -204,9 +204,9 @@ async function applySubscriptionToWorkspace(sub: PaddleSubscriptionData): Promis
           } else {
             // Multiple workspaces - prefer one without active paid subscription
             const workspaceWithoutPaidSub = workspaces.find(w => 
-              !w.workspaceSubscription || 
-              w.workspaceSubscription.status !== 'active' ||
-              w.workspaceSubscription.plan?.name === 'free'
+              !w.subscription || 
+              w.subscription.status !== 'active' ||
+              w.subscription.plan?.name === 'free'
             );
             
             if (workspaceWithoutPaidSub) {

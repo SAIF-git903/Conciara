@@ -12,6 +12,7 @@ import {
   revokeWorkspaceApiKey,
 } from '../workspace-api-keys.service.js';
 import { getWorkspaceMember } from '../workspace.service.js';
+import { requirePermission } from '../../../middleware/permissions.js';
 
 const router = express.Router();
 
@@ -41,7 +42,7 @@ router.get('/:workspaceId/api-keys', requireWorkspaceAccess, async (req, res) =>
 });
 
 /** POST /api/workspaces/:workspaceId/api-keys */
-router.post('/:workspaceId/api-keys', requireWorkspaceAccess, async (req, res) => {
+router.post('/:workspaceId/api-keys', requirePermission({ feature: 'apiAccess', requireOwner: true }), async (req, res) => {
   try {
     const workspaceId = (req as express.Request & { workspaceId: number }).workspaceId;
     const userId = req.user!.id;

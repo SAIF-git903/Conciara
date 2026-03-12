@@ -32,10 +32,12 @@ import {
 import type { ReactNode } from 'react'
 import { Suspense } from 'react'
 import { DashboardProvider } from '@/contexts/DashboardContext'
+import { UpgradeProvider } from '@/contexts/UpgradeContext'
 import { getSelectedWorkspaceId, setSelectedWorkspaceId } from '@/lib/workspace-selection'
 import { startNewAgentFlow } from '@/lib/onboarding'
 import { parseDashboardPath, buildDashboardUrl } from '@/lib/dashboard-url'
-// Removed PlansModal import - no longer used for frontend permissions
+import CreditUsageWidget from '@/components/CreditUsageWidget'
+import PermissionButton from '@/components/PermissionButton'
 
 // Sidebar when on dashboard (Agents list). Members cannot access workspace settings or billing.
 const dashboardNavItemsOwner = [
@@ -98,6 +100,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   const workspaces = user?.workspaces?.length ? user.workspaces : [{ id: 0, name: 'My Workspace', plan: 'free', role: 'owner' as const }]
   const [currentWorkspace, setCurrentWorkspace] = useState(workspaces[0])
   const [agents, setAgents] = useState<{ id: string; name: string; workspaceId: number }[]>([])
+  const [agentsLoading, setAgentsLoading] = useState(false)
   const [currentAgent, setCurrentAgent] = useState<{ id: string; name: string; workspaceId: number } | null>(null)
   const [agentToDelete, setAgentToDelete] = useState<{ id: string; name: string } | null>(null)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
@@ -112,6 +115,8 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   const workspaceRef = useRef<HTMLDivElement>(null)
   const agentRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
+  const currentWorkspaceIdRef = useRef<number | undefined>(undefined)
+  currentWorkspaceIdRef.current = currentWorkspace?.id
   const isOwner = user?.role === 'owner'
   const dashboardNavItems = isOwner ? dashboardNavItemsOwner : dashboardNavItemsMember
 
@@ -120,6 +125,8 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   const [trainingProgress, setTrainingProgress] = useState<{ fedLinks: number; totalLinks: number }>({ fedLinks: 0, totalLinks: 0 })
   const trainingCompleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [socket, setSocket] = useState<Socket | null>(null)
+  const [workspaceLimits, setWorkspaceLimits] = useState<any>(null)
+  const [workspaceLimitsLoading, setWorkspaceLimitsLoading] = useState(false)
 
   // Credits usage for sidebar (current workspace)
   const [usage, setUsage] = useState<{
@@ -131,7 +138,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   } | null>(null)
   const [usageLoading, setUsageLoading] = useState(false)
   const fetchUsage = useCallback(async () => {
-    const workspaceId = currentWorkspace?.id
+    const workspaceId = currentWorkspaceIdRef.current
     if (workspaceId == null || workspaceId === 0) {
       setUsage(null)
       return
@@ -141,46 +148,77 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
       const { data } = await api.get<{ includedCredits: number; bonusCredits: number; usedCredits: number; remaining: number; periodEnd: string }>(
         `/workspaces/${workspaceId}/usage`
       )
-      setUsage(data ?? null)
+      if (currentWorkspaceIdRef.current === workspaceId) {
+        setUsage(data ?? null)
+      }
     } catch {
-      setUsage(null)
+      if (currentWorkspaceIdRef.current === workspaceId) {
+        setUsage(null)
+      }
     } finally {
-      setUsageLoading(false)
+      if (currentWorkspaceIdRef.current === workspaceId) {
+        setUsageLoading(false)
+      }
     }
-  }, [currentWorkspace?.id])
+  }, [])
+
+  const refreshWorkspaceLimits = useCallback(async () => {
+    const workspaceId = currentWorkspaceIdRef.current
+    if (workspaceId == null || workspaceId === 0) {
+      setWorkspaceLimits(null)
+      return
+    }
+    setWorkspaceLimitsLoading(true)
+    try {
+      const { data } = await api.get(`/workspaces/${workspaceId}/limits`)
+      if (currentWorkspaceIdRef.current === workspaceId) {
+        setWorkspaceLimits(data)
+      }
+    } catch (e) {
+      if (currentWorkspaceIdRef.current === workspaceId) {
+        console.error('Failed to fetch workspace limits', e)
+        setWorkspaceLimits(null)
+      }
+    } finally {
+      if (currentWorkspaceIdRef.current === workspaceId) {
+        setWorkspaceLimitsLoading(false)
+      }
+    }
+  }, [])
+
   useEffect(() => {
     fetchUsage()
-  }, [fetchUsage])
+    refreshWorkspaceLimits()
+  }, [currentWorkspace?.id, fetchUsage, refreshWorkspaceLimits])
 
-  // Removed workspace limits fetching - no longer used for frontend permissions
-
-  // Refetch usage when window gains focus (e.g. after sending a message, or returning from pricing)
+  // Refetch usage when window gains focus (e.g. after sending a message, or returning from pricing).
+  // Defer so we read the latest workspace id after React has committed (avoids stale 18/usage when switching to 20).
   useEffect(() => {
     if (typeof window === 'undefined') return
     const onFocus = () => {
-      if (currentWorkspace?.id) {
-        fetchUsage()
+      const id = currentWorkspaceIdRef.current
+      if (id != null && id !== 0) {
+        setTimeout(() => fetchUsage(), 0)
       }
     }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [currentWorkspace?.id, fetchUsage])
+  }, [fetchUsage])
 
   // Listen for subscription updates from billing page
   useEffect(() => {
     if (typeof window === 'undefined') return
-    
+
     const handleSubscriptionUpdate = (event: CustomEvent) => {
       const { workspaceId: updatedWorkspaceId } = event.detail
-      if (updatedWorkspaceId === currentWorkspace?.id) {
-        console.log('[Dashboard] Subscription updated, refreshing usage data')
+      if (updatedWorkspaceId === currentWorkspaceIdRef.current) {
         fetchUsage()
       }
     }
-    
+
     window.addEventListener('subscription-updated', handleSubscriptionUpdate as EventListener)
     return () => window.removeEventListener('subscription-updated', handleSubscriptionUpdate as EventListener)
-  }, [currentWorkspace?.id, fetchUsage])
+  }, [fetchUsage])
 
   const usagePeriodEndFormatted = usage?.periodEnd
     ? new Date(usage.periodEnd).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
@@ -264,7 +302,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
           setTrainingStatus('idle')
         }
       })
-      .catch(() => {})
+      .catch(() => { })
 
     socket.emit('subscribe-agent', agentId)
     socket.on('crawl-training-progress', onProgress)
@@ -337,7 +375,12 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
 
   // Load agents for the current workspace (must be before any early return to satisfy Rules of Hooks)
   useEffect(() => {
-    if (currentWorkspace.id === 0) return
+    if (currentWorkspace.id === 0) {
+      setAgents([])
+      setAgentsLoading(false)
+      return
+    }
+    setAgentsLoading(true)
     api.get<{ agents: Array<{ id: number; workspaceId: number; name: string }> }>(`/workspaces/${currentWorkspace.id}/agents`)
       .then((res) => {
         const list = (res.data.agents ?? []).map((a) => ({
@@ -348,6 +391,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         setAgents(list)
       })
       .catch(() => setAgents([]))
+      .finally(() => setAgentsLoading(false))
   }, [currentWorkspace.id])
 
   // Sync currentAgent from URL when path has agentId, or default to first in workspace
@@ -426,7 +470,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
 
   const createAgent = useCallback(async (name?: string): Promise<{ id: string; name: string; workspaceId: number } | null> => {
     if (currentWorkspace.id === 0) return null
-    
+
     try {
       const res = await api.post<{ agent: { id: number; workspaceId: number; name: string } }>(
         `/workspaces/${currentWorkspace.id}/agents`,
@@ -600,9 +644,11 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
           paddingTop: 'max(2rem, env(safe-area-inset-top, 2rem))',
         }}
       >
-        <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete} socket={socket} refreshUsage={fetchUsage} openAgentLimitModal={undefined} openMemberLimitModal={undefined} workspaceLimits={null} workspaceLimitsLoading={false} refreshWorkspaceLimits={async () => {}}>
-          {children}
-        </DashboardProvider>
+        <UpgradeProvider>
+            <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} agentsLoading={agentsLoading} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete} socket={socket} refreshUsage={fetchUsage} openAgentLimitModal={undefined} openMemberLimitModal={undefined} workspaceLimits={workspaceLimits} workspaceLimitsLoading={workspaceLimitsLoading} refreshWorkspaceLimits={refreshWorkspaceLimits}>
+            {children}
+          </DashboardProvider>
+        </UpgradeProvider>
       </div>
     )
   }
@@ -706,17 +752,20 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
               {openDropdown === 'agent' && (
                 <div className="absolute left-0 top-full z-50 mt-0.5 w-64 rounded-lg border border-slate-200 bg-white py-1.5 shadow-lg">
                   <div className="border-b border-slate-100 px-1.5 pb-1.5">
-                    <button
-                      type="button"
+                    <PermissionButton
+                      feature="createAgent"
                       onClick={() => {
                         setOpenDropdown(null)
                         startNewAgentFlow(currentWorkspace.id)
                         router.push('/dashboard/new-agent/link')
                       }}
-                      className="flex w-full items-center justify-center gap-1 rounded border border-[var(--v2-primary)] py-1.5 text-xs font-medium text-[var(--v2-primary)] hover:bg-[var(--v2-primary)]/10"
+                      variant="outline"
+                      size="sm"
+                      className="w-full border-[var(--v2-primary)] text-[var(--v2-primary)] hover:bg-[var(--v2-primary)]/10"
+                      showCrownIcon
                     >
                       <Plus className="h-3 w-3" /> Create agent
-                    </button>
+                    </PermissionButton>
                   </div>
                   <div className="px-1.5 pt-1.5">
                     <div className="relative">
@@ -731,34 +780,47 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                     </div>
                   </div>
                   <div className="mt-1 max-h-36 overflow-auto px-0.5">
-                    {filteredAgents.map((a) => (
-                      <div
-                        key={a.id}
-                        className={`flex w-full items-center justify-between gap-1 rounded px-2 py-1.5 text-left text-xs ${currentAgent?.id === a.id ? 'bg-slate-200 text-slate-900 font-medium' : 'text-slate-700 hover:bg-slate-50'}`}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => { setCurrentAgent(a); setOpenDropdown(null); router.push(buildDashboardUrl(currentWorkspace.id, { agentId: a.id, subPath: 'playground' })) }}
-                          className="min-w-0 flex-1 text-left truncate"
-                        >
-                          {a.name}
-                        </button>
-                        <div className="flex shrink-0 items-center gap-0.5">
-                          {currentAgent?.id === a.id && <Check className="h-3.5 w-3.5 text-slate-600" />}
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); setAgentToDelete({ id: a.id, name: a.name }); setOpenDropdown(null) }}
-                            className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                            aria-label={`Delete ${a.name}`}
-                            title="Delete agent"
+                    {agentsLoading ? (
+                      <>
+                        {[1, 2, 3].map((i) => (
+                          <div key={i} className="flex items-center gap-2 rounded px-2 py-2">
+                            <div className="h-4 w-8 shrink-0 animate-pulse rounded bg-slate-200" />
+                            <div className="h-4 flex-1 animate-pulse rounded bg-slate-100" />
+                          </div>
+                        ))}
+                      </>
+                    ) : (
+                      <>
+                        {filteredAgents.map((a) => (
+                          <div
+                            key={a.id}
+                            className={`flex w-full items-center justify-between gap-1 rounded px-2 py-1.5 text-left text-xs ${currentAgent?.id === a.id ? 'bg-slate-200 text-slate-900 font-medium' : 'text-slate-700 hover:bg-slate-50'}`}
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                    {filteredAgents.length === 0 && (
-                      <p className="px-2 py-3 text-center text-xs text-slate-500">No agents found</p>
+                            <button
+                              type="button"
+                              onClick={() => { setCurrentAgent(a); setOpenDropdown(null); router.push(buildDashboardUrl(currentWorkspace.id, { agentId: a.id, subPath: 'playground' })) }}
+                              className="min-w-0 flex-1 text-left truncate"
+                            >
+                              {a.name}
+                            </button>
+                            <div className="flex shrink-0 items-center gap-0.5">
+                              {currentAgent?.id === a.id && <Check className="h-3.5 w-3.5 text-slate-600" />}
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setAgentToDelete({ id: a.id, name: a.name }); setOpenDropdown(null) }}
+                                className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                                aria-label={`Delete ${a.name}`}
+                                title="Delete agent"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                        {filteredAgents.length === 0 && (
+                          <p className="px-2 py-3 text-center text-xs text-slate-500">No agents found</p>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -817,106 +879,101 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        {/* Left sidebar - dashboard vs agent context */}
-        <aside className="flex w-56 shrink-0 flex-col border-r border-slate-200 bg-slate-50">
-          <nav className="flex-1 overflow-y-auto py-3">
-            {navItems.map((item) => {
-              const itemHref = getNavHref(item)
-              const isActive = !('children' in item && (item as { children?: string[] }).children?.length) && pathname === itemHref
-              const hasChildren = 'children' in item && Array.isArray((item as { children?: string[] }).children) && (item as { children: string[] }).children.length > 0
-              const isChildRoute =
-                hasChildren &&
-                (item as { children: string[] }).children.some(
-                  (child) => pathname === getChildHrefForActive(item, child)
-                )
-              const isExpanded =
-                hasChildren && (expanded[item.label] || isChildRoute)
+      <UpgradeProvider>
+        <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} agentsLoading={agentsLoading} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete} socket={socket} refreshUsage={fetchUsage} openAgentLimitModal={undefined} openMemberLimitModal={undefined} workspaceLimits={workspaceLimits} workspaceLimitsLoading={workspaceLimitsLoading} refreshWorkspaceLimits={refreshWorkspaceLimits}>
+          <div className="flex min-h-0 flex-1">
+            {/* Left sidebar - dashboard vs agent context */}
+            <aside className="flex w-56 shrink-0 flex-col border-r border-slate-200 bg-slate-50">
+              <nav className="flex-1 overflow-y-auto py-3">
+                {navItems.map((item) => {
+                  const itemHref = getNavHref(item)
+                  const isActive = !('children' in item && (item as { children?: string[] }).children?.length) && pathname === itemHref
+                  const hasChildren = 'children' in item && Array.isArray((item as { children?: string[] }).children) && (item as { children: string[] }).children.length > 0
+                  const isChildRoute =
+                    hasChildren &&
+                    (item as { children: string[] }).children.some(
+                      (child) => pathname === getChildHrefForActive(item, child)
+                    )
+                  const isExpanded =
+                    hasChildren && (expanded[item.label] || isChildRoute)
 
-              return (
-                <div key={item.label} className="px-2">
-                  {hasChildren ? (
-                    <button
-                      type="button"
-                      onClick={() => toggleExpanded(item.label)}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
-                    >
-                      <item.Icon className="h-4 w-4 shrink-0" strokeWidth={2} />
-                      {item.label}
-                      <ChevronDown
-                        className={`ml-auto h-4 w-4 shrink-0 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                      />
-                    </button>
-                  ) : (
-                    <Link
-                      href={itemHref}
-                      className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition ${isActive
-                          ? 'bg-slate-200 text-slate-900'
-                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                        }`}
-                    >
-                      <item.Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-slate-900' : 'text-slate-500'}`} strokeWidth={2} />
-                      {item.label}
-                    </Link>
-                  )}
-                  {hasChildren && isExpanded && (
-                    <div className="ml-6 mt-1 space-y-0.5 border-l border-slate-200 pl-3">
-                      {(item as { children: string[] }).children.map((child) => {
-                        const childHref = getNavHref(item, child)
-                        const isChildActive = pathname === getChildHrefForActive(item, child)
-                        return (
-                          <Link
-                            key={child}
-                            href={childHref}
-                            className={`block py-1.5 text-xs ${isChildActive
-                                ? 'font-medium text-slate-900'
-                                : 'text-slate-500 hover:text-slate-700'
-                              }`}
-                          >
-                            {child}
-                          </Link>
-                        )
-                      })}
+                  return (
+                    <div key={item.label} className="px-2">
+                      {hasChildren ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(item.label)}
+                          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                        >
+                          <item.Icon className="h-4 w-4 shrink-0" strokeWidth={2} />
+                          {item.label}
+                          <ChevronDown
+                            className={`ml-auto h-4 w-4 shrink-0 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                          />
+                        </button>
+                      ) : (
+                        <Link
+                          href={itemHref}
+                          className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition ${isActive
+                            ? 'bg-slate-200 text-slate-900'
+                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                            }`}
+                        >
+                          <item.Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-slate-900' : 'text-slate-500'}`} strokeWidth={2} />
+                          {item.label}
+                        </Link>
+                      )}
+                      {hasChildren && isExpanded && (
+                        <div className="ml-6 mt-1 space-y-0.5 border-l border-slate-200 pl-3">
+                          {(item as { children: string[] }).children.map((child) => {
+                            const childHref = getNavHref(item, child)
+                            const isChildActive = pathname === getChildHrefForActive(item, child)
+                            return (
+                              <Link
+                                key={child}
+                                href={childHref}
+                                className={`block py-1.5 text-xs ${isChildActive
+                                  ? 'font-medium text-slate-900'
+                                  : 'text-slate-500 hover:text-slate-700'
+                                  }`}
+                              >
+                                {child}
+                              </Link>
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              )
-            })}
-          </nav>
-          <div className="border-t border-slate-200 bg-slate-50 p-4">
-           {usage ? (
-              <>
-                <p className="text-xs font-medium text-slate-500">
-                  Credits {usage.usedCredits} / {usage.includedCredits + usage.bonusCredits}
-                </p>
-                <p className="mt-0.5 text-xs text-slate-400">
-                  {usagePeriodEndFormatted ? `Resets ${usagePeriodEndFormatted}` : '—'}
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="text-xs font-medium text-slate-500">Credits —</p>
-                <p className="mt-0.5 text-xs text-slate-400">Select a workspace</p>
-              </>
-            )}
-            <Link
-              href={currentWorkspace.id ? `/pricing?workspaceId=${currentWorkspace.id}` : '/pricing'}
-              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-            >
-              <span>↑</span> Upgrade
-            </Link>
-          </div>
-        </aside>
+                  )
+                })}
+              </nav>
+              <div className="border-t border-slate-200 bg-slate-50 p-4">
+                {currentWorkspace.id ? (
+                  <CreditUsageWidget className="border-0 p-0 bg-transparent" />
+                ) : (
+                  <>
+                    <p className="text-xs font-medium text-slate-500">Credits —</p>
+                    <p className="mt-0.5 text-xs text-slate-400">Select a workspace</p>
+                    <Link
+                      href="/pricing"
+                      className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                    >
+                      <span>↑</span> Upgrade
+                    </Link>
+                  </>
+                )}
+              </div>
+            </aside>
 
-        {/* Main content area */}
-        <div className="flex min-h-0 flex-1 flex-col">
+            {/* Main content area */}
+            <div className="flex min-h-0 flex-1 flex-col">
           <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete} socket={socket} refreshUsage={fetchUsage} openAgentLimitModal={undefined} openMemberLimitModal={undefined} workspaceLimits={null} workspaceLimitsLoading={false} refreshWorkspaceLimits={async () => {}}>
-              {children}
-            </DashboardProvider>
+                {children}
           </main>
-        </div>
-      </div>
+            </div>
+          </div>
+        </DashboardProvider>
+      </UpgradeProvider>
 
       {/* Delete agent confirmation modal */}
       {agentToDelete && (
