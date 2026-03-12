@@ -33,6 +33,8 @@ function getHostedCheckoutUrl(): string {
 
 let scriptLoaded = false
 let initPromise: Promise<void> | null = null
+/** Set when opening overlay checkout; used by eventCallback to dispatch subscription-updated on completion. */
+let lastCheckoutWorkspaceId: number | null = null
 
 function loadScript(): Promise<void> {
   if (typeof window === 'undefined') return Promise.resolve()
@@ -70,6 +72,12 @@ function ensurePaddle(): Promise<void> {
         token,
         eventCallback: (e: unknown) => {
           const ev = e as { name?: string; type?: string; code?: string; detail?: string }
+          if (ev?.name === 'checkout.completed' && typeof window !== 'undefined' && lastCheckoutWorkspaceId != null) {
+            window.dispatchEvent(
+              new CustomEvent('subscription-updated', { detail: { workspaceId: lastCheckoutWorkspaceId } })
+            )
+            lastCheckoutWorkspaceId = null
+          }
           if (ev?.name?.includes('error') || ev?.type === 'front-end_error' || ev?.code) {
             console.warn('[Paddle] Event:', ev)
           }
@@ -133,6 +141,7 @@ export async function openPaddleCheckout(priceId: string, workspaceId: number | 
     : `${origin}/dashboard`
   const customData =
     workspaceId != null ? { workspace_id: String(workspaceId) } : undefined
+  lastCheckoutWorkspaceId = workspaceId
   window.Paddle.Checkout.open({
     items: [{ priceId, quantity: 1 }],
     customData,

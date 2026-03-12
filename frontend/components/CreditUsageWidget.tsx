@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Zap, AlertTriangle, TrendingUp } from 'lucide-react'
 import { useDashboardOptional } from '@/contexts/DashboardContext'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -39,34 +39,44 @@ export default function CreditUsageWidget({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
-  useEffect(() => {
+  const fetchCredits = useCallback(async () => {
     if (!currentWorkspace?.id) return
-
     setError(false)
     setLoading(true)
-    const fetchCredits = async () => {
-      try {
-        const response = await api.get(`/workspaces/${currentWorkspace.id}/credits`)
-        const data = response.data
-
-        setCredits({
-          monthlyAllowance: data.monthlyAllowance,
-          monthlyUsed: data.monthlyUsed,
-          monthlyRemaining: data.monthlyRemaining,
-          bonusCredits: data.bonusCredits,
-          totalAvailable: data.monthlyRemaining + data.bonusCredits,
-          usagePercentage: data.monthlyAllowance ? (data.monthlyUsed / data.monthlyAllowance) * 100 : 0
-        })
-      } catch (err) {
-        console.error('Failed to fetch credits:', err)
-        setError(true)
-      } finally {
-        setLoading(false)
-      }
+    try {
+      const response = await api.get(`/workspaces/${currentWorkspace.id}/credits`)
+      const data = response.data
+      setCredits({
+        monthlyAllowance: data.monthlyAllowance,
+        monthlyUsed: data.monthlyUsed,
+        monthlyRemaining: data.monthlyRemaining,
+        bonusCredits: data.bonusCredits,
+        totalAvailable: data.monthlyRemaining + data.bonusCredits,
+        usagePercentage: data.monthlyAllowance ? (data.monthlyUsed / data.monthlyAllowance) * 100 : 0
+      })
+    } catch (err) {
+      console.error('Failed to fetch credits:', err)
+      setError(true)
+    } finally {
+      setLoading(false)
     }
-
-    fetchCredits()
   }, [currentWorkspace?.id])
+
+  useEffect(() => {
+    if (!currentWorkspace?.id) return
+    fetchCredits()
+  }, [currentWorkspace?.id, fetchCredits])
+
+  // Refetch credits when subscription updates (e.g. after plan change)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !currentWorkspace?.id) return
+    const onSubscriptionUpdated = (e: Event) => {
+      const { workspaceId } = (e as CustomEvent).detail ?? {}
+      if (workspaceId === currentWorkspace.id) fetchCredits()
+    }
+    window.addEventListener('subscription-updated', onSubscriptionUpdated)
+    return () => window.removeEventListener('subscription-updated', onSubscriptionUpdated)
+  }, [currentWorkspace?.id, fetchCredits])
 
   // Real-time: update credits when server emits after deduct (e.g. chat message)
   useEffect(() => {

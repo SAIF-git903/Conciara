@@ -21,17 +21,20 @@ export default function LayoutShell({ children }: { children: ReactNode }) {
   const [headerDark, setHeaderDark] = useState(false)
   const { scrollY } = useScroll()
 
-  // Paddle Hosted Checkout redirects to default payment link (e.g. /) with transaction_id; send user to dashboard billing
+  // Paddle Hosted Checkout may redirect to default payment link (e.g. /) with transaction_id.
+  // Redirect immediately to billing so user never sees the home page.
+  const txnId = searchParams.get('transaction_id')
+  const isPostCheckoutReturn = isLanding && !!txnId
+
   useEffect(() => {
-    const txnId = searchParams.get('transaction_id')
     if (!txnId) return
     const workspaceId = getSelectedWorkspaceId()
-    if (workspaceId != null) {
-      router.replace(`/dashboard/${workspaceId}/settings/billing?checkout_success=1`)
-    } else {
-      router.replace('/dashboard?checkout_success=1')
-    }
-  }, [searchParams, router])
+    const target =
+      workspaceId != null
+        ? `/dashboard/${workspaceId}/settings/billing?checkout_success=1`
+        : '/dashboard?checkout_success=1'
+    window.location.replace(target)
+  }, [txnId])
 
   useEffect(() => {
     if (!isLanding) {
@@ -52,6 +55,15 @@ export default function LayoutShell({ children }: { children: ReactNode }) {
     const unsub = scrollY.on('change', update)
     return () => unsub()
   }, [isLanding, scrollY])
+
+  // After payment, show minimal "Redirecting..." so we never render the full home page
+  if (isPostCheckoutReturn) {
+    return (
+      <div className="v2-theme flex min-h-screen items-center justify-center bg-white text-slate-600">
+        <p className="text-sm">Redirecting to billing…</p>
+      </div>
+    )
+  }
 
   return (
     <div className="v2-theme min-h-screen bg-white text-slate-900">

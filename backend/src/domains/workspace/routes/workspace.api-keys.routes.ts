@@ -44,7 +44,11 @@ router.get('/:workspaceId/api-keys', requireWorkspaceAccess, async (req, res) =>
 /** POST /api/workspaces/:workspaceId/api-keys */
 router.post('/:workspaceId/api-keys', requirePermission({ feature: 'apiAccess', requireOwner: true }), async (req, res) => {
   try {
-    const workspaceId = (req as express.Request & { workspaceId: number }).workspaceId;
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    if (isNaN(workspaceId)) {
+      return res.status(400).json({ error: 'Invalid workspace ID' });
+    }
+
     const userId = req.user!.id;
     const hasAccess = await workspaceHasApiAccess(workspaceId);
     if (!hasAccess) {
@@ -55,6 +59,7 @@ router.post('/:workspaceId/api-keys', requirePermission({ feature: 'apiAccess', 
         plan: plan.name,
       });
     }
+
     const name = typeof req.body?.name === 'string' ? req.body.name.trim() : 'API Key';
     const created = await createWorkspaceApiKey(workspaceId, userId, name || 'API Key');
     return res.status(201).json({

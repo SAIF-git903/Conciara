@@ -205,20 +205,23 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('focus', onFocus)
   }, [fetchUsage])
 
-  // Listen for subscription updates from billing page
+  // Listen for subscription updates (billing page return, Paddle overlay completion)
   useEffect(() => {
     if (typeof window === 'undefined') return
 
     const handleSubscriptionUpdate = (event: CustomEvent) => {
-      const { workspaceId: updatedWorkspaceId } = event.detail
+      const { workspaceId: updatedWorkspaceId } = event.detail || {}
+      // Always refresh user so workspace plans in nav are up to date
+      refreshUser().catch(() => {})
       if (updatedWorkspaceId === currentWorkspaceIdRef.current) {
         fetchUsage()
+        refreshWorkspaceLimits()
       }
     }
 
     window.addEventListener('subscription-updated', handleSubscriptionUpdate as EventListener)
     return () => window.removeEventListener('subscription-updated', handleSubscriptionUpdate as EventListener)
-  }, [fetchUsage])
+  }, [fetchUsage, refreshWorkspaceLimits, refreshUser])
 
   const usagePeriodEndFormatted = usage?.periodEnd
     ? new Date(usage.periodEnd).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
@@ -346,7 +349,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     if (workspaceIdFromPath != null) {
       const w = workspaces.find((x) => x.id === workspaceIdFromPath)
       if (w) {
-        setCurrentWorkspace((prev) => (prev.id === w.id && prev.name === w.name ? prev : w))
+        setCurrentWorkspace((prev) => (prev.id === w.id && prev.name === w.name && prev.plan === w.plan ? prev : w))
         setSelectedWorkspaceId(w.id)
         return
       }
@@ -358,7 +361,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
       return
     }
     const next = selectedWorkspace ?? workspaces[0]
-    setCurrentWorkspace((prev) => (prev.id === next.id ? prev : next))
+    setCurrentWorkspace((prev) => (prev.id === next.id && prev.plan === next.plan ? prev : next))
   }, [workspaces, router, workspaceIdFromPath])
 
   // Redirect /dashboard (no workspace in path) to /dashboard/[workspaceId]
