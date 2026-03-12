@@ -31,8 +31,7 @@ async function getPaddleCustomerEmail(customerId: string): Promise<string | null
     if (!res.ok) return null;
     const json = (await res.json()) as { data?: { email?: string } };
     return json?.data?.email ?? null;
-  } catch (e) {
-    console.warn('[Paddle] getPaddleCustomerEmail failed:', (e as Error)?.message);
+  } catch {
     return null;
   }
 }
@@ -49,8 +48,7 @@ async function fetchPaddleSubscriptionById(subscriptionId: string): Promise<Padd
     const raw = json?.data;
     if (!raw?.id) return null;
     return normalizeSubscriptionData(raw);
-  } catch (e) {
-    console.warn('[Paddle] fetchPaddleSubscriptionById failed:', (e as Error)?.message);
+  } catch {
     return null;
   }
 }
@@ -138,44 +136,31 @@ async function applySubscriptionToWorkspace(sub: PaddleSubscriptionData): Promis
   let workspaceId = typeof workspaceIdRaw === 'string' ? parseInt(workspaceIdRaw, 10) : workspaceIdRaw;
   if (workspaceId == null || Number.isNaN(workspaceId)) {
     if (!PADDLE_API_KEY) {
-      console.warn(
-        '[Paddle] Cannot link subscription: no workspace_id in custom_data and PADDLE_API_KEY is not set. ' +
-          'Set PADDLE_API_KEY in .env (from Paddle Dashboard → Developer Tools → Authentication) so we can resolve by customer email (required for Hosted Checkout).'
-      );
+      // cannot resolve by email without PADDLE_API_KEY
     } else if (!sub.customer_id) {
-      console.warn('[Paddle] Subscription payload has no customer_id — cannot resolve by email.');
+      // cannot resolve by email
     } else {
       const email = await getPaddleCustomerEmail(sub.customer_id);
       if (!email) {
-        console.warn('[Paddle] Could not fetch customer email from Paddle for customer_id=', sub.customer_id, '(check PADDLE_API_KEY and that it matches your Paddle environment, e.g. sandbox key for sandbox).');
+        // could not fetch customer email
       } else {
+        const emailKey = email.toLowerCase().trim();
         const user = await prisma.user.findUnique({
-          where: { email: email.toLowerCase().trim() },
+          where: { email: emailKey },
           select: { id: true },
         });
         if (!user) {
-          console.warn(
-            '[Paddle] No user in DB with email matching Paddle customer. ' +
-              'Ensure you sign up / log in with the same email you use at Paddle checkout (' +
-              email.replace(/(.{2})(.*)(@.*)/, '$1***$3') +
-              ').'
-          );
+          // no user with matching email
         } else {
-          // First, check if we have stored checkout context for this email
           const checkoutContext = await prisma.checkoutContext.findUnique({
-            where: { 
-              userEmail: email.toLowerCase().trim(),
-            },
+            where: { userEmail: emailKey },
           });
-
-          if (checkoutContext && checkoutContext.expiresAt > new Date()) {
+          const now = new Date();
+          if (checkoutContext && checkoutContext.expiresAt > now) {
             workspaceId = checkoutContext.workspaceId;
-            console.log('[Paddle] Linked by checkout context to workspaceId=', workspaceId);
-            
-            // Clean up the context after use
             await prisma.checkoutContext.delete({
-              where: { userEmail: email.toLowerCase().trim() },
-            }).catch(() => {}); // Ignore errors if already deleted
+              where: { userEmail: emailKey },
+            }).catch(() => {});
           } else {
           // Find the best workspace to associate with this subscription
           // Priority: workspace without active subscription > most recently updated
@@ -195,28 +180,17 @@ async function applySubscriptionToWorkspace(sub: PaddleSubscriptionData): Promis
             },
             orderBy: { updatedAt: 'desc' },
           });
-          
           if (workspaces.length === 0) {
-            console.warn('[Paddle] User found but has no workspace.');
+            // user has no workspace
           } else if (workspaces.length === 1) {
             workspaceId = workspaces[0].id;
-            console.log('[Paddle] Linked by customer email to workspaceId=', workspaceId, '(only workspace)');
           } else {
-            // Multiple workspaces - prefer one without active paid subscription
-            const workspaceWithoutPaidSub = workspaces.find(w => 
-              !w.subscription || 
+            const workspaceWithoutPaidSub = workspaces.find(w =>
+              !w.subscription ||
               w.subscription.status !== 'active' ||
               w.subscription.plan?.name === 'free'
             );
-            
-            if (workspaceWithoutPaidSub) {
-              workspaceId = workspaceWithoutPaidSub.id;
-              console.log('[Paddle] Linked by customer email to workspaceId=', workspaceId, '(workspace without active paid subscription)');
-            } else {
-              // All workspaces have active subscriptions, use most recently updated
-              workspaceId = workspaces[0].id;
-              console.log('[Paddle] Linked by customer email to workspaceId=', workspaceId, '(most recently updated, all have subscriptions)');
-            }
+            workspaceId = workspaceWithoutPaidSub?.id ?? workspaces[0].id;
           }
           }
         }
@@ -224,30 +198,29 @@ async function applySubscriptionToWorkspace(sub: PaddleSubscriptionData): Promis
     }
   }
   if (workspaceId == null || Number.isNaN(workspaceId)) {
-    console.warn('[Paddle] No workspace_id in custom_data and could not resolve by customer email — subscription not linked.');
     return null;
   }
 
-  const priceId = sub.items?.[0]?.price?.id;
+  let priceId = sub.items?.[0]?.price?.id as string | undefined;
+  if (!priceId && Array.isArray(sub.items) && sub.items.length > 0) {
+    const first = sub.items[0] as { price_id?: string; price?: { id?: string } };
+    priceId = first?.price?.id ?? first?.price_id;
+  }
   if (!priceId) {
-    console.warn('[Paddle] Subscription has no price ID in items[0] — cannot map to plan. Payload items may use price_id or price.id.');
+    return null;
   }
-  const plan = priceId
-    ? await prisma.plan.findFirst({
-        where: {
-          OR: [
-            { paddlePriceIdMonthly: priceId },
-            { paddlePriceIdYearly: priceId },
-          ],
-        },
-      })
-    : null;
-  if (priceId && !plan) {
-    console.warn('[Paddle] No plan in DB for price_id=', priceId, '— run seed-plans and ensure Paddle price IDs match.');
+  const plan = await prisma.plan.findFirst({
+    where: {
+      OR: [
+        { paddlePriceIdMonthly: priceId },
+        { paddlePriceIdYearly: priceId },
+      ],
+    },
+  });
+  if (!plan) {
+    return null;
   }
-  const planId = plan?.id ?? (await prisma.plan.findUnique({ where: { name: 'free' } }))?.id;
-  if (!planId) return null;
-
+  const planId = plan.id;
   const interval = sub.billing_cycle?.interval === 'month' ? 'monthly' : 'yearly';
   const period = sub.current_billing_period;
   const start = period?.starts_at ? new Date(period.starts_at) : new Date();
@@ -276,44 +249,34 @@ async function applySubscriptionToWorkspace(sub: PaddleSubscriptionData): Promis
       cancelAtPeriodEnd: false,
     },
   });
-  const planName = plan?.name ?? 'free';
+  const planName = plan.name;
   await prisma.workspace.update({
     where: { id: workspaceId },
     data: { plan: planName },
   });
-  console.log('[Paddle] Updated workspace', workspaceId, 'to plan:', planName);
   await resetPeriod(workspaceId);
   return workspaceId;
 }
 
 export async function handlePaddleWebhook(req: express.Request, res: express.Response): Promise<void> {
-  // Return 200 immediately to acknowledge receipt
+  const sig = (req.headers['paddle-signature'] as string) || '';
   res.status(200).send('OK');
-  
+
   if (!PADDLE_ENABLED) {
-    console.warn('[Paddle] Webhook received but Paddle not configured (missing PADDLE_WEBHOOK_SECRET)');
     return;
   }
   const rawBody = req.body;
   if (!Buffer.isBuffer(rawBody)) {
-    console.error('[Paddle] Webhook received non-buffer body');
     return;
   }
-  const sig = (req.headers['paddle-signature'] as string) || '';
   let eventType: string;
   let data: PaddleSubscriptionData | PaddleTransactionData;
 
   if (PADDLE_WEBHOOK_SKIP_VERIFY) {
-    if (!sig) {
-      console.warn('[Paddle] Webhook skip-verify is ON but no Paddle-Signature header present');
-    } else {
-      console.warn('[Paddle] Webhook signature verification SKIPPED (PADDLE_WEBHOOK_SKIP_VERIFY). Use only for local testing.');
-    }
     let payload: { event_type?: string; data?: Record<string, unknown> };
     try {
       payload = JSON.parse(rawBody.toString('utf8'));
     } catch {
-      res.status(400).send('Invalid JSON');
       return;
     }
     eventType = payload.event_type ?? '';
@@ -327,8 +290,6 @@ export async function handlePaddleWebhook(req: express.Request, res: express.Res
     }
   } else {
     if (!sig) {
-      console.error('[Paddle] Webhook missing Paddle-Signature header');
-      res.status(400).send('Invalid signature');
       return;
     }
     const rawRequestBody = rawBody.toString('utf8');
@@ -344,38 +305,39 @@ export async function handlePaddleWebhook(req: express.Request, res: express.Res
         eventType = '';
         data = {} as PaddleSubscriptionData;
       }
-    } catch (e) {
-      console.error('[Paddle] Webhook signature verification failed:', (e as Error)?.message);
-      console.error(
-        '[Paddle] Check PADDLE_WEBHOOK_SECRET (Developer Tools → Notifications → your URL → Secret key). For local ngrok testing you can set PADDLE_WEBHOOK_SKIP_VERIFY=1'
-      );
+    } catch {
       return;
     }
   }
 
   if (!eventType || !data) {
-    console.log('[Paddle] Webhook received but no event type or data');
     return;
   }
-  console.log('[Paddle] Processing webhook:', eventType);
-  
-  // Process webhook in background to avoid timeout
+
   setImmediate(async () => {
     try {
     switch (eventType) {
       case 'subscription.created': {
-        const workspaceId = await applySubscriptionToWorkspace(data as PaddleSubscriptionData);
-        console.log('[Paddle] Subscription created for workspace:', workspaceId);
+        await applySubscriptionToWorkspace(data as PaddleSubscriptionData);
         break;
       }
       case 'subscription.updated':
       case 'subscription.activated':
       case 'subscription.resumed': {
         const sub = data as PaddleSubscriptionData;
-        const workspaceSub = await prisma.workspaceSubscription.findFirst({
+        let workspaceSub = await prisma.workspaceSubscription.findFirst({
           where: { paddleSubscriptionId: sub.id },
           include: { plan: true },
         });
+        if (!workspaceSub && (sub.status === 'active' || sub.status === 'trialing')) {
+          const workspaceId = await applySubscriptionToWorkspace(sub);
+          if (workspaceId != null) {
+            workspaceSub = await prisma.workspaceSubscription.findFirst({
+              where: { paddleSubscriptionId: sub.id },
+              include: { plan: true },
+            });
+          }
+        }
         if (workspaceSub) {
           const status = sub.status === 'active' || sub.status === 'trialing' ? sub.status : 'canceled';
           const period = sub.current_billing_period;
@@ -458,7 +420,6 @@ export async function handlePaddleWebhook(req: express.Request, res: express.Res
         }
 
         if (workspaceId != null) {
-          // Record billing transaction with retry logic
           let retries = 3;
           while (retries > 0) {
             try {
@@ -479,13 +440,11 @@ export async function handlePaddleWebhook(req: express.Request, res: express.Res
                   status: 'completed',
                 },
               });
-              console.log('[Paddle] Billing transaction recorded:', txn.id, 'for workspace', workspaceId);
               break;
-            } catch (e) {
+            } catch {
               retries--;
-              console.warn('[Paddle] Failed to record billing transaction (retries left:', retries, '):', (e as Error)?.message);
               if (retries > 0) {
-                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+                await new Promise(resolve => setTimeout(resolve, 1000));
               }
             }
           }
@@ -493,13 +452,10 @@ export async function handlePaddleWebhook(req: express.Request, res: express.Res
         break;
       }
       default:
-        console.log('[Paddle] Unhandled event type:', eventType);
         break;
     }
-    console.log('[Paddle] Webhook processed successfully:', eventType);
-    } catch (err) {
-      console.error('[Paddle] Webhook handler error:', err);
-      // Don't throw - webhook already acknowledged
+    } catch {
+      // webhook already acknowledged
     }
   });
 }

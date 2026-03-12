@@ -69,7 +69,14 @@ export async function checkAgentLimit(workspaceId: number): Promise<{ allowed: b
 
 export async function checkMemberLimit(workspaceId: number): Promise<{ allowed: boolean; current: number; max: number }> {
   const plan = await getPlanForWorkspace(workspaceId);
-  const current = await prisma.workspaceMember.count({ where: { workspaceId } });
+  const now = new Date();
+  const [memberCount, pendingInviteCount] = await Promise.all([
+    prisma.workspaceMember.count({ where: { workspaceId } }),
+    prisma.workspaceInvite.count({
+      where: { workspaceId, expiresAt: { gt: now } },
+    }),
+  ]);
+  const current = memberCount + pendingInviteCount;
   return { allowed: current < plan.maxMembers, current, max: plan.maxMembers };
 }
 

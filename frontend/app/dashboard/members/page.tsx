@@ -154,6 +154,7 @@ export default function MembersPage() {
       )
       setRemoveTarget(null)
       await fetchMembers()
+      await refreshWorkspaceLimits()
     } catch (e: unknown) {
       const res = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
       setError(res || (e instanceof Error ? e.message : 'Failed to remove member'))

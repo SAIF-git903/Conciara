@@ -36,7 +36,8 @@ let refreshPromise: Promise<string | null> | null = null;
 
 const api = axios.create({
   baseURL: getApiBaseUrl(),
-  headers: { 'Content-Type': 'application/json' },
+  headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+
 });
 
 api.interceptors.request.use((config) => {
@@ -75,7 +76,7 @@ api.interceptors.response.use(
             const { data } = await axios.post<{ token: string; refreshToken: string }>(
               `${getApiBaseUrl()}/auth/refresh`,
               { refreshToken },
-              { headers: { 'Content-Type': 'application/json' } }
+              { headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' } }
             );
             localStorage.setItem('auth_token', data.token);
             localStorage.setItem('auth_refresh_token', data.refreshToken);

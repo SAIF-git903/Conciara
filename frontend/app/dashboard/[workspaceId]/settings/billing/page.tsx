@@ -130,42 +130,31 @@ export default function WorkspaceSettingsBillingPage() {
   // After checkout success, refetch subscription and billing once webhooks have been processed
   useEffect(() => {
     if (!showCheckoutSuccess || workspaceId == null) return
-    
+
     let retryCount = 0
-    const maxRetries = 3
-    
+    const maxRetries = 5
+
     const refreshWithRetry = async () => {
       try {
         setRefreshingContexts(true)
-        
-        // Fetch subscription first to check if it's updated
         const sub = await fetchSubscription()
         await fetchBillingHistory()
-        
-        // If subscription is still free and we haven't exceeded retries, try again
+
         if ((!sub || sub.planName === 'free') && retryCount < maxRetries) {
           retryCount++
           setTimeout(refreshWithRetry, 2000)
           return
         }
-        
-        // Refresh user context
+
         await refreshUser().catch(() => {})
-        
-        // Finally refresh usage/credits
         refreshUsage?.()
-        
-        // Trigger a custom event to notify other components
         if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('subscription-updated', { 
-            detail: { workspaceId, subscription: sub } 
-          }))
+          window.dispatchEvent(
+            new CustomEvent('subscription-updated', { detail: { workspaceId, subscription: sub } })
+          )
         }
-        
         setRefreshingContexts(false)
-      } catch (e) {
-        console.error('[Billing] Error refreshing contexts after checkout:', e)
-        // Retry on error if we haven't exceeded max retries
+      } catch {
         if (retryCount < maxRetries) {
           retryCount++
           setTimeout(refreshWithRetry, 2000)
@@ -174,8 +163,7 @@ export default function WorkspaceSettingsBillingPage() {
         }
       }
     }
-    
-    // Initial delay for webhook processing
+
     const t = setTimeout(refreshWithRetry, 3000)
     return () => clearTimeout(t)
   }, [showCheckoutSuccess, workspaceId, fetchSubscription, fetchBillingHistory, refreshUser, refreshUsage])
@@ -202,8 +190,8 @@ export default function WorkspaceSettingsBillingPage() {
           detail: { workspaceId, subscription: sub } 
         }))
       }
-    } catch (e) {
-      console.error('[Billing] Manual refresh failed:', e)
+    } catch {
+      // ignore
     } finally {
       setRefreshing(false)
     }
