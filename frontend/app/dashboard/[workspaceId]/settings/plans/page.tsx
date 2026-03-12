@@ -6,7 +6,7 @@ import { useDashboard } from '@/contexts/DashboardContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { PLANS, formatPlanBytes } from '@/lib/plans'
 import { openPaddleCheckout, isPaddleConfigured } from '@/lib/paddle'
-import { Check, Crown, Zap, Building, ArrowRight } from 'lucide-react'
+import { Check, ArrowRight } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 type BillingInterval = 'monthly' | 'yearly'
@@ -36,6 +36,7 @@ export default function WorkspaceSettingsPlansPage() {
   )
 
   const currentPlan = currentWorkspace?.plan || 'free'
+  const paidPlans = PLANS.filter((p) => p.name !== 'free')
 
   const handleIntervalChange = (newInterval: BillingInterval) => {
     if (newInterval === interval) return
@@ -68,8 +69,8 @@ export default function WorkspaceSettingsPlansPage() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
-      <div className="shrink-0 border-b border-slate-200 px-6 py-5">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-50">
+      <div className="shrink-0 border-b border-slate-200 bg-white px-6 py-5">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-xl font-semibold text-slate-900">Plans & Pricing</h1>
@@ -82,36 +83,6 @@ export default function WorkspaceSettingsPlansPage() {
 
       <div className="flex-1 overflow-auto p-6">
         <div className="mx-auto max-w-6xl space-y-8">
-          {/* Current Plan Status */}
-          <div className="rounded-xl border border-slate-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm">
-                  {currentPlan === 'free' ? (
-                    <Building className="h-6 w-6 text-slate-600" />
-                  ) : currentPlan === 'hobby' ? (
-                    <Zap className="h-6 w-6 text-blue-600" />
-                  ) : (
-                    <Crown className="h-6 w-6 text-purple-600" />
-                  )}
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">
-                    Current Plan: {currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1)}
-                  </h3>
-                  <p className="text-sm text-slate-600">
-                    Plan features and usage details managed by backend
-                  </p>
-                </div>
-              </div>
-              {currentPlan !== 'free' && (
-                <div className="rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-green-700 shadow-sm">
-                  Active
-                </div>
-              )}
-            </div>
-          </div>
-
           {/* Billing Interval Toggle */}
           <div className="flex justify-center">
             <div className="relative inline-flex rounded-lg border border-slate-200 bg-slate-100/80 p-1">
@@ -123,9 +94,8 @@ export default function WorkspaceSettingsPlansPage() {
               <button
                 type="button"
                 onClick={() => handleIntervalChange('yearly')}
-                className={`relative z-10 min-w-[120px] rounded-md px-4 py-2 text-sm font-medium transition-colors duration-200 ${
-                  interval === 'yearly' ? 'text-slate-900' : 'text-slate-600 hover:text-slate-900'
-                }`}
+                className={`relative z-10 min-w-[120px] rounded-md px-4 py-2 text-sm font-medium transition-colors duration-200 ${interval === 'yearly' ? 'text-slate-900' : 'text-slate-600 hover:text-slate-900'
+                  }`}
               >
                 Annual pricing
                 <span className="ml-2 text-xs text-emerald-600 font-semibold">Save 20%</span>
@@ -133,9 +103,8 @@ export default function WorkspaceSettingsPlansPage() {
               <button
                 type="button"
                 onClick={() => handleIntervalChange('monthly')}
-                className={`relative z-10 min-w-[120px] rounded-md px-4 py-2 text-sm font-medium transition-colors duration-200 ${
-                  interval === 'monthly' ? 'text-slate-900' : 'text-slate-600 hover:text-slate-900'
-                }`}
+                className={`relative z-10 min-w-[120px] rounded-md px-4 py-2 text-sm font-medium transition-colors duration-200 ${interval === 'monthly' ? 'text-slate-900' : 'text-slate-600 hover:text-slate-900'
+                  }`}
               >
                 Monthly pricing
               </button>
@@ -144,29 +113,27 @@ export default function WorkspaceSettingsPlansPage() {
 
           {/* Plans Grid */}
           <div className="grid gap-6 lg:grid-cols-3">
-            {PLANS.map((plan) => {
+            {paidPlans.map((plan) => {
               const price = interval === 'monthly' ? plan.priceMonthly : plan.priceYearly
-              const isFree = plan.priceMonthly === 0
               const isCurrentPlan = plan.name === currentPlan
               const isPopular = plan.name === 'standard'
 
               return (
                 <div
                   key={plan.id}
-                  className={`group relative flex h-full flex-col rounded-2xl bg-white transition-all duration-200 ${
-                    isPopular
-                      ? 'border-2 border-blue-200 shadow-xl ring-1 ring-blue-100'
+                  className={`group relative flex h-full flex-col rounded-2xl bg-white transition-all duration-200 ${isPopular
+                      ? 'border-2 border-slate-300 shadow-xl ring-1 ring-slate-200'
                       : 'border border-slate-200 shadow-md hover:shadow-lg'
-                  } ${isCurrentPlan ? 'ring-2 ring-green-200 bg-green-50/30' : ''}`}
+                    } ${isCurrentPlan ? 'ring-2 ring-emerald-200 bg-emerald-50/30' : ''}`}
                 >
                   {isPopular && (
                     <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                      <div className="rounded-full bg-gradient-to-r from-blue-600 to-purple-600 px-4 py-1.5 text-xs font-semibold text-white shadow-lg">
+                      <div className="rounded-full bg-slate-900 px-4 py-1.5 text-xs font-semibold text-white shadow-lg">
                         Most Popular
                       </div>
                     </div>
                   )}
-                  
+
                   {isCurrentPlan && (
                     <div className="absolute -top-4 right-4">
                       <div className="rounded-full bg-green-600 px-3 py-1.5 text-xs font-semibold text-white shadow-lg">
@@ -186,45 +153,35 @@ export default function WorkspaceSettingsPlansPage() {
                     </div>
 
                     <div className="mb-6 flex items-baseline gap-2">
-                      {isFree ? (
-                        <span className="text-3xl font-semibold text-slate-900">Free</span>
-                      ) : (
-                        <>
-                          <span className="text-3xl font-semibold text-slate-900">$</span>
-                          <div className="relative inline-block min-w-[3ch] overflow-hidden text-3xl font-semibold tabular-nums text-slate-900">
-                            <span className="invisible select-none" aria-hidden>
-                              {price}
-                            </span>
-                            <AnimatePresence initial={false}>
-                              <motion.span
-                                key={interval}
-                                initial={{ y: '100%' }}
-                                animate={{ y: 0 }}
-                                exit={{ y: '-100%' }}
-                                transition={{ duration: 0.35, ease: [0.33, 1, 0.68, 1] }}
-                                className="absolute left-0 top-0 inline-block min-w-[3ch] text-3xl font-semibold tabular-nums text-slate-900"
-                              >
-                                {price}
-                              </motion.span>
-                            </AnimatePresence>
-                          </div>
-                          <span className="text-sm font-normal text-slate-500">/mo</span>
-                        </>
-                      )}
+                      <span className="text-3xl font-semibold text-slate-900">$</span>
+                      <div className="relative inline-block min-w-[3ch] overflow-hidden text-3xl font-semibold tabular-nums text-slate-900">
+                        <span className="invisible select-none" aria-hidden>
+                          {price}
+                        </span>
+                        <AnimatePresence initial={false}>
+                          <motion.span
+                            key={interval}
+                            initial={{ y: '100%' }}
+                            animate={{ y: 0 }}
+                            exit={{ y: '-100%' }}
+                            transition={{ duration: 0.35, ease: [0.33, 1, 0.68, 1] }}
+                            className="absolute left-0 top-0 inline-block min-w-[3ch] text-3xl font-semibold tabular-nums text-slate-900"
+                          >
+                            {price}
+                          </motion.span>
+                        </AnimatePresence>
+                      </div>
+                      <span className="text-sm font-normal text-slate-500">/mo</span>
                     </div>
 
-                    {!isFree && (
-                      <p className={`-mt-2 mb-6 min-h-[2.5rem] text-xs text-slate-500 transition-opacity duration-200 ${
-                        interval === 'yearly' ? 'opacity-100' : 'opacity-0'
+                    <p className={`-mt-2 mb-6 min-h-[2.5rem] text-xs text-slate-500 transition-opacity duration-200 ${interval === 'yearly' ? 'opacity-100' : 'opacity-0'
                       }`}>
-                        {interval === 'yearly' ? (
-                          <>Billed ${(plan.priceYearly * 12).toLocaleString()} annually</>
-                        ) : (
-                          'Billed annually'
-                        )}
-                      </p>
-                    )}
-                    {isFree && <div className="-mt-2 mb-6 h-10" />}
+                      {interval === 'yearly' ? (
+                        <>Billed ${plan.priceYearly.toLocaleString()} annually</>
+                      ) : (
+                        'Billed annually'
+                      )}
+                    </p>
 
                     {/* Features List */}
                     <div className="mb-8 flex-1 space-y-3">
@@ -254,19 +211,15 @@ export default function WorkspaceSettingsPlansPage() {
 
                     {/* Action Button */}
                     {isCurrentPlan ? (
-                      <div className="w-full rounded-lg border-2 border-green-200 bg-green-50 px-5 py-3 text-center text-sm font-medium text-green-700">
+                      <div className="w-full rounded-lg border-2 border-emerald-200 bg-emerald-50 px-5 py-3 text-center text-sm font-medium text-emerald-700">
                         Current Plan
-                      </div>
-                    ) : isFree ? (
-                      <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-5 py-3 text-center text-sm font-medium text-slate-500">
-                        Your current plan
                       </div>
                     ) : (
                       <button
                         type="button"
                         disabled={!isOwner || checkoutLoading !== null || !isPaddleConfigured()}
                         onClick={() => handleUpgrade(plan)}
-                        className="group w-full rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:from-blue-700 hover:to-purple-700 hover:shadow-md active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="group w-full rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
                         {checkoutLoading === plan.id ? (
                           'Opening checkout...'
@@ -294,11 +247,11 @@ export default function WorkspaceSettingsPlansPage() {
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50">
                   <th className="py-4 pl-6 font-semibold text-slate-900">Features</th>
-                  {PLANS.map((p) => (
+                  {paidPlans.map((p) => (
                     <th key={p.id} className="py-4 px-3 font-semibold text-slate-900 text-center">
                       {p.displayName}
                       {p.name === currentPlan && (
-                        <div className="mt-1 text-xs font-normal text-green-600">(Current)</div>
+                        <div className="mt-1 text-xs font-normal text-emerald-600">(Current)</div>
                       )}
                     </th>
                   ))}
@@ -307,31 +260,31 @@ export default function WorkspaceSettingsPlansPage() {
               <tbody>
                 <tr className="border-b border-slate-100">
                   <td className="py-3 pl-6 text-slate-700 font-medium">Message credits / month</td>
-                  {PLANS.map((p) => (
+                  {paidPlans.map((p) => (
                     <td key={p.id} className="py-3 px-3 text-slate-600 text-center">{formatCredits(p.messageCredits)}</td>
                   ))}
                 </tr>
                 <tr className="border-b border-slate-100 bg-slate-50/50">
                   <td className="py-3 pl-6 text-slate-700 font-medium">AI Agents</td>
-                  {PLANS.map((p) => (
+                  {paidPlans.map((p) => (
                     <td key={p.id} className="py-3 px-3 text-slate-600 text-center">{formatCredits(p.maxAgents)}</td>
                   ))}
                 </tr>
                 <tr className="border-b border-slate-100">
                   <td className="py-3 pl-6 text-slate-700 font-medium">Team Members</td>
-                  {PLANS.map((p) => (
+                  {paidPlans.map((p) => (
                     <td key={p.id} className="py-3 px-3 text-slate-600 text-center">{formatCredits(p.maxMembers)}</td>
                   ))}
                 </tr>
                 <tr className="border-b border-slate-100 bg-slate-50/50">
                   <td className="py-3 pl-6 text-slate-700 font-medium">Training data per agent</td>
-                  {PLANS.map((p) => (
+                  {paidPlans.map((p) => (
                     <td key={p.id} className="py-3 px-3 text-slate-600 text-center">{formatPlanBytes(p.maxTrainingBytes)}</td>
                   ))}
                 </tr>
                 <tr>
                   <td className="py-3 pl-6 text-slate-700 font-medium">API access</td>
-                  {PLANS.map((p) => (
+                  {paidPlans.map((p) => (
                     <td key={p.id} className="py-3 px-3 text-slate-600 text-center">
                       {p.apiAccess ? <CheckIcon /> : <span className="text-slate-300">—</span>}
                     </td>
@@ -345,7 +298,7 @@ export default function WorkspaceSettingsPlansPage() {
           <div className="text-center text-sm text-slate-500">
             <p>
               Need help choosing a plan?{' '}
-              <a href="#" className="text-blue-600 hover:text-blue-700 underline">
+              <a href="#" className="text-slate-700 hover:text-slate-900 underline">
                 Contact support
               </a>{' '}
               for personalized recommendations.

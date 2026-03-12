@@ -18,6 +18,7 @@ import {
 import { buildAgentChatSystemContent } from '../chatHelpers.js';
 import { getRemainingCredits, deductCredits } from '../../billing/credits.service.js';
 import { getCreditsForModel } from '../../billing/model-credits.js';
+import { emitCreditsUpdated } from '../../../socket/index.js';
 
 const router = express.Router();
 
@@ -117,6 +118,7 @@ export async function runAgentChatStream(
     const { sessionIdExternal, sessionRowId } = await createOrGetSession(agentId, bodySessionId ?? null);
     await appendMessage(sessionRowId, agentId, 'user', userMessage);
     await appendMessage(sessionRowId, agentId, 'assistant', replyText, creditsUsed);
+    if (deducted) void emitCreditsUpdated(workspaceId);
     res.write(`data: ${JSON.stringify({ sessionId: sessionIdExternal })}\n\n`);
     res.write('data: [DONE]\n\n');
   } catch (streamErr: any) {
@@ -210,6 +212,7 @@ export async function getAgentReply(
   const { sessionRowId } = await createOrGetSession(agentId, bodySessionId ?? null);
   await appendMessage(sessionRowId, agentId, 'user', userMessage);
   await appendMessage(sessionRowId, agentId, 'assistant', reply, creditsUsed);
+  if (deducted) void emitCreditsUpdated(workspaceId);
 
   return reply;
 }

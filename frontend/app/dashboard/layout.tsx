@@ -253,6 +253,26 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     }
   }, [user])
 
+  // Subscribe socket to workspace room for real-time credits updates
+  const subscribedWorkspaceIdRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!socket || !currentWorkspace?.id || currentWorkspace.id === 0) return
+    const id = currentWorkspace.id
+    if (subscribedWorkspaceIdRef.current === id) return
+    const prev = subscribedWorkspaceIdRef.current
+    if (prev != null) {
+      socket.emit('unsubscribe-workspace', prev)
+      subscribedWorkspaceIdRef.current = null
+    }
+    socket.emit('subscribe-workspace', id, (res: { ok?: boolean }) => {
+      if (res?.ok) subscribedWorkspaceIdRef.current = id
+    })
+    return () => {
+      socket.emit('unsubscribe-workspace', id)
+      if (subscribedWorkspaceIdRef.current === id) subscribedWorkspaceIdRef.current = null
+    }
+  }, [socket, currentWorkspace?.id])
+
   // Agent page only: one initial crawl-stats + subscribe to socket for training progress; show progress only here
   useEffect(() => {
     const workspaceId = currentWorkspace?.id

@@ -30,11 +30,9 @@ export default function CreditUsageWidget({
   showUpgradeButton = true,
   className = ''
 }: CreditUsageWidgetProps) {
-  // Use optional context so we never throw when outside DashboardProvider
   const dashboard = useDashboardOptional()
   const currentWorkspace = dashboard?.currentWorkspace ?? null
-  if (!currentWorkspace?.id) return null
-  
+  const socket = dashboard?.socket ?? null
   const { getCurrentPlan, getUpgradeContext } = usePermissions()
   const { showUpgrade } = useUpgrade()
   const [credits, setCredits] = useState<CreditUsage | null>(null)
@@ -69,6 +67,35 @@ export default function CreditUsageWidget({
 
     fetchCredits()
   }, [currentWorkspace?.id])
+
+  // Real-time: update credits when server emits after deduct (e.g. chat message)
+  useEffect(() => {
+    if (!socket || !currentWorkspace?.id) return
+    const onCreditsUpdated = (payload: {
+      workspaceId: number
+      monthlyAllowance: number
+      monthlyUsed: number
+      monthlyRemaining: number
+      bonusCredits: number
+      totalAvailable: number
+    }) => {
+      if (payload.workspaceId !== currentWorkspace.id) return
+      setCredits({
+        monthlyAllowance: payload.monthlyAllowance,
+        monthlyUsed: payload.monthlyUsed,
+        monthlyRemaining: payload.monthlyRemaining,
+        bonusCredits: payload.bonusCredits,
+        totalAvailable: payload.totalAvailable,
+        usagePercentage: payload.monthlyAllowance ? (payload.monthlyUsed / payload.monthlyAllowance) * 100 : 0
+      })
+    }
+    socket.on('credits-updated', onCreditsUpdated)
+    return () => {
+      socket.off('credits-updated', onCreditsUpdated)
+    }
+  }, [socket, currentWorkspace?.id])
+
+  if (!currentWorkspace?.id) return null
 
   if (loading) {
     return (
