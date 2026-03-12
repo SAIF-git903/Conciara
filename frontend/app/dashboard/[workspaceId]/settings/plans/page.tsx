@@ -98,7 +98,6 @@ export default function WorkspaceSettingsPlansPage() {
                   }`}
               >
                 Annual pricing
-                <span className="ml-2 text-xs text-emerald-600 font-semibold">Save 20%</span>
               </button>
               <button
                 type="button"
