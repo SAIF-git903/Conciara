@@ -81,7 +81,7 @@ export default function WorkspaceSettingsPlansPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-6 bg-white">
         <div className="mx-auto max-w-6xl space-y-8">
           {/* Billing Interval Toggle */}
           <div className="flex justify-center">

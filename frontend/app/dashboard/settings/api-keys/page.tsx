@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { useDashboard } from '@/contexts/DashboardContext'
 import PermissionGate from '@/components/PermissionGate'
-import PermissionButton from '@/components/PermissionButton'
 import api from '@/lib/api'
 import { Key, Plus, Trash2, Loader2 } from 'lucide-react'
 import Link from 'next/link'
@@ -117,23 +116,11 @@ export default function SettingsApiKeysPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
       <div className="shrink-0 border-b border-slate-200 px-6 py-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-semibold text-slate-900">API keys</h1>
-            <p className="mt-0.5 text-sm text-slate-500">
-              Create and manage workspace API keys. Use <code className="rounded bg-slate-100 px-1 text-xs">Authorization: Bearer &lt;key&gt;</code> to authenticate requests.
-            </p>
-          </div>
-          <PermissionButton
-            feature="apiAccess"
-            onClick={() => setNewKey(null)}
-            variant="primary"
-            className="bg-[var(--v2-primary)] text-white shadow-sm hover:opacity-90"
-            showCrownIcon
-          >
-            <Plus className="h-4 w-4" />
-            Create key
-          </PermissionButton>
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900">API keys</h1>
+          <p className="mt-0.5 text-sm text-slate-500">
+            Create and manage workspace API keys. Use <code className="rounded bg-slate-100 px-1 text-xs">Authorization: Bearer &lt;key&gt;</code> to authenticate requests.
+          </p>
         </div>
       </div>
 

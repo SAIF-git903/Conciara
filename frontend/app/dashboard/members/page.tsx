@@ -206,8 +206,22 @@ export default function MembersPage() {
             </div>
           )}
           {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="divide-y divide-slate-100">
+                {[1, 2, 3, 4].map((i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-4 px-4 py-3"
+                  >
+                    <div className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-slate-200" />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="h-4 w-32 animate-pulse rounded bg-slate-200" />
+                      <div className="h-3 w-48 animate-pulse rounded bg-slate-100" />
+                    </div>
+                    <div className="h-6 w-14 shrink-0 animate-pulse rounded-full bg-slate-100" />
+                  </div>
+                ))}
+              </div>
             </div>
           ) : (
             <div className="rounded-xl border border-slate-200 bg-white shadow-sm">

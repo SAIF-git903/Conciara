@@ -59,7 +59,7 @@ export default function WorkspaceSettingsBillingPage() {
         const sub = res.data.subscription ?? null
         setSubscription(sub)
         if (sub && sub.planName !== 'free') {
-          refreshUser().catch(() => {})
+          refreshUser().catch(() => { })
           refreshUsage?.()
         }
         return sub
@@ -94,7 +94,7 @@ export default function WorkspaceSettingsBillingPage() {
         if (!cancelled) {
           const sub = res.data.subscription ?? null
           setSubscription(sub)
-          if (sub && sub.planName !== 'free') refreshUser().catch(() => {})
+          if (sub && sub.planName !== 'free') refreshUser().catch(() => { })
         }
       })
       .catch(() => {
@@ -147,7 +147,7 @@ export default function WorkspaceSettingsBillingPage() {
           return
         }
 
-        await refreshUser().catch(() => {})
+        await refreshUser().catch(() => { })
         refreshUsage?.()
         if (typeof window !== 'undefined') {
           window.dispatchEvent(
@@ -194,20 +194,20 @@ export default function WorkspaceSettingsBillingPage() {
     try {
       // Refresh subscription and billing data
       const [sub] = await Promise.all([
-        fetchSubscription(), 
+        fetchSubscription(),
         fetchBillingHistory()
       ])
-      
+
       // Refresh user context
-      await refreshUser().catch(() => {})
-      
+      await refreshUser().catch(() => { })
+
       // Refresh usage/credits
       refreshUsage?.()
-      
+
       // Trigger a custom event to notify other components
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('subscription-updated', { 
-          detail: { workspaceId, subscription: sub } 
+        window.dispatchEvent(new CustomEvent('subscription-updated', {
+          detail: { workspaceId, subscription: sub }
         }))
       }
     } catch {
@@ -254,28 +254,26 @@ export default function WorkspaceSettingsBillingPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-50">
       <div className="shrink-0 border-b border-slate-200 bg-white px-6 py-6">
-        <div className="mx-auto max-w-3xl">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Billing & subscription</h1>
-              <p className="mt-1 text-sm text-slate-500">
-                View your plan, billing cycle, and invoice history. Only the workspace owner can change billing.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleRefresh}
-              disabled={refreshing || subscriptionLoading}
-              className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-50"
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-900">Billing & subscription</h1>
+            <p className="mt-0.5 text-sm text-slate-500">
+              View your plan, billing cycle, and invoice history. Only the workspace owner can change billing.
+            </p>
           </div>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={refreshing || subscriptionLoading}
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-6 bg-white">
         <div className="mx-auto max-w-3xl space-y-6">
           {showCheckoutSuccess && (
             <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/90 px-4 py-3.5 shadow-sm">
@@ -311,13 +309,12 @@ export default function WorkspaceSettingsBillingPage() {
                     {displayPlan}
                   </span>
                   <span
-                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
-                      statusLabel === 'Active'
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : statusLabel === 'Cancels at period end'
-                          ? 'bg-amber-100 text-amber-800'
-                          : 'bg-slate-100 text-slate-600'
-                    }`}
+                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusLabel === 'Active'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : statusLabel === 'Cancels at period end'
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-slate-100 text-slate-600'
+                      }`}
                   >
                     {statusLabel}
                   </span>
@@ -422,9 +419,9 @@ export default function WorkspaceSettingsBillingPage() {
                           <td className="px-5 py-3.5 font-medium text-slate-800">
                             {t.amountCents != null && t.currencyCode
                               ? new Intl.NumberFormat(undefined, {
-                                  style: 'currency',
-                                  currency: t.currencyCode,
-                                }).format(t.amountCents / 100)
+                                style: 'currency',
+                                currency: t.currencyCode,
+                              }).format(t.amountCents / 100)
                               : '—'}
                           </td>
                           <td className="px-5 py-3.5">
@@ -456,18 +453,18 @@ export default function WorkspaceSettingsBillingPage() {
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
-                      <FileText className="h-6 w-6 text-slate-400" />
-                    </div>
-                    <p className="mt-3 text-sm font-medium text-slate-700">
-                      {hasPaidSubscription ? 'No invoices yet' : 'No payment history'}
-                    </p>
-                    <p className="mt-1 max-w-xs text-xs text-slate-500">
-                      {hasPaidSubscription
-                        ? 'After your next charge, transactions will appear here. Receipts are also sent to your email.'
-                        : 'When you upgrade, your billing history will appear here.'}
-                    </p>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
+                    <FileText className="h-6 w-6 text-slate-400" />
                   </div>
+                  <p className="mt-3 text-sm font-medium text-slate-700">
+                    {hasPaidSubscription ? 'No invoices yet' : 'No payment history'}
+                  </p>
+                  <p className="mt-1 max-w-xs text-xs text-slate-500">
+                    {hasPaidSubscription
+                      ? 'After your next charge, transactions will appear here. Receipts are also sent to your email.'
+                      : 'When you upgrade, your billing history will appear here.'}
+                  </p>
+                </div>
               )}
             </div>
           </section>
