@@ -226,9 +226,8 @@ export default function WorkspaceSettingsBillingPage() {
       : currentWorkspace?.id === workspaceId
         ? currentWorkspace.plan
         : user?.workspaces?.find((w) => w.id === workspaceId)?.plan ?? 'free'
-  const displayPlan = subscriptionLoading
-    ? 'Loading...'
-    : typeof planName === 'string'
+  const displayPlan =
+    typeof planName === 'string'
       ? planName.charAt(0).toUpperCase() + planName.slice(1)
       : 'Free'
   const hasPaidSubscription = subscription != null && subscription.planName !== 'free'
@@ -305,19 +304,28 @@ export default function WorkspaceSettingsBillingPage() {
             <div className="p-5">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="inline-flex items-center rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white">
-                    {displayPlan}
-                  </span>
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusLabel === 'Active'
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : statusLabel === 'Cancels at period end'
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'bg-slate-100 text-slate-600'
-                      }`}
-                  >
-                    {statusLabel}
-                  </span>
+                  {subscriptionLoading ? (
+                    <>
+                      <div className="h-8 w-24 animate-pulse rounded-lg bg-slate-200" />
+                      <div className="h-6 w-14 animate-pulse rounded-full bg-slate-100" />
+                    </>
+                  ) : (
+                    <>
+                      <span className="inline-flex items-center rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white">
+                        {displayPlan}
+                      </span>
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusLabel === 'Active'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : statusLabel === 'Cancels at period end'
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-slate-100 text-slate-600'
+                          }`}
+                      >
+                        {statusLabel}
+                      </span>
+                    </>
+                  )}
                 </div>
                 {isOwner && (
                   <Link
