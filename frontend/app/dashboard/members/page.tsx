@@ -176,8 +176,8 @@ export default function MembersPage() {
       <div className="shrink-0 border-b border-slate-200 px-6 py-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-xl font-semibold text-slate-900">Members</h1>
-            <p className="mt-0.5 text-sm text-slate-500">
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Members</h1>
+            <p className="mt-1 text-sm text-slate-500">
               {isOwner
                 ? 'People in this workspace. As owner, you can invite and remove members.'
                 : 'People in this workspace. Only the owner can invite or remove members.'}

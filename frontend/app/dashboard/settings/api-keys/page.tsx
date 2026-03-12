@@ -117,8 +117,8 @@ export default function SettingsApiKeysPage() {
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
       <div className="shrink-0 border-b border-slate-200 px-6 py-5">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">API keys</h1>
-          <p className="mt-0.5 text-sm text-slate-500">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">API keys</h1>
+          <p className="mt-1 text-sm text-slate-500">
             Create and manage workspace API keys. Use <code className="rounded bg-slate-100 px-1 text-xs">Authorization: Bearer &lt;key&gt;</code> to authenticate requests.
           </p>
         </div>

@@ -253,11 +253,11 @@ export default function WorkspaceSettingsBillingPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-50">
-      <div className="shrink-0 border-b border-slate-200 bg-white px-6 py-6">
+      <div className="shrink-0 border-b border-slate-200 bg-white px-6 py-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-slate-900">Billing & subscription</h1>
-            <p className="mt-0.5 text-sm text-slate-500">
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Billing & subscription</h1>
+            <p className="mt-1 text-sm text-slate-500">
               View your plan, billing cycle, and invoice history. Only the workspace owner can change billing.
             </p>
           </div>
