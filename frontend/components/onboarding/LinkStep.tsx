@@ -336,13 +336,16 @@ export default function LinkStep({ nextPath, router, onForbidden }: LinkStepProp
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.1 }}
       >
-        {isCrawling ? (
-          <motion.div
-            className="w-full max-w-sm"
-            initial={{ opacity: 0, y: 8, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.35, ease: easeSmooth }}
-          >
+        <AnimatePresence mode="wait" initial={false}>
+          {isCrawling ? (
+            <motion.div
+              key="crawling"
+              className="w-full max-w-sm"
+              initial={{ opacity: 0, y: 16, scale: 0.97, filter: 'blur(6px)' }}
+              animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, y: -16, scale: 0.97, filter: 'blur(8px)' }}
+              transition={{ duration: 0.5, ease: easeSmooth }}
+            >
             <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-slate-950 shadow-[0_18px_45px_-24px_rgba(15,23,42,0.9)] ring-1 ring-slate-900/70">
               {/* Browser chrome */}
               <div className="flex items-center gap-2 border-b border-slate-800/80 bg-slate-900/95 px-3 py-2">
@@ -501,10 +504,12 @@ export default function LinkStep({ nextPath, router, onForbidden }: LinkStepProp
           </motion.div>
         ) : crawlData ? (
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.3, ease: easeSmooth }}
+            key="done"
             className="w-full max-w-sm space-y-4 text-left"
+            initial={{ opacity: 0, y: 16, scale: 0.97, filter: 'blur(6px)' }}
+            animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, y: -16, scale: 0.97, filter: 'blur(8px)' }}
+            transition={{ duration: 0.45, ease: easeSmooth }}
           >
             <div className="flex items-center gap-3 rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm ring-1 ring-slate-900/5">
               {crawlData.logoUrl ? (
@@ -543,10 +548,12 @@ export default function LinkStep({ nextPath, router, onForbidden }: LinkStepProp
           </motion.div>
         ) : (
           <motion.div
+            key="idle"
             className="w-full max-w-sm"
-            initial={{ opacity: 0, y: 8, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.35, ease: easeSmooth }}
+            initial={{ opacity: 0, y: 16, scale: 0.97, filter: 'blur(6px)' }}
+            animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, y: -16, scale: 0.97, filter: 'blur(8px)' }}
+            transition={{ duration: 0.45, ease: easeSmooth }}
           >
             <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-slate-950 shadow-[0_18px_45px_-24px_rgba(15,23,42,0.9)] ring-1 ring-slate-900/70">
               {/* Browser chrome */}
@@ -621,16 +628,13 @@ export default function LinkStep({ nextPath, router, onForbidden }: LinkStepProp
                     <h3 className="text-sm font-semibold text-slate-100">
                       Preview your website crawl
                     </h3>
-                    <p className="text-xs leading-relaxed text-slate-400">
-                      We&apos;ll use the URL you provide as the entry point, follow internal links on
-                      the same domain, and extract clean text to train your agent.
-                    </p>
                   </div>
                 </motion.div>
               </div>
             </div>
           </motion.div>
         )}
+        </AnimatePresence>
       </motion.div>
     </div>
   )
