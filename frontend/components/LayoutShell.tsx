@@ -1,14 +1,14 @@
 'use client'
 
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
-import { type ReactNode, useState, useEffect } from 'react'
+import { type ReactNode, useState, useEffect, Suspense } from 'react'
 import { useScroll } from 'framer-motion'
 import Header from './Header'
 import { getSelectedWorkspaceId } from '@/lib/workspace-selection'
 
 const HEADER_HEIGHT = 72
 
-export default function LayoutShell({ children }: { children: ReactNode }) {
+function LayoutShellWithParams({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -85,5 +85,13 @@ export default function LayoutShell({ children }: { children: ReactNode }) {
         {children}
       </main>
     </div>
+  )
+}
+
+export default function LayoutShell({ children }: { children: ReactNode }) {
+  return (
+    <Suspense fallback={<div className="v2-theme min-h-screen bg-white" />}>
+      <LayoutShellWithParams>{children}</LayoutShellWithParams>
+    </Suspense>
   )
 }

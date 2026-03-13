@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { PLANS, formatPlanBytes } from '@/lib/plans'
@@ -21,7 +21,7 @@ function CheckIcon() {
   )
 }
 
-export default function PricingPage() {
+function PricingContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [interval, setInterval] = useState<BillingInterval>('yearly')
@@ -241,5 +241,13 @@ export default function PricingPage() {
         </table>
       </section>
     </div>
+  )
+}
+
+export default function PricingPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-[50vh] items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--v2-primary)] border-t-transparent" /></div>}>
+      <PricingContent />
+    </Suspense>
   )
 }
