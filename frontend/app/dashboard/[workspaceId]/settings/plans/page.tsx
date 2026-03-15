@@ -1,11 +1,12 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useDashboard } from '@/contexts/DashboardContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { PLANS, formatPlanBytes } from '@/lib/plans'
 import { openPaddleCheckout, isPaddleConfigured } from '@/lib/paddle'
+import api from '@/lib/api'
 import { Check, ArrowRight } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -28,8 +29,20 @@ export default function WorkspaceSettingsPlansPage() {
   const workspaceId = typeof params?.workspaceId === 'string' ? parseInt(params.workspaceId, 10) : null
   const { currentWorkspace } = useDashboard()
   const { user } = useAuth()
-  const [interval, setInterval] = useState<BillingInterval>('yearly')
+  const [interval, setInterval] = useState<BillingInterval>('monthly')
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null)
+  const [subscriptionBillingCycle, setSubscriptionBillingCycle] = useState<BillingInterval | null>(null)
+
+  useEffect(() => {
+    if (workspaceId == null) return
+    api
+      .get<{ subscription: { billingCycle: string } | null }>(`/workspaces/${workspaceId}/subscription`)
+      .then((res) => {
+        const cycle = res.data.subscription?.billingCycle
+        if (cycle === 'monthly' || cycle === 'yearly') setSubscriptionBillingCycle(cycle)
+      })
+      .catch(() => {})
+  }, [workspaceId])
 
   const isOwner = Boolean(
     workspaceId && user?.workspaces?.find((w) => w.id === workspaceId)?.role === 'owner'
@@ -114,7 +127,9 @@ export default function WorkspaceSettingsPlansPage() {
           <div className="grid gap-6 lg:grid-cols-3">
             {paidPlans.map((plan) => {
               const price = interval === 'monthly' ? plan.priceMonthly : plan.priceYearly
-              const isCurrentPlan = plan.name === currentPlan
+              const isCurrentPlan =
+                plan.name === currentPlan &&
+                (currentPlan === 'free' || subscriptionBillingCycle === interval)
               const isPopular = plan.name === 'standard'
 
               return (
@@ -249,9 +264,10 @@ export default function WorkspaceSettingsPlansPage() {
                   {paidPlans.map((p) => (
                     <th key={p.id} className="py-4 px-3 font-semibold text-slate-900 text-center">
                       {p.displayName}
-                      {p.name === currentPlan && (
-                        <div className="mt-1 text-xs font-normal text-emerald-600">(Current)</div>
-                      )}
+                      {p.name === currentPlan &&
+                        (currentPlan === 'free' || subscriptionBillingCycle === interval) && (
+                          <div className="mt-1 text-xs font-normal text-emerald-600">(Current)</div>
+                        )}
                     </th>
                   ))}
                 </tr>

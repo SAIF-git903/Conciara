@@ -627,6 +627,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   const isDashboardHome = parsed.isWorkspaceHome
   const isWorkspaceLevelRoute =
     isDashboardHome ||
+    (parsed.workspaceId && pathname === `/dashboard/${parsed.workspaceId}/usage`) ||
     (parsed.workspaceId && pathname === `/dashboard/${parsed.workspaceId}/members`) ||
     (parsed.workspaceId && pathname?.startsWith(`/dashboard/${parsed.workspaceId}/settings/`) && !pathname.includes('chatbot'))
   const navItems = isWorkspaceLevelRoute ? dashboardNavItems : agentNavItems
