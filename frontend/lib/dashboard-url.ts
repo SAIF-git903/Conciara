@@ -7,6 +7,7 @@
 const AGENT_PATH_TAILS: Record<string, string> = {
   'playground': 'playground',
   'chatbot': 'settings/chatbot',
+  'general': 'settings/general',
   'chat-logs': 'activity/chat-logs',
   'chats': 'analytics/chats',
   'files': 'data-sources/files',
@@ -56,6 +57,7 @@ export function buildDashboardUrl(
 export const AGENT_SUB_PATHS = [
   'playground',
   'settings/chatbot',
+  'settings/general',
   'activity/chat-logs',
   'analytics/chats',
   'data-sources/files',

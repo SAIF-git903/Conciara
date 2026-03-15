@@ -68,7 +68,6 @@ const childPathMap: Record<string, Record<string, string>> = {
   },
   Settings: {
     General: 'settings/general',
-    'API keys': 'settings/api-keys',
   },
 }
 
@@ -80,7 +79,7 @@ const agentNavItems = [
   { href: '#', label: 'Data sources', Icon: Database, children: ['Files', 'Q&A', 'Website'] },
   { href: '/dashboard/connected-apps', label: 'Connected Apps', Icon: Plug },
   { href: '/dashboard/settings/chatbot', label: 'Chat widget', Icon: Palette },
-  { href: '#', label: 'Settings', Icon: Settings, children: ['General', 'API keys'] },
+  { href: '#', label: 'Settings', Icon: Settings, children: ['General'] },
 ]
 
 function DashboardLayoutInner({ children }: { children: ReactNode }) {
@@ -629,7 +628,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     isDashboardHome ||
     (parsed.workspaceId && pathname === `/dashboard/${parsed.workspaceId}/usage`) ||
     (parsed.workspaceId && pathname === `/dashboard/${parsed.workspaceId}/members`) ||
-    (parsed.workspaceId && pathname?.startsWith(`/dashboard/${parsed.workspaceId}/settings/`) && !pathname.includes('chatbot'))
+    (parsed.workspaceId && pathname?.startsWith(`/dashboard/${parsed.workspaceId}/settings/`) && !pathname.includes('chatbot') && !parsed.isAgentRoute)
   const navItems = isWorkspaceLevelRoute ? dashboardNavItems : agentNavItems
   const isNewAgentFlow = pathname.startsWith('/dashboard/new-agent')
   const dashboardBase = currentWorkspace.id ? buildDashboardUrl(currentWorkspace.id) : '/dashboard'
