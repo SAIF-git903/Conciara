@@ -147,14 +147,6 @@ export default function WorkspaceHomePage() {
           </p>
         )}
       </div>
-
-      <button
-        type="button"
-        className="fixed bottom-6 right-6 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--v2-primary)] text-[var(--v2-primary-foreground)] shadow-lg transition hover:bg-[var(--v2-primary-hover)] hover:shadow-xl"
-        aria-label="Chat support"
-      >
-        <MessageCircle className="h-5 w-5" />
-      </button>
     </div>
   )
 }

@@ -681,7 +681,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
       {/* Full-width top header - workspace name and agent dropdowns */}
       <header className="relative flex h-12 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4">
         <Link
-          href={dashboardBase}
+          href={'/'}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-[var(--v2-primary)] text-sm font-bold text-white hover:opacity-90 transition"
           aria-label="Dashboard"
         >
