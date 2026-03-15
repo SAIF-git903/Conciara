@@ -43,7 +43,7 @@ function AuthCallbackContent() {
         }
         return res.json();
       })
-      .then((data: { token: string; refreshToken: string; user: { workspaces?: unknown[] } }) => {
+      .then((data: { token: string; refreshToken: string; user: { workspaces?: { id: number }[] } }) => {
         redirectingRef.current = true;
         localStorage.setItem(AUTH_TOKEN, data.token);
         localStorage.setItem(AUTH_REFRESH, data.refreshToken);
@@ -53,7 +53,7 @@ function AuthCallbackContent() {
         if (workspaces.length > 1) {
           window.location.href = '/choose-workspace';
         } else if (workspaces.length === 1) {
-          window.location.href = '/dashboard';
+          window.location.href = `/dashboard/${workspaces[0].id}`;
         } else {
           window.location.href = '/onboarding';
         }
