@@ -56,7 +56,8 @@ export async function createUser(input: CreateUserInput): Promise<User> {
 }
 
 /**
- * Create a user from OAuth (e.g. Google) with no password; uses a random hash so they must use OAuth or "forgot password" to sign in.
+ * Create a user from OAuth (e.g. Google, Apple) with no password; uses a random hash so they must use OAuth or "forgot password" to sign in.
+ * New accounts are created as owner (same as email/password signup) so they can create workspaces and manage billing.
  */
 export async function createUserFromOAuth(email: string, fullName?: string | null): Promise<User> {
   const crypto = await import('crypto');
@@ -67,7 +68,7 @@ export async function createUserFromOAuth(email: string, fullName?: string | nul
       email,
       passwordHash,
       fullName: fullName ?? null,
-      role: 'member',
+      role: 'owner',
     },
   });
   return prismaUserToUser(user);
