@@ -60,11 +60,16 @@ api.interceptors.response.use(
     const is401 = error.response?.status === 401;
     const isRefreshRoute =
       originalRequest?.url?.includes('/auth/refresh') ?? false;
+    const isAuthCredentialRoute =
+      originalRequest?.url?.includes('/auth/login') ||
+      originalRequest?.url?.includes('/auth/signup') ||
+      originalRequest?.url?.includes('/auth/invite/accept') ||
+      false;
 
     if (is401 && typeof window !== 'undefined' && originalRequest && !originalRequest._retry && !isRefreshRoute) {
       const refreshToken = localStorage.getItem('auth_refresh_token');
       if (!refreshToken) {
-        clearAuthAndRedirect();
+        if (!isAuthCredentialRoute) clearAuthAndRedirect();
         return Promise.reject(error);
       }
 
@@ -99,7 +104,7 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    if (is401 && typeof window !== 'undefined') {
+    if (is401 && typeof window !== 'undefined' && !isAuthCredentialRoute) {
       clearAuthAndRedirect();
     }
     return Promise.reject(error);
