@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { getSelectedWorkspaceId } from '@/lib/workspace-selection'
+import { buildDashboardUrl } from '@/lib/dashboard-url'
 
 type HeaderVariant = 'dark' | 'light'
 
@@ -15,6 +17,14 @@ export default function Header({ variant }: { variant?: HeaderVariant }) {
   const isAuthPage = isSignin || isSignup
 
   const isDark = variant === 'dark'
+  const dashboardHref = (() => {
+    const workspaces = user?.workspaces ?? []
+    if (workspaces.length === 0) return '/dashboard'
+    const selectedId = getSelectedWorkspaceId()
+    const selectedWorkspace = selectedId ? workspaces.find((w) => w.id === selectedId) : null
+    const targetWorkspace = selectedWorkspace ?? workspaces[0]
+    return buildDashboardUrl(targetWorkspace.id)
+  })()
 
   return (
     <header
@@ -63,7 +73,7 @@ export default function Header({ variant }: { variant?: HeaderVariant }) {
               <div className={`h-8 w-8 animate-pulse rounded-lg ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`} />
             ) : user ? (
               <Link
-                href="/dashboard"
+                href={dashboardHref}
                 className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
                   isDark
                     ? 'border-slate-600 text-slate-200 hover:bg-slate-800'

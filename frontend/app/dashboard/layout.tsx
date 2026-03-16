@@ -397,14 +397,17 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
 
   // Load agents for the current workspace (must be before any early return to satisfy Rules of Hooks)
   useEffect(() => {
-    if (currentWorkspace.id === 0) {
+    const workspaceId = currentWorkspace.id
+    if (workspaceId === 0) {
       setAgents([])
       setAgentsLoading(false)
       return
     }
+    let cancelled = false
     setAgentsLoading(true)
-    api.get<{ agents: Array<{ id: number; workspaceId: number; name: string }> }>(`/workspaces/${currentWorkspace.id}/agents`)
+    api.get<{ agents: Array<{ id: number; workspaceId: number; name: string }> }>(`/workspaces/${workspaceId}/agents`)
       .then((res) => {
+        if (cancelled || currentWorkspaceIdRef.current !== workspaceId) return
         const list = (res.data.agents ?? []).map((a) => ({
           id: String(a.id),
           name: a.name,
@@ -412,8 +415,17 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         }))
         setAgents(list)
       })
-      .catch(() => setAgents([]))
-      .finally(() => setAgentsLoading(false))
+      .catch(() => {
+        if (cancelled || currentWorkspaceIdRef.current !== workspaceId) return
+        setAgents([])
+      })
+      .finally(() => {
+        if (cancelled || currentWorkspaceIdRef.current !== workspaceId) return
+        setAgentsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [currentWorkspace.id])
 
   // Sync currentAgent from URL when path has agentId, or default to first in workspace
@@ -432,12 +444,15 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   // When ?agent= is set but not in list (e.g. just created from new-agent flow), refetch agents
   useEffect(() => {
     const aid = agentIdFromUrl || agentIdFromPath
-    if (!aid || currentWorkspace.id === 0) return
-    const inWorkspace = agents.filter((a) => a.workspaceId === currentWorkspace.id)
+    const workspaceId = currentWorkspace.id
+    if (!aid || workspaceId === 0) return
+    const inWorkspace = agents.filter((a) => a.workspaceId === workspaceId)
     const found = inWorkspace.find((a) => a.id === aid)
     if (!found) {
-      api.get<{ agents: Array<{ id: number; workspaceId: number; name: string }> }>(`/workspaces/${currentWorkspace.id}/agents`)
+      let cancelled = false
+      api.get<{ agents: Array<{ id: number; workspaceId: number; name: string }> }>(`/workspaces/${workspaceId}/agents`)
         .then((res) => {
+          if (cancelled || currentWorkspaceIdRef.current !== workspaceId) return
           const list = (res.data.agents ?? []).map((a) => ({
             id: String(a.id),
             name: a.name,
@@ -446,6 +461,9 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
           setAgents(list)
         })
         .catch(() => { })
+      return () => {
+        cancelled = true
+      }
     }
   }, [agentIdFromUrl, agentIdFromPath, currentWorkspace.id, agents])
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Zap, AlertTriangle, TrendingUp } from 'lucide-react'
 import { useDashboardOptional } from '@/contexts/DashboardContext'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -38,13 +38,22 @@ export default function CreditUsageWidget({
   const [credits, setCredits] = useState<CreditUsage | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const currentWorkspaceIdRef = useRef<number | null>(currentWorkspace?.id ?? null)
+  currentWorkspaceIdRef.current = currentWorkspace?.id ?? null
 
   const fetchCredits = useCallback(async () => {
-    if (!currentWorkspace?.id) return
+    const workspaceId = currentWorkspaceIdRef.current
+    if (!workspaceId) {
+      setCredits(null)
+      setError(false)
+      setLoading(false)
+      return
+    }
     setError(false)
     setLoading(true)
     try {
-      const response = await api.get(`/workspaces/${currentWorkspace.id}/credits`)
+      const response = await api.get(`/workspaces/${workspaceId}/credits`)
+      if (currentWorkspaceIdRef.current !== workspaceId) return
       const data = response.data
       setCredits({
         monthlyAllowance: data.monthlyAllowance,
@@ -55,12 +64,14 @@ export default function CreditUsageWidget({
         usagePercentage: data.monthlyAllowance ? (data.monthlyUsed / data.monthlyAllowance) * 100 : 0
       })
     } catch (err) {
+      if (currentWorkspaceIdRef.current !== workspaceId) return
       console.error('Failed to fetch credits:', err)
       setError(true)
     } finally {
+      if (currentWorkspaceIdRef.current !== workspaceId) return
       setLoading(false)
     }
-  }, [currentWorkspace?.id])
+  }, [])
 
   useEffect(() => {
     if (!currentWorkspace?.id) return
