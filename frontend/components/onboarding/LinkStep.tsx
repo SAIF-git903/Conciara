@@ -331,96 +331,310 @@ export default function LinkStep({ nextPath, router, onForbidden }: LinkStepProp
       </div>
 
       <motion.div
-        className="flex min-h-[340px] items-center justify-center rounded-2xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-slate-100/80 p-8 shadow-inner"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.35, delay: 0.2 }}
+        className="flex min-h-[340px] items-center justify-center rounded-2xl border p-8"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.1 }}
       >
-        {isCrawling ? (
-          <div className="w-full max-w-sm text-left">
-            <p className="mb-4 text-sm font-medium text-slate-700">Crawling your website…</p>
-            <ul className="space-y-3">
-              {CRAWL_STEPS.map((label, i) => {
-                const done = i <= crawlStepIndex
-                return (
-                  <motion.li
-                    key={label}
-                    initial={{ opacity: 0, x: -12 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.4, delay: i * 0.08, ease: easeSmooth }}
-                    className="flex items-center gap-3"
+        <AnimatePresence mode="wait" initial={false}>
+          {isCrawling ? (
+            <motion.div
+              key="crawling"
+              className="w-full max-w-sm"
+              initial={{ opacity: 0, y: 16, scale: 0.97, filter: 'blur(6px)' }}
+              animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, y: -16, scale: 0.97, filter: 'blur(8px)' }}
+              transition={{ duration: 0.5, ease: easeSmooth }}
+            >
+            <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-slate-950 shadow-[0_18px_45px_-24px_rgba(15,23,42,0.9)] ring-1 ring-slate-900/70">
+              {/* Browser chrome */}
+              <div className="flex items-center gap-2 border-b border-slate-800/80 bg-slate-900/95 px-3 py-2">
+                <div className="flex gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full bg-red-500/80" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/80" />
+                </div>
+                <div className="relative ml-3 flex min-w-0 flex-1 items-center rounded-full bg-slate-800/80 px-3 py-1.5 text-[11px] font-medium text-slate-100/90">
+                  <span className="mr-2 flex h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400">
+                    <span className="m-auto h-1 w-1 rounded-full bg-emerald-200 animate-pulse" />
+                  </span>
+                  <span className="truncate">
+                    {(protocol + (url || 'your-site.com')).replace(/\/+$/, '')}
+                  </span>
+                  <motion.div className="pointer-events-none absolute inset-x-2 bottom-0.5 h-0.5 overflow-hidden rounded-full bg-slate-900/70">
+                    <motion.div
+                      className="h-full rounded-full bg-emerald-400"
+                      initial={false}
+                      animate={{
+                        width: `${Math.max(
+                          8,
+                          Math.min(100, ((crawlStepIndex + 1) / CRAWL_STEPS.length) * 100)
+                        ).toFixed(0)}%`,
+                      }}
+                      transition={{ duration: 0.45, ease: easeSmooth }}
+                    />
+                  </motion.div>
+                </div>
+              </div>
+              {/* Page preview */}
+              <div className="relative flex flex-col items-center justify-center gap-4 bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 px-6 py-8 text-center">
+                <div className="pointer-events-none absolute inset-x-4 top-4 h-24 rounded-full bg-slate-400/5 blur-2xl" />
+                <motion.div
+                  className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-100/5 via-slate-100/10 to-slate-50/10 shadow-[0_12px_30px_-10px_rgba(15,23,42,1)] ring-1 ring-white/10"
+                  initial={{ opacity: 0, scale: 0.9, rotate: -2 }}
+                  animate={{
+                    opacity: 1,
+                    scale: [1, 1.05, 1],
+                    y: [0, -2, 0],
+                    rotate: 0,
+                  }}
+                  transition={{
+                    duration: 2.4,
+                    ease: easeSmooth,
+                    repeat: Infinity,
+                    repeatType: 'loop',
+                  }}
+                >
+                  <motion.div
+                    className="absolute inset-0 rounded-2xl bg-slate-100/5"
+                    style={{ mixBlendMode: 'screen' }}
+                    initial={{ opacity: 0.2, scale: 0.9 }}
+                    animate={{ opacity: [0.2, 0.5, 0.2], scale: [0.9, 1.08, 0.9] }}
+                    transition={{
+                      duration: 2.4,
+                      ease: easeSmooth,
+                      repeat: Infinity,
+                      repeatType: 'loop',
+                    }}
+                  />
+                  <motion.svg
+                    className="relative h-7 w-7 text-slate-200"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.4, delay: 0.1, ease: easeSmooth }}
                   >
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-slate-200/50">
-                      <AnimatePresence mode="wait">
-                        {done ? (
-                          <SuccessCheckLottie key="check" />
-                        ) : (
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.4}
+                      d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
+                    />
+                  </motion.svg>
+                </motion.div>
+                <motion.div
+                  className="relative space-y-3"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.35, delay: 0.12, ease: easeSmooth }}
+                >
+                  <p className="mb-4 text-xs font-medium uppercase tracking-[0.14em] text-slate-400">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="absolute inset-0 rounded-full bg-emerald-400/30 animate-ping" />
+                        <span className="relative m-auto h-1 w-1 rounded-full bg-emerald-400" />
+                      </span>
+                      Crawling your website
+                    </span>
+                  </p>
+                  <ul className="relative">
+                    {CRAWL_STEPS.map((label, i) => {
+                      const done = i <= crawlStepIndex
+                      const isLast = i === CRAWL_STEPS.length - 1
+                      const segmentDone = i < crawlStepIndex
+                      return (
+                        <motion.li
+                          key={label}
+                          initial={{ opacity: 0, x: -8 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ duration: 0.3, delay: i * 0.06, ease: easeSmooth }}
+                          className="relative flex items-start gap-3 pb-3 last:pb-0"
+                        >
+                          {!isLast && (
+                            <span
+                              className="absolute left-3.5 top-7 h-[calc(100%-4px)] w-px transition-colors duration-300 ease-out"
+                              style={{ backgroundColor: segmentDone ? 'rgb(16 185 129)' : 'rgb(226 232 240)' }}
+                              aria-hidden
+                            />
+                          )}
+                          <div className="relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-slate-200/50">
+                            <AnimatePresence mode="wait">
+                              {done ? (
+                                <motion.span
+                                  key="check"
+                                  initial={{ opacity: 0, scale: 0.8 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  exit={{ opacity: 0 }}
+                                  transition={{ duration: 0.2, ease: easeSmooth }}
+                                  className="flex items-center justify-center"
+                                >
+                                  <SuccessCheckLottie />
+                                </motion.span>
+                              ) : (
+                                <motion.span
+                                  key="spinner"
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  exit={{ opacity: 0 }}
+                                  transition={{ duration: 0.2, ease: easeSmooth }}
+                                  className="text-[var(--v2-primary)]"
+                                >
+                                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+                                </motion.span>
+                              )}
+                            </AnimatePresence>
+                          </div>
                           <motion.span
-                            key="spinner"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.2, ease: easeSmooth }}
-                            className="text-emerald-500"
+                            className={`pt-0.5 text-sm transition-colors duration-200 ease-out ${done ? 'font-medium text-slate-800' : 'text-slate-500'
+                              }`}
                           >
-                            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+                            {label}
+                            {done ? '' : '…'}
                           </motion.span>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                    <motion.span
-                      className={`text-sm ${
-                        done ? 'font-medium text-slate-800' : 'text-slate-500'
-                      }`}
-                      transition={{ duration: 0.3, ease: easeSmooth }}
-                    >
-                      {label}
-                      {done ? '' : '…'}
-                    </motion.span>
-                  </motion.li>
-                )
-              })}
-            </ul>
-          </div>
+                        </motion.li>
+                      )
+                    })}
+                  </ul>
+                </motion.div>
+              </div>
+            </div>
+          </motion.div>
         ) : crawlData ? (
-          <div className="w-full max-w-sm space-y-4 text-left">
-            <div className="flex items-center gap-3 rounded-xl bg-white p-3 shadow-sm ring-1 ring-slate-200/50">
+          <motion.div
+            key="done"
+            className="w-full max-w-sm space-y-4 text-left"
+            initial={{ opacity: 0, y: 16, scale: 0.97, filter: 'blur(6px)' }}
+            animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, y: -16, scale: 0.97, filter: 'blur(8px)' }}
+            transition={{ duration: 0.45, ease: easeSmooth }}
+          >
+            <div className="flex items-center gap-3 rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm ring-1 ring-slate-900/5">
               {crawlData.logoUrl ? (
                 <img
                   src={crawlData.logoUrl}
                   alt=""
-                  className="h-12 w-12 shrink-0 rounded-lg object-contain bg-slate-100"
+                  className="h-12 w-12 shrink-0 rounded-xl object-contain bg-slate-50"
                 />
               ) : (
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-100">
-                  <span className="text-lg font-semibold text-slate-400">
-                    {(crawlData.title || '?').slice(0, 1)}
-                  </span>
+                <div
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-lg font-semibold"
+                  style={{
+                    background: `linear-gradient(135deg, hsl(${(crawlData.title || '?').charCodeAt(0) % 360}, 55%, 92%), hsl(${(crawlData.title || '?').charCodeAt(0) % 360}, 35%, 82%))`,
+                    color: `hsl(${(crawlData.title || '?').charCodeAt(0) % 360}, 45%, 30%)`,
+                  }}
+                >
+                  {(crawlData.title || '?').slice(0, 1).toUpperCase()}
                 </div>
               )}
               <div className="min-w-0 flex-1">
-                <p className="truncate font-semibold text-slate-900">{crawlData.title || 'No title'}</p>
+                <p className="truncate font-display font-semibold text-slate-900">
+                  {crawlData.title || 'No title'}
+                </p>
                 <p className="truncate text-xs text-slate-500">{crawlData.url}</p>
               </div>
             </div>
             {crawlData.description && (
-              <p className="line-clamp-3 text-sm text-slate-600">{crawlData.description}</p>
+              <p className="line-clamp-3 text-sm leading-relaxed text-slate-600">
+                {crawlData.description}
+              </p>
             )}
-            <p className="text-xs font-medium text-[var(--v2-primary)]">Saved for agent training</p>
-          </div>
-        ) : (
-          <div className="w-full max-w-sm text-center">
-            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-200/60 bg-white/90 shadow-sm">
-              <svg className="h-8 w-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-              </svg>
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200/80 bg-emerald-50/90 px-3 py-1.5 text-xs font-medium text-emerald-800">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+              Saved for agent training
             </div>
-            <h3 className="mb-2 text-sm font-semibold text-slate-700">Add your website</h3>
-            <p className="mb-4 text-sm leading-relaxed text-slate-600">
-              Enter a URL (e.g. your homepage) and click Continue. We&apos;ll use it as the entry point, follow internal links on the same domain, and extract text to train your agent.
-            </p>
-          </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="idle"
+            className="w-full max-w-sm"
+            initial={{ opacity: 0, y: 16, scale: 0.97, filter: 'blur(6px)' }}
+            animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, y: -16, scale: 0.97, filter: 'blur(8px)' }}
+            transition={{ duration: 0.45, ease: easeSmooth }}
+          >
+            <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-slate-950 shadow-[0_18px_45px_-24px_rgba(15,23,42,0.9)] ring-1 ring-slate-900/70">
+              {/* Browser chrome */}
+              <div className="flex items-center gap-2 border-b border-slate-800/80 bg-slate-900/95 px-3 py-2">
+                <div className="flex gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full bg-red-500/80" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/80" />
+                </div>
+                <div className="ml-3 flex min-w-0 flex-1 items-center rounded-full bg-slate-800/80 px-3 py-1.5 text-[11px] font-medium text-slate-100/90">
+                  <span className="truncate">
+                    {(protocol + (url || 'your-site.com')).replace(/\/+$/, '')}
+                  </span>
+                </div>
+              </div>
+              {/* Page preview */}
+              <div className="relative flex flex-col items-center justify-center gap-4 bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 px-6 py-8 text-center">
+                <div className="pointer-events-none absolute inset-x-4 top-4 h-24 rounded-full bg-slate-400/5 blur-2xl" />
+                <motion.div
+                  className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-100/5 via-slate-100/10 to-slate-50/10 shadow-[0_12px_30px_-10px_rgba(15,23,42,1)] ring-1 ring-white/10"
+                  initial={{ opacity: 0, scale: 0.9, rotate: -2 }}
+                  animate={{
+                    opacity: 1,
+                    scale: [1, 1.05, 1],
+                    y: [0, -2, 0],
+                    rotate: 0,
+                  }}
+                  transition={{
+                    duration: 2.4,
+                    ease: easeSmooth,
+                    repeat: Infinity,
+                    repeatType: 'loop',
+                  }}
+                >
+                  <motion.div
+                    className="absolute inset-0 rounded-2xl bg-slate-100/5"
+                    style={{ mixBlendMode: 'screen' }}
+                    initial={{ opacity: 0.2, scale: 0.9 }}
+                    animate={{ opacity: [0.2, 0.5, 0.2], scale: [0.9, 1.08, 0.9] }}
+                    transition={{
+                      duration: 2.4,
+                      ease: easeSmooth,
+                      repeat: Infinity,
+                      repeatType: 'loop',
+                    }}
+                  />
+                  <motion.svg
+                    className="relative h-7 w-7 text-slate-200"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.4, delay: 0.1, ease: easeSmooth }}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.4}
+                      d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
+                    />
+                  </motion.svg>
+                </motion.div>
+                <motion.div
+                  className="relative space-y-3"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.35, delay: 0.12, ease: easeSmooth }}
+                >
+                  <div className="space-y-1.5">
+                    <h3 className="text-sm font-semibold text-slate-100">
+                      Preview your website crawl
+                    </h3>
+                  </div>
+                </motion.div>
+              </div>
+            </div>
+          </motion.div>
         )}
+        </AnimatePresence>
       </motion.div>
     </div>
   )
