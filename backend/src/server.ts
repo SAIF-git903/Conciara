@@ -14,6 +14,7 @@ import workspaceRoutes from './domains/workspace/routes/index.js';
 import publicRoutes from './routes/public.routes.js';
 import { setupSocketHandlers } from './socket/connectionHandler.js';
 import { setSocketIo } from './socket/index.js';
+import { authRateLimiter, generalApiRateLimiter } from './common/middleware/rateLimit.js';
 
 dotenv.config();
 
@@ -58,6 +59,9 @@ app.use('/api/integrations', express.raw({ type: 'application/json' }), integrat
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Rate limiting: general API limit for all /api, then stricter per-route limiters
+app.use('/api', generalApiRateLimiter);
+
 // Swagger API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: '.swagger-ui .topbar { display: none }',
@@ -65,7 +69,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
 }));
 
 // Routes (JSON body)
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authRateLimiter, authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/api-keys', apiKeyRoutes);
 app.use('/api/workspaces', workspaceRoutes);

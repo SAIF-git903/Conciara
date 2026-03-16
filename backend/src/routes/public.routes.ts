@@ -11,6 +11,7 @@ import { prisma } from '../db/prisma.js';
 import { SUPPORTED_LLM_MODELS } from '../shared/llm.service.js';
 import { injectPresignedWidgetHeaderIcon } from '../shared/s3.service.js';
 import { handlePublicAgentChatStream } from '../domains/workspace/routes/index.js';
+import { publicChatRateLimiter } from '../common/middleware/rateLimit.js';
 
 const router = express.Router();
 
@@ -85,7 +86,7 @@ router.get('/public/widget-config', async (req, res) => {
   }
 });
 
-router.post('/public/workspaces/:workspaceId/agents/:agentId/chat/stream', async (req, res) => {
+router.post('/public/workspaces/:workspaceId/agents/:agentId/chat/stream', publicChatRateLimiter, async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
     const agentId = parseInt(req.params.agentId, 10);
