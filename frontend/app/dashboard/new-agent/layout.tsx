@@ -93,7 +93,7 @@ export default function NewAgentLayout({ children }: { children: React.ReactNode
       <div className="sticky top-0 z-10 shrink-0 border-b border-slate-200 bg-white pb-4 pt-2 sm:pt-4">
         <div className="mb-4">
           <Link
-            href="/dashboard"
+            href={workspaceId != null ? `/dashboard/${workspaceId}` : '/dashboard'}
             className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900"
           >
             <ArrowLeft className="h-4 w-4" />
