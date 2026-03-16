@@ -18,17 +18,17 @@ function parsePositiveInt(value: string | undefined, defaultVal: number): number
   return Number.isNaN(n) || n < 1 ? defaultVal : n;
 }
 
-/** Auth: window in ms (default 15 min), max requests per window (default 20) */
+/** Auth: window in ms (default 15 min), max requests per window (relaxed for testing) */
 const AUTH_WINDOW_MS = parsePositiveInt(process.env.RATE_LIMIT_AUTH_WINDOW_MS, 15 * 60 * 1000);
-const AUTH_MAX = parsePositiveInt(process.env.RATE_LIMIT_AUTH_MAX, 20);
+const AUTH_MAX = parsePositiveInt(process.env.RATE_LIMIT_AUTH_MAX, 500);
 
-/** General API: window in ms (default 15 min), max per window (default 200) */
+/** General API: window in ms (default 15 min), max per window (relaxed for testing) */
 const GENERAL_WINDOW_MS = parsePositiveInt(process.env.RATE_LIMIT_GENERAL_WINDOW_MS, 15 * 60 * 1000);
-const GENERAL_MAX = parsePositiveInt(process.env.RATE_LIMIT_GENERAL_MAX, 200);
+const GENERAL_MAX = parsePositiveInt(process.env.RATE_LIMIT_GENERAL_MAX, 5000);
 
-/** Public chat: window in ms (default 1 min), max per window (default 30) */
+/** Public chat: window in ms (default 1 min), max per window (relaxed for testing) */
 const CHAT_WINDOW_MS = parsePositiveInt(process.env.RATE_LIMIT_CHAT_WINDOW_MS, 60 * 1000);
-const CHAT_MAX = parsePositiveInt(process.env.RATE_LIMIT_CHAT_MAX, 30);
+const CHAT_MAX = parsePositiveInt(process.env.RATE_LIMIT_CHAT_MAX, 500);
 
 /**
  * Auth routes: login, signup, forgot-password, refresh, etc.
