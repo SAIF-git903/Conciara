@@ -374,7 +374,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
 
   // Redirect old workspace-level paths (e.g. /dashboard/members) to /dashboard/[workspaceId]/...
   useEffect(() => {
-    if (parsed.workspaceId || !pathname?.startsWith('/dashboard/') || pathname.startsWith('/dashboard/new-agent')) return
+    if (parsed.workspaceId || !pathname?.startsWith('/dashboard/') || pathname.includes('/new-agent')) return
     const rest = pathname.replace(/^\/dashboard\/?/, '')
     const wId = currentWorkspace.id
     if (!wId) return
@@ -451,7 +451,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
 
   // Redirect old agent routes (e.g. /dashboard/playground) to /dashboard/[w]/playground/[a]
   useEffect(() => {
-    if (!parsed.workspaceId && pathname && pathname.startsWith('/dashboard/') && !pathname.startsWith('/dashboard/new-agent')) {
+    if (!parsed.workspaceId && pathname && pathname.startsWith('/dashboard/') && !pathname.includes('/new-agent')) {
       const rest = pathname.replace(/^\/dashboard\/?/, '').split('/')[0] ?? ''
       const isOldAgentRoute = ['playground', 'settings', 'activity', 'analytics', 'data-sources', 'connected-apps'].includes(rest)
       if (isOldAgentRoute && currentWorkspace.id) {
@@ -630,7 +630,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     (parsed.workspaceId && pathname === `/dashboard/${parsed.workspaceId}/members`) ||
     (parsed.workspaceId && pathname?.startsWith(`/dashboard/${parsed.workspaceId}/settings/`) && !pathname.includes('chatbot') && !parsed.isAgentRoute)
   const navItems = isWorkspaceLevelRoute ? dashboardNavItems : agentNavItems
-  const isNewAgentFlow = pathname.startsWith('/dashboard/new-agent')
+  const isNewAgentFlow = pathname.includes('/new-agent')
   const dashboardBase = currentWorkspace.id ? buildDashboardUrl(currentWorkspace.id) : '/dashboard'
   const agentBase = currentWorkspace.id && currentAgent?.id ? (sub: string) => buildDashboardUrl(currentWorkspace.id, { agentId: currentAgent.id, subPath: sub }) : (sub: string) => `/dashboard/${sub}`
   const getNavHref = (item: { label: string; href: string }, child?: string): string => {
@@ -780,7 +780,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                       onClick={() => {
                         setOpenDropdown(null)
                         startNewAgentFlow(currentWorkspace.id)
-                        router.push('/dashboard/new-agent/link')
+                        router.push(buildDashboardUrl(currentWorkspace.id) + '/new-agent/link')
                       }}
                       variant="outline"
                       size="sm"

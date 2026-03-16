@@ -14,7 +14,7 @@ function LayoutShellWithParams({ children }: { children: ReactNode }) {
   const router = useRouter()
   const isOnboarding = pathname?.startsWith('/onboarding')
   const isDashboard = pathname?.startsWith('/dashboard')
-  const isSettings = pathname === '/account' || pathname?.startsWith('/dashboard/settings')
+  const isSettings = pathname === '/account' || pathname?.includes('/dashboard/') && pathname?.includes('/settings')
   const isEmbed = pathname?.startsWith('/embed')
   const isLanding = pathname === '/'
 

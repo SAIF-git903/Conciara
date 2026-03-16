@@ -1,17 +1,21 @@
 'use client'
 
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Link2, Settings, Bot, ArrowLeft } from 'lucide-react'
 import { getOnboardingWorkspaceId, getOnboardingLinkDone } from '@/lib/onboarding'
+import { buildDashboardUrl } from '@/lib/dashboard-url'
 
-const steps = [
-  { path: '/dashboard/new-agent/link', label: 'Website', short: 'Link', Icon: Link2 },
-  { path: '/dashboard/new-agent/configure', label: 'Chatbot', short: 'Configure', Icon: Settings },
-  { path: '/dashboard/new-agent/personality', label: 'Personality', short: 'Agent', Icon: Bot },
-]
+function useSteps(workspaceId: string | null) {
+  if (!workspaceId) return []
+  return [
+    { path: `/dashboard/${workspaceId}/new-agent/link`, label: 'Website', short: 'Link', Icon: Link2 },
+    { path: `/dashboard/${workspaceId}/new-agent/configure`, label: 'Chatbot', short: 'Configure', Icon: Settings },
+    { path: `/dashboard/${workspaceId}/new-agent/personality`, label: 'Personality', short: 'Agent', Icon: Bot },
+  ]
+}
 
 function useNewAgentProgress() {
   const [workspaceId, setWorkspaceId] = useState<number | null>(null)
@@ -29,10 +33,14 @@ function useNewAgentProgress() {
 export default function NewAgentLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
+  const params = useParams()
+  const workspaceIdParam = typeof params?.workspaceId === 'string' ? params.workspaceId : null
+  const steps = useSteps(workspaceIdParam)
   const { workspaceId, linkDone } = useNewAgentProgress()
   const [redirectPending, setRedirectPending] = useState(true)
   const currentIndex = steps.findIndex((s) => pathname === s.path)
   const contentScrollRef = useRef<HTMLDivElement>(null)
+  const dashboardUrl = workspaceIdParam ? buildDashboardUrl(parseInt(workspaceIdParam, 10)) : '/dashboard'
 
   useEffect(() => {
     contentScrollRef.current?.scrollTo({ top: 0 })
@@ -42,36 +50,38 @@ export default function NewAgentLayout({ children }: { children: React.ReactNode
     setRedirectPending(true)
   }, [pathname])
 
-  // Read from sessionStorage inside the effect so we see the value set by startNewAgentFlow
-  // before state has updated (state is set in another effect, so it's null on first run).
   useEffect(() => {
     const storedWorkspaceId = getOnboardingWorkspaceId()
     const storedLinkDone = getOnboardingLinkDone()
 
-    if (pathname === '/dashboard/new-agent' || pathname === '/dashboard/new-agent/') {
+    if (!workspaceIdParam) {
+      router.replace('/dashboard')
+      return
+    }
+    const base = `/dashboard/${workspaceIdParam}/new-agent`
+    if (pathname === `${base}` || pathname === `${base}/`) {
       if (storedWorkspaceId == null) {
-        router.replace('/dashboard')
+        router.replace(dashboardUrl)
         return
       }
       setRedirectPending(false)
       return
     }
     if (storedWorkspaceId == null) {
-      router.replace('/dashboard')
+      router.replace(dashboardUrl)
       return
     }
-    if (pathname === '/dashboard/new-agent/configure' && !storedLinkDone) {
-      router.replace('/dashboard/new-agent/link')
+    if (pathname === `${base}/configure` && !storedLinkDone) {
+      router.replace(`${base}/link`)
       return
     }
-    if (pathname === '/dashboard/new-agent/personality' && !storedLinkDone) {
-      router.replace('/dashboard/new-agent/link')
+    if (pathname === `${base}/personality` && !storedLinkDone) {
+      router.replace(`${base}/link`)
       return
     }
     setRedirectPending(false)
-  }, [pathname, router])
+  }, [pathname, router, workspaceIdParam, dashboardUrl])
 
-  /** Steps are display-only; progression is only via Continue/Save buttons on each step */
   const isStepReached = (i: number): boolean => {
     if (i === 0) return true
     if (i === 1) return workspaceId != null
@@ -89,11 +99,10 @@ export default function NewAgentLayout({ children }: { children: React.ReactNode
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col">
-      {/* Sticky: back link + stepper stay in place when scrolling */}
       <div className="sticky top-0 z-10 shrink-0 border-b border-slate-200 bg-white pb-4 pt-2 sm:pt-4">
         <div className="mb-4">
           <Link
-            href={workspaceId != null ? `/dashboard/${workspaceId}` : '/dashboard'}
+            href={dashboardUrl}
             className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900"
           >
             <ArrowLeft className="h-4 w-4" />

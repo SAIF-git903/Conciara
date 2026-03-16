@@ -17,7 +17,7 @@ export default function WorkspaceHomePage() {
 
   const handleNewAgent = () => {
     startNewAgentFlow(currentWorkspace.id)
-    router.push('/dashboard/new-agent/link')
+    router.push(buildDashboardUrl(currentWorkspace.id) + '/new-agent/link')
   }
 
   useEffect(() => {

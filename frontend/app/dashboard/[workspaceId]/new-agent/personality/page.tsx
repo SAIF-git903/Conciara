@@ -17,7 +17,7 @@ export default function NewAgentPersonalityPage() {
         if (workspaceId) {
           router.push(buildDashboardUrl(workspaceId, { agentId: String(agentId), subPath: 'playground' }))
         } else {
-          router.push(`/dashboard/playground?agent=${agentId}`)
+          router.push('/dashboard')
         }
       }}
       onForbidden={() => redirectNewAgentToDashboard(router)}
