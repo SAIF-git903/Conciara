@@ -176,6 +176,11 @@ input:disabled, textarea:disabled {
   transition-duration: 150ms;
 }
 
+/* Radix tooltip/popover position without transition – avoid "center then move" glitch */
+[data-radix-popper-content-wrapper] {
+  transition: none !important;
+}
+
 /* Tree visualization styles */
 .tree-link {
   stroke: #6366f1 !important;

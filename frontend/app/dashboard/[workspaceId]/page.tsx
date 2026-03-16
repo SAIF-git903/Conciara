@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import PermissionButton from '@/components/PermissionButton'
+import { useDashboard } from '@/contexts/DashboardContext'
+import { buildDashboardUrl } from '@/lib/dashboard-url'
+import { startNewAgentFlow } from '@/lib/onboarding'
+import { Bot, MessageCircle, MoreHorizontal, Plus, Settings, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Plus, MoreHorizontal, MessageCircle, Bot, Settings, Trash2 } from 'lucide-react'
-import { useDashboard } from '@/contexts/DashboardContext'
-import { startNewAgentFlow } from '@/lib/onboarding'
-import { buildDashboardUrl } from '@/lib/dashboard-url'
-import PermissionButton from '@/components/PermissionButton'
+import { useEffect, useRef, useState } from 'react'
 
 export default function WorkspaceHomePage() {
   const router = useRouter()

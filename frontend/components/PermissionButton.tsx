@@ -96,7 +96,7 @@ const PermissionButton = forwardRef<HTMLButtonElement, PermissionButtonProps>(({
               {buttonEl}
             </span>
           </TooltipTrigger>
-          <TooltipContent side="top" sideOffset={8} className="max-w-[280px] relative">
+          <TooltipContent side="top" sideOffset={8} className="max-w-[280px]">
             <p className="text-white text-sm leading-relaxed">
               {tooltipMessage}
               {permission.upgradeRequired && (
@@ -112,10 +112,6 @@ const PermissionButton = forwardRef<HTMLButtonElement, PermissionButtonProps>(({
                 </>
               )}
             </p>
-            <span
-              aria-hidden
-              className="pointer-events-none absolute -bottom-2 left-1/2 h-0 w-0 -translate-x-1/2 border-[6px] border-transparent border-t-slate-900"
-            />
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
