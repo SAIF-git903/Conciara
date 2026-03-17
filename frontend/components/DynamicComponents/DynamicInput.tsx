@@ -260,6 +260,8 @@ export default function DynamicInput({
     el.style.height = `${nextHeight}px`
     el.style.overflowY = contentHeight > MAX_HEIGHT_PX ? 'auto' : 'hidden'
     setIsExpanded(contentHeight > MIN_HEIGHT_PX + 2)
+    const isOverflowing = contentHeight > MAX_HEIGHT_PX
+    const caretAtEnd = selectionEnd === el.value.length
 
     // Keep caret stable while resizing to avoid cursor jumps.
     if (isFocused) {
@@ -269,7 +271,7 @@ export default function DynamicInput({
         } catch {
           //
         }
-        el.scrollTop = scrollTop
+        el.scrollTop = isOverflowing && caretAtEnd ? el.scrollHeight : scrollTop
       })
     }
   }, [])
