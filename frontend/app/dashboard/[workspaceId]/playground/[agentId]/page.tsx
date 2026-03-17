@@ -177,7 +177,7 @@ export default function PlaygroundAgentPage() {
   }, [])
 
   const handleMessage = useCallback(
-    async (userMessage: string, ctx?: { onChunk: (chunk: string) => void }): Promise<string> => {
+    async (userMessage: string, ctx?: { onChunk: (chunk: string) => void; signal?: AbortSignal }): Promise<string> => {
       if (!currentAgent || !currentWorkspace) return "No agent selected."
       const prev = messagesRef.current || []
       const history = prev.filter((m) => m.type === 'user' || m.type === 'bot').map((m) => ({ role: m.type as 'user' | 'assistant', content: m.content }))
@@ -187,6 +187,7 @@ export default function PlaygroundAgentPage() {
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          signal: ctx?.signal,
           body: JSON.stringify({ message: userMessage.trim(), history, ...(sessionIdRef.current ? { sessionId: sessionIdRef.current } : {}) }),
         })
         if (res.status === 401 && typeof window !== 'undefined') {
@@ -244,6 +245,7 @@ export default function PlaygroundAgentPage() {
         refreshUsage?.()
         return reply
       } catch (e: unknown) {
+        if (ctx?.signal?.aborted) return ''
         return e instanceof Error ? e.message : 'Failed to get reply.'
       }
     },

@@ -114,6 +114,7 @@ export default function DynamicMessages({
   const isList = layout === 'list'
   const isCards = layout === 'cards'
   const isBubbles = layout === 'bubbles'
+  const hasLatestBotMessage = messages.length > 0 && messages[messages.length - 1].type === 'bot'
 
   const messageRowClass = (isUser: boolean) =>
     `flex gap-2 ${isUser ? userJustify : botJustify}`
@@ -167,7 +168,7 @@ export default function DynamicMessages({
 
   return (
     <div
-      className={`flex-1 overflow-y-auto p-4 ${isList ? 'space-y-2' : isCards ? 'space-y-3' : 'space-y-4'}`}
+      className={`p-4 ${isList ? 'space-y-2' : isCards ? 'space-y-3' : 'space-y-4'}`}
       style={{ backgroundColor }}
       data-layout={layout}
     >
@@ -262,7 +263,7 @@ export default function DynamicMessages({
         </div>
       ))}
 
-      {isLoading && (
+      {isLoading && !hasLatestBotMessage && (
         <div className="flex gap-2 justify-start">
           {showBotAvatar && messagesConfig.botAvatar && (
             <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden bg-slate-200">

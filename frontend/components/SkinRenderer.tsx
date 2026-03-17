@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { ChevronDown } from 'lucide-react'
 import { MergedSkinConfig } from '../types/skinConfig'
 import { WIDGET_LANGUAGES, getWidgetTranslations } from '@/lib/widgetTranslations'
 import DynamicButton from './DynamicComponents/DynamicButton'
@@ -28,6 +29,11 @@ interface Message {
   media?: MediaItem[]
 }
 
+interface OnMessageContext {
+  onChunk: (chunk: string) => void
+  signal?: AbortSignal
+}
+
 export interface SkinRendererProps {
   config: MergedSkinConfig
   apiUrl: string
@@ -41,7 +47,7 @@ export interface SkinRendererProps {
   /** When true, user must select a language before the conversation starts (picker shown first) */
   requireLanguageSelection?: boolean
   /** Custom send handler. If returns string or { content, media? }, that is added as the bot reply. When provided, treeId can be null (e.g. playground with v2 agent chat). Use ctx.onChunk for streaming. */
-  onMessage?: (message: string, ctx?: { onChunk: (chunk: string) => void }) => Promise<string | { content: string; media?: MediaItem[] } | void>
+  onMessage?: (message: string, ctx?: OnMessageContext) => Promise<string | { content: string; media?: MediaItem[] } | void>
   /** When provided, called with the current messages after each update (so parent can build history for API). */
   onMessagesChange?: (messages: Message[]) => void
   initialMessages?: Message[]
@@ -94,8 +100,11 @@ export default function SkinRenderer({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const atBottomRef = useRef(true)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const activeRequestIdRef = useRef(0)
+  const activeAbortRef = useRef<AbortController | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const initializingRef = useRef(false)
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false)
 
   const checkAtBottom = (el: HTMLElement | null) => {
     if (!el) return true
@@ -106,7 +115,9 @@ export default function SkinRenderer({
 
   const handleScroll = useCallback(() => {
     if (scrollContainerRef.current) {
-      atBottomRef.current = checkAtBottom(scrollContainerRef.current)
+      const atBottom = checkAtBottom(scrollContainerRef.current)
+      atBottomRef.current = atBottom
+      setShowJumpToBottom(!atBottom)
     }
   }, [])
 
@@ -130,8 +141,17 @@ export default function SkinRenderer({
   useEffect(() => {
     if (atBottomRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' })
+      setShowJumpToBottom(false)
+    } else if (messages.length > 0) {
+      setShowJumpToBottom(true)
     }
   }, [messages])
+
+  useEffect(() => {
+    return () => {
+      activeAbortRef.current?.abort()
+    }
+  }, [])
 
   // When onLanguageSelect is provided, only start conversation after user selects a language
   const hasLanguagePicker = typeof onLanguageSelect === 'function'
@@ -196,11 +216,19 @@ export default function SkinRenderer({
   }
 
   const sendMessage = async (message: string) => {
-    if (!message.trim() || isLoading) return
+    if (!message.trim()) return
     if (!treeId && !onMessage) return
 
     const userMessage = message.trim()
+    if (isLoading) {
+      activeAbortRef.current?.abort()
+    }
+    const requestId = activeRequestIdRef.current + 1
+    activeRequestIdRef.current = requestId
+    const abortController = new AbortController()
+    activeAbortRef.current = abortController
     atBottomRef.current = true
+    setShowJumpToBottom(false)
     addMessage('user', userMessage)
     setInputValue('')
     setQuickReplies([])
@@ -208,26 +236,55 @@ export default function SkinRenderer({
 
     try {
       if (onMessage) {
-        addMessage('bot', '')
         const onChunk = (chunk: string) => {
+          if (activeRequestIdRef.current !== requestId) return
           setMessages(prev => {
             const p = [...prev]
             const last = p[p.length - 1]
-            if (last.type !== 'bot') return prev
-            p[p.length - 1] = { ...last, content: last.content + chunk }
+            if (!last || last.type !== 'bot') {
+              p.push({
+                id: `${Date.now()}_${Math.random()}`,
+                type: 'bot',
+                content: chunk,
+                timestamp: new Date(),
+              })
+              return p
+            }
+            p[p.length - 1] = { ...last, content: `${last.content}${chunk}` }
             return p
           })
         }
-        const result = await onMessage(userMessage, { onChunk })
+        const result = await onMessage(userMessage, { onChunk, signal: abortController.signal })
+        if (activeRequestIdRef.current !== requestId) return
         setMessages(prev => {
           const p = [...prev]
           const last = p[p.length - 1]
-          if (last.type !== 'bot') return prev
+          const hasBotTail = !!last && last.type === 'bot'
           if (typeof result === 'string' && result.trim()) {
-            p[p.length - 1] = { ...last, content: result.trim() }
+            if (hasBotTail) {
+              p[p.length - 1] = { ...last, content: result.trim() }
+            } else {
+              p.push({
+                id: `${Date.now()}_${Math.random()}`,
+                type: 'bot',
+                content: result.trim(),
+                timestamp: new Date(),
+              })
+            }
           } else if (result && typeof result === 'object' && typeof (result as { content?: string }).content === 'string') {
             const { content, media } = result as { content: string; media?: MediaItem[] }
-            p[p.length - 1] = { ...last, content: content.trim(), media }
+            const normalized = content.trim()
+            if (hasBotTail) {
+              p[p.length - 1] = { ...last, content: normalized, media }
+            } else if (normalized || (media && media.length > 0)) {
+              p.push({
+                id: `${Date.now()}_${Math.random()}`,
+                type: 'bot',
+                content: normalized,
+                timestamp: new Date(),
+                media,
+              })
+            }
           }
           return p
         })
@@ -235,6 +292,7 @@ export default function SkinRenderer({
         const response = await fetch(`${apiUrl}/chat/message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: abortController.signal,
           body: JSON.stringify({
             tree_id: treeId,
             user_message: userMessage,
@@ -260,10 +318,16 @@ export default function SkinRenderer({
         }
       }
     } catch (error) {
+      if (abortController.signal.aborted) return
       console.error('Error sending message:', error)
       addMessage('bot', config.states?.error?.message || "Sorry, I'm having trouble. Please try again.")
     } finally {
-      setIsLoading(false)
+      if (activeRequestIdRef.current === requestId) {
+        setIsLoading(false)
+        if (activeAbortRef.current === abortController) {
+          activeAbortRef.current = null
+        }
+      }
     }
   }
 
@@ -417,17 +481,38 @@ export default function SkinRenderer({
                 </div>
               ) : (
                 <>
-                  <div
-                    ref={scrollContainerRef}
-                    className="flex-1 min-h-0 overflow-y-auto flex flex-col"
-                    onScroll={handleScroll}
-                  >
-                    <DynamicMessages
-                      config={config}
-                      messages={messages}
-                      isLoading={isLoading}
-                    />
-                    <div ref={messagesEndRef} />
+                  <div className="relative flex-1 min-h-0">
+                    <div
+                      ref={scrollContainerRef}
+                      className="h-full min-h-0 overflow-y-auto flex flex-col"
+                      onScroll={handleScroll}
+                    >
+                      <DynamicMessages
+                        config={config}
+                        messages={messages}
+                        isLoading={isLoading}
+                      />
+                      <div ref={messagesEndRef} />
+                    </div>
+                    {showJumpToBottom && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          atBottomRef.current = true
+                          setShowJumpToBottom(false)
+                          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+                        }}
+                        aria-label="Jump to latest"
+                        title="Jump to latest"
+                        className="absolute bottom-3 right-3 z-10 rounded-full p-2 shadow-md border bg-white/95 hover:bg-white"
+                        style={{
+                          color: config.theme?.textColor || '#1f2937',
+                          borderColor: config.theme?.borderColor || '#e5e7eb',
+                        }}
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
 
                   <DynamicQuickReplies

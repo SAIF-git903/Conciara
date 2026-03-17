@@ -15,7 +15,7 @@ interface DynamicInputProps {
   onChange: (value: string) => void
   onSubmit: () => void
   isLoading: boolean
-  inputRef?: React.RefObject<HTMLInputElement>
+  inputRef?: React.RefObject<HTMLTextAreaElement>
 }
 
 export default function DynamicInput({
@@ -87,7 +87,6 @@ export default function DynamicInput({
             minHeight: MIN_HEIGHT_PX,
             maxHeight: MAX_HEIGHT_PX,
           }}
-          disabled={isLoading}
           maxLength={inputConfig.maxLength}
           autoFocus={inputConfig.autoFocus !== false}
         />

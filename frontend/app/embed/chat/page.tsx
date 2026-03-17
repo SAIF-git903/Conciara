@@ -78,7 +78,7 @@ function EmbedChatContent() {
   }, [apiUrl, workspaceId, agentId])
 
   const handleMessage = useCallback(
-    async (userMessage: string, ctx?: { onChunk: (chunk: string) => void }): Promise<string> => {
+    async (userMessage: string, ctx?: { onChunk: (chunk: string) => void; signal?: AbortSignal }): Promise<string> => {
       if (!apiUrl || !workspaceId || !agentId) return 'Missing configuration.'
       setAuthError(false)
       const url = `${apiUrl}/public/workspaces/${workspaceId}/agents/${agentId}/chat/stream`
@@ -86,6 +86,7 @@ function EmbedChatContent() {
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: ctx?.signal,
           body: JSON.stringify({
             message: userMessage.trim(),
             history: [],
@@ -131,6 +132,7 @@ function EmbedChatContent() {
         }
         return full.trim() || ''
       } catch (e) {
+        if (ctx?.signal?.aborted) return ''
         return e instanceof Error ? e.message : 'Network error'
       }
     },
