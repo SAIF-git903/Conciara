@@ -2,7 +2,7 @@
 
 import { ArrowUp, Mic } from 'lucide-react'
 import { MergedSkinConfig } from '../../types/skinConfig'
-import { useRef, useEffect, useState, useCallback } from 'react'
+import { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react'
 
 // Web Speech API (SpeechRecognition) - not in all TS libs
 type SpeechRecognitionCtor = new () => {
@@ -22,8 +22,8 @@ const SpeechRecognitionAPI =
        (window as unknown as { webkitSpeechRecognition?: SpeechRecognitionCtor }).webkitSpeechRecognition)
     : undefined
 
-const LINE_HEIGHT_PX = 24
-const MAX_LINES = 3
+const LINE_HEIGHT_PX = 18
+const MAX_LINES = 4
 const MIN_HEIGHT_PX = LINE_HEIGHT_PX + 16
 const MAX_HEIGHT_PX = LINE_HEIGHT_PX * MAX_LINES + 16
 
@@ -60,6 +60,7 @@ export default function DynamicInput({
   const [isListening, setIsListening] = useState(false)
   const [dictationError, setDictationError] = useState<string | null>(null)
   const [voiceLevels, setVoiceLevels] = useState<number[]>([0.25, 0.25, 0.25, 0.25])
+  const [isExpanded, setIsExpanded] = useState(false)
   const recognitionRef = useRef<InstanceType<NonNullable<typeof SpeechRecognitionAPI>> | null>(null)
   const valueRef = useRef(value)
   valueRef.current = value
@@ -226,29 +227,125 @@ export default function DynamicInput({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.nativeEvent.isComposing) return
+    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
       e.preventDefault()
       if (value.trim() && !isLoading) onSubmit()
     }
-    // Shift+Enter: allow default (insert newline, height grows)
+    // Shift+Enter / Ctrl+Enter: allow default (insert newline, height grows)
   }
 
-  const adjustHeight = () => {
-    const el = textareaRef.current
+  const resizeTextarea = useCallback((elOverride?: HTMLTextAreaElement | null) => {
+    const el = elOverride || textareaRef.current
     if (!el) return
-    el.style.height = 'auto'
-    const h = Math.min(Math.max(el.scrollHeight, MIN_HEIGHT_PX), MAX_HEIGHT_PX)
-    el.style.height = h + 'px'
-  }
+    const isEmpty = el.value.trim().length === 0
+    const isFocused = document.activeElement === el
+    const selectionStart = el.selectionStart
+    const selectionEnd = el.selectionEnd
+    const selectionDirection = el.selectionDirection
+    const scrollTop = el.scrollTop
+
+    // Reset first so shrink-on-delete works without jump.
+    el.style.height = '0px'
+    if (isEmpty) {
+      // Hard reset when cleared so visual height always returns to compact mode.
+      el.style.height = `${MIN_HEIGHT_PX}px`
+      el.style.overflowY = 'hidden'
+      el.scrollTop = 0
+      setIsExpanded(false)
+      return
+    }
+    const contentHeight = Math.max(el.scrollHeight, MIN_HEIGHT_PX)
+    const nextHeight = Math.min(contentHeight, MAX_HEIGHT_PX)
+    el.style.height = `${nextHeight}px`
+    el.style.overflowY = contentHeight > MAX_HEIGHT_PX ? 'auto' : 'hidden'
+    setIsExpanded(contentHeight > MIN_HEIGHT_PX + 2)
+
+    // Keep caret stable while resizing to avoid cursor jumps.
+    if (isFocused) {
+      requestAnimationFrame(() => {
+        try {
+          el.setSelectionRange(selectionStart, selectionEnd, selectionDirection || 'none')
+        } catch {
+          //
+        }
+        el.scrollTop = scrollTop
+      })
+    }
+  }, [])
+
+  useLayoutEffect(() => {
+    resizeTextarea()
+  }, [value, resizeTextarea])
 
   useEffect(() => {
-    adjustHeight()
-  }, [value])
+    const onResize = () => resizeTextarea()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [resizeTextarea])
+
+  const renderActionButtons = (variant: 'inline' | 'bottom') => {
+    const hidden = (variant === 'inline' && isExpanded) || (variant === 'bottom' && !isExpanded)
+    return (
+      <>
+        {isListening && (
+          <button
+            type="button"
+            aria-label="End dictation"
+            title="End"
+            onClick={stopListening}
+            tabIndex={hidden ? -1 : 0}
+            className="flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium text-white transition-opacity hover:opacity-90"
+            style={{ backgroundColor: primaryColor }}
+          >
+            <div className="flex items-end gap-0.5 h-4" aria-hidden>
+              {voiceLevels.map((level, i) => (
+                <div
+                  key={i}
+                  className="w-0.5 rounded-full bg-white transition-[height] duration-75 ease-out"
+                  style={{
+                    height: Math.max(3, Math.round(level * 14)),
+                    transformOrigin: 'bottom',
+                  }}
+                />
+              ))}
+            </div>
+            <span>End</span>
+          </button>
+        )}
+        {!isListening && (
+          <button
+            type="button"
+            aria-label="Dictate (speech to text)"
+            title="Dictate"
+            onClick={handleMicClick}
+            disabled={!isDictationSupported || isLoading}
+            tabIndex={hidden ? -1 : 0}
+            className="p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Mic className="w-4 h-4" />
+          </button>
+        )}
+        {showSendButton && (
+          <button
+            type="submit"
+            disabled={!value.trim() || isLoading}
+            tabIndex={hidden ? -1 : 0}
+            className="p-2 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-gray-100"
+          >
+            <ArrowUp className="w-4 h-4" />
+          </button>
+        )}
+      </>
+    )
+  }
 
   return (
     <form onSubmit={handleSubmit} className="p-4 border-t" style={{ borderColor }}>
       <div
-        className="flex items-end gap-1 rounded-full border bg-white overflow-hidden shadow-sm focus-within:ring-2 focus-within:ring-offset-0"
+        className={`relative flex flex-col border bg-white shadow-sm focus-within:ring-2 focus-within:ring-offset-0 transition-[padding,border-radius] duration-200 ease-out ${
+          isExpanded ? 'rounded-3xl p-3' : 'rounded-full p-2'
+        }`}
         style={{
           borderColor,
           '--tw-ring-color': primaryColor,
@@ -257,11 +354,16 @@ export default function DynamicInput({
         <textarea
           ref={setRef}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            onChange(e.target.value)
+            resizeTextarea(e.currentTarget)
+          }}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           rows={1}
-          className="flex-1 py-2.5 pl-4 pr-1 border-0 focus:outline-none focus:ring-0 bg-transparent text-sm resize-none overflow-y-auto rounded-full placeholder:text-gray-400"
+          className={`w-full border-0 focus:outline-none focus:ring-0 bg-transparent text-sm resize-none transition-[height,padding] duration-200 ease-out placeholder:text-gray-400 ${
+            isExpanded ? 'rounded-2xl px-2 py-2 pr-2' : 'rounded-full pl-3 pr-24 py-2'
+          }`}
           style={{
             minHeight: MIN_HEIGHT_PX,
             maxHeight: MAX_HEIGHT_PX,
@@ -269,52 +371,25 @@ export default function DynamicInput({
           maxLength={inputConfig.maxLength}
           autoFocus={inputConfig.autoFocus !== false}
         />
-        <div className="flex items-center gap-0.5 shrink-0 pr-1.5 pb-1.5 pt-1">
-          {isListening && (
-            <button
-              type="button"
-              aria-label="End dictation"
-              title="End"
-              onClick={stopListening}
-              className="flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium text-white transition-opacity hover:opacity-90"
-              style={{ backgroundColor: primaryColor }}
-            >
-              <div className="flex items-end gap-0.5 h-4" aria-hidden>
-                {voiceLevels.map((level, i) => (
-                  <div
-                    key={i}
-                    className="w-0.5 rounded-full bg-white transition-[height] duration-75 ease-out"
-                    style={{
-                      height: Math.max(3, Math.round(level * 14)),
-                      transformOrigin: 'bottom',
-                    }}
-                  />
-                ))}
-              </div>
-              <span>End</span>
-            </button>
-          )}
-          {!isListening && (
-            <button
-              type="button"
-              aria-label="Dictate (speech to text)"
-              title="Dictate"
-              onClick={handleMicClick}
-              disabled={!isDictationSupported || isLoading}
-              className="p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Mic className="w-4 h-4" />
-            </button>
-          )}
-          {showSendButton && (
-            <button
-              type="submit"
-              disabled={!value.trim() || isLoading}
-              className="p-2 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-gray-100"
-            >
-              <ArrowUp className="w-4 h-4" />
-            </button>
-          )}
+
+        <div
+          aria-hidden={isExpanded}
+          className={`absolute right-2 bottom-2 flex items-center gap-0.5 transition-[opacity,transform] duration-200 ease-out ${
+            isExpanded ? 'opacity-0 translate-y-1 pointer-events-none' : 'opacity-100 translate-y-0'
+          }`}
+        >
+          {renderActionButtons('inline')}
+        </div>
+
+        <div
+          aria-hidden={!isExpanded}
+          className={`overflow-hidden transition-[max-height,opacity,margin] duration-200 ease-out ${
+            isExpanded ? 'max-h-16 opacity-100 mt-2' : 'max-h-0 opacity-0 mt-0'
+          }`}
+        >
+          <div className="flex items-center justify-end gap-0.5">
+            {renderActionButtons('bottom')}
+          </div>
         </div>
       </div>
       {(inputConfig.showCharacterCount && inputConfig.maxLength) || dictationError ? (
