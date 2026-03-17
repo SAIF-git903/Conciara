@@ -56,6 +56,7 @@ export default function DynamicInput({
 
   const placeholder = inputConfig.placeholder || 'Message...'
   const showSendButton = inputConfig.showSendButton !== false
+  const enableDictation = inputConfig.enableDictation !== false
 
   const [isListening, setIsListening] = useState(false)
   const [dictationError, setDictationError] = useState<string | null>(null)
@@ -215,8 +216,12 @@ export default function DynamicInput({
     }
   }, [])
 
+  useEffect(() => {
+    if (!enableDictation && isListening) stopListening()
+  }, [enableDictation, isListening, stopListening])
+
   const handleMicClick = () => {
-    if (!isListening) startDictation()
+    if (enableDictation && !isListening) startDictation()
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -290,7 +295,7 @@ export default function DynamicInput({
     const hidden = (variant === 'inline' && isExpanded) || (variant === 'bottom' && !isExpanded)
     return (
       <>
-        {isListening && (
+        {enableDictation && isListening && (
           <button
             type="button"
             aria-label="End dictation"
@@ -315,7 +320,7 @@ export default function DynamicInput({
             <span>End</span>
           </button>
         )}
-        {!isListening && (
+        {enableDictation && !isListening && (
           <button
             type="button"
             aria-label="Dictate (speech to text)"
@@ -394,9 +399,9 @@ export default function DynamicInput({
           </div>
         </div>
       </div>
-      {(inputConfig.showCharacterCount && inputConfig.maxLength) || dictationError ? (
+      {(inputConfig.showCharacterCount && inputConfig.maxLength) || (enableDictation && dictationError) ? (
         <div className="mt-1 flex items-center justify-between gap-2">
-          {dictationError ? (
+          {enableDictation && dictationError ? (
             <span className="text-xs text-amber-600">{dictationError}</span>
           ) : (
             <span />

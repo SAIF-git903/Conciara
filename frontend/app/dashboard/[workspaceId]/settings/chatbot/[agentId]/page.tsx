@@ -55,6 +55,7 @@ function defaultConfig(): SkinConfig {
       input: {
         placeholder: 'Message...',
         showSendButton: true,
+        enableDictation: true,
       },
     },
     states: {},
@@ -715,6 +716,14 @@ export default function ChatbotCustomizationsPage() {
                         checked={comp.input?.showSendButton !== false}
                         onChange={(v) => updateComponents('input', { showSendButton: v })}
                       />
+                      <CheckboxInput
+                        label="Enable dictation (microphone)"
+                        checked={comp.input?.enableDictation !== false}
+                        onChange={(v) => updateComponents('input', { enableDictation: v })}
+                      />
+                      <p className="text-xs text-slate-500 pl-6 -mt-1">
+                        Allow users to speak into the chat using the microphone. Not supported in all browsers.
+                      </p>
                     </div>
                   </Section>
                 </div>
