@@ -73,6 +73,8 @@ export interface InputConfig {
   maxLength?: number;
   showCharacterCount?: boolean;
   autoFocus?: boolean;
+  /** When true, show microphone and allow speech-to-text dictation. Defaults to true. */
+  enableDictation?: boolean;
 }
 
 export interface QuickRepliesConfig {
