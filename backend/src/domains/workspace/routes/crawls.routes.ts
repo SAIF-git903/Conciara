@@ -16,6 +16,17 @@ import { deleteWebsiteCrawlDocuments } from '../../training/services/document.se
 
 const router = express.Router();
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/crawl:
+ *   get:
+ *     summary: Get latest crawl for workspace
+ *     tags: [Crawls]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters: [{ in: path, name: workspaceId, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200: { description: crawl or null }
+ */
 router.get('/:workspaceId/crawl', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -38,6 +49,24 @@ router.get('/:workspaceId/crawl', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/crawl:
+ *   post:
+ *     summary: Start website crawl
+ *     tags: [Crawls]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters: [{ in: path, name: workspaceId, required: true, schema: { type: integer } }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { url: { type: string }, useCase: { type: string }, agentId: { type: integer } }
+ *             required: [url]
+ *     responses:
+ *       201: { description: crawl }
+ */
 router.post('/:workspaceId/crawl', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -70,6 +99,26 @@ router.post('/:workspaceId/crawl', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/crawls/{crawlId}:
+ *   delete:
+ *     summary: Delete crawl
+ *     tags: [Crawls]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: crawlId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       204: { description: Deleted }
+ *       404: { description: Crawl not found }
+ */
 router.delete('/:workspaceId/crawls/:crawlId', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -93,6 +142,32 @@ router.delete('/:workspaceId/crawls/:crawlId', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/crawls/{crawlId}:
+ *   patch:
+ *     summary: Assign crawl to agent
+ *     tags: [Crawls]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: crawlId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { agentId: { type: integer } }
+ *             required: [agentId]
+ *     responses:
+ *       200: { description: ok }
+ */
 router.patch('/:workspaceId/crawls/:crawlId', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);

@@ -11,16 +11,6 @@ const options: swaggerJsdoc.Options = {
         name: 'API Support',
       },
     },
-    servers: [
-      {
-        url: 'https://conversatreeapi.geniusai.biz',
-        description: 'Production server',
-      },
-      {
-        url: 'http://localhost:3009',
-        description: 'Local server',
-      },
-    ],
     components: {
       securitySchemes: {
         bearerAuth: {
@@ -75,61 +65,6 @@ const options: swaggerJsdoc.Options = {
             domain: { type: 'string' },
           },
         },
-        DialogTree: {
-          type: 'object',
-          properties: {
-            id: { type: 'integer' },
-            name: { type: 'string' },
-            description: { type: 'string', nullable: true },
-            ab_variation_id: { type: 'integer', nullable: true },
-            created_at: { type: 'string', format: 'date-time' },
-            updated_at: { type: 'string', format: 'date-time' },
-          },
-        },
-        DialogNode: {
-          type: 'object',
-          properties: {
-            id: { type: 'integer' },
-            tree_id: { type: 'integer' },
-            parent_id: { type: 'integer', nullable: true },
-            user_input: { type: 'string', nullable: true },
-            bot_response: { type: 'string' },
-            created_at: { type: 'string', format: 'date-time' },
-            updated_at: { type: 'string', format: 'date-time' },
-          },
-        },
-        Skin: {
-          type: 'object',
-          properties: {
-            id: { type: 'integer' },
-            website_id: { type: 'integer' },
-            name: { type: 'string' },
-            description: { type: 'string', nullable: true },
-            theme_config: { type: 'object' },
-            is_active: { type: 'boolean' },
-            created_at: { type: 'string', format: 'date-time' },
-            updated_at: { type: 'string', format: 'date-time' },
-          },
-        },
-        ChatMessage: {
-          type: 'object',
-          properties: {
-            tree_id: { type: 'integer' },
-            user_message: { type: 'string' },
-            session_id: { type: 'string', nullable: true },
-            user_id: { type: 'integer', nullable: true },
-            use_memory: { type: 'boolean', default: true },
-          },
-          required: ['tree_id', 'user_message'],
-        },
-        ChatResponse: {
-          type: 'object',
-          properties: {
-            response: { type: 'string' },
-            session_id: { type: 'string' },
-            node_id: { type: 'integer', nullable: true },
-          },
-        },
         LoginRequest: {
           type: 'object',
           properties: {
@@ -149,25 +84,34 @@ const options: swaggerJsdoc.Options = {
       },
     },
     tags: [
-      { name: 'Authentication', description: 'User authentication endpoints' },
-      { name: 'Users', description: 'User management endpoints' },
-      { name: 'Dialog Trees', description: 'Dialog tree management' },
-      { name: 'Dialog Nodes', description: 'Dialog node management' },
-      { name: 'Chat', description: 'Chat message processing' },
-      { name: 'Widget', description: 'Widget configuration endpoints' },
-      { name: 'Skins', description: 'Skin/theming management' },
-      { name: 'Websites', description: 'Website management' },
-      { name: 'Customer Types', description: 'Customer type management' },
-      { name: 'A/B Variations', description: 'A/B testing variations' },
-      { name: 'Preprompts', description: 'Preprompt management' },
-      { name: 'Conversations', description: 'Conversation history' },
-      { name: 'Media', description: 'Media upload endpoints' },
-      { name: 'API Keys', description: 'API key management' },
-      { name: 'Trace', description: 'Tracing and debugging' },
-      { name: 'Health', description: 'Health check endpoints' },
+      { name: 'Authentication', description: 'User authentication and session management' },
+      { name: 'Users', description: 'User management (admin)' },
+      { name: 'API Keys', description: 'Global API key management' },
+      { name: 'Health', description: 'Health and public config' },
+      { name: 'Public', description: 'Public endpoints (no auth)' },
+      { name: 'Workspaces', description: 'Workspace CRUD and settings' },
+      { name: 'Members', description: 'Workspace members and invites' },
+      { name: 'Workspace API Keys', description: 'Workspace-scoped API keys' },
+      { name: 'Billing', description: 'Subscription and billing' },
+      { name: 'Credits', description: 'Message credits' },
+      { name: 'Limits', description: 'Plan limits' },
+      { name: 'Usage', description: 'Usage analytics' },
+      { name: 'Crawls', description: 'Website crawls' },
+      { name: 'Agents', description: 'Agent CRUD' },
+      { name: 'Chat', description: 'Agent chat (authenticated)' },
+      { name: 'Chat Logs', description: 'Chat history and analytics' },
+      { name: 'Documents', description: 'Agent document training' },
+      { name: 'QA', description: 'Q&A pairs for agents' },
+      { name: 'Actions', description: 'Agent custom actions' },
+      { name: 'Integrations', description: 'Agent integrations (e.g. Slack)' },
+      { name: 'Widget', description: 'Agent widget config' },
+      { name: 'Crawl Training', description: 'Train from crawls' },
     ],
   },
-  apis: ['./src/routes/*.ts', './src/server.ts'], // Path to the API files
+  apis: [
+    './src/routes/*.ts',
+    './src/domains/**/routes/*.ts',
+  ],
 };
 
 export const swaggerSpec = swaggerJsdoc(options);

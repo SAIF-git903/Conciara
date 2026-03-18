@@ -15,6 +15,25 @@ import {
 
 const router = express.Router();
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/actions:
+ *   get:
+ *     summary: List agent actions
+ *     tags: [Actions]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: { actions } }
+ */
 router.get('/:workspaceId/agents/:agentId/actions', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -41,6 +60,25 @@ router.get('/:workspaceId/agents/:agentId/actions', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/actions/types:
+ *   get:
+ *     summary: List action types
+ *     tags: [Actions]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: { types } }
+ */
 router.get('/:workspaceId/agents/:agentId/actions/types', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -61,6 +99,31 @@ router.get('/:workspaceId/agents/:agentId/actions/types', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/actions:
+ *   post:
+ *     summary: Create action
+ *     tags: [Actions]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { type: { type: string }, name: { type: string }, description: { type: string }, enabled: { type: boolean }, config: { type: object }, sortOrder: { type: integer } }
+ *     responses:
+ *       201: { description: { action } }
+ */
 router.post('/:workspaceId/agents/:agentId/actions', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -95,6 +158,35 @@ router.post('/:workspaceId/agents/:agentId/actions', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/actions/{actionId}:
+ *   put:
+ *     summary: Update action
+ *     tags: [Actions]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: actionId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { name: { type: string }, description: { type: string }, enabled: { type: boolean }, config: { type: object }, sortOrder: { type: integer } }
+ *     responses:
+ *       200: { description: { action } }
+ */
 router.put('/:workspaceId/agents/:agentId/actions/:actionId', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -125,6 +217,29 @@ router.put('/:workspaceId/agents/:agentId/actions/:actionId', async (req, res) =
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/actions/{actionId}:
+ *   delete:
+ *     summary: Delete action
+ *     tags: [Actions]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: actionId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Deleted }
+ */
 router.delete('/:workspaceId/agents/:agentId/actions/:actionId', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);

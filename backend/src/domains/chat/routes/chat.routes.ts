@@ -327,6 +327,32 @@ export async function getAgentReply(
   return reply;
 }
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/chat:
+ *   post:
+ *     summary: Send chat message (authenticated)
+ *     tags: [Chat]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { message: { type: string }, history: { type: array }, sessionId: { type: string } }
+ *             required: [message]
+ *     responses:
+ *       200: { description: { message, sessionId } }
+ */
 router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -420,6 +446,32 @@ router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/chat/stream:
+ *   post:
+ *     summary: Send chat message with SSE stream (authenticated)
+ *     tags: [Chat]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { message: { type: string }, history: { type: array }, sessionId: { type: string } }
+ *             required: [message]
+ *     responses:
+ *       200: { description: SSE stream }
+ */
 router.post('/:workspaceId/agents/:agentId/chat/stream', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);

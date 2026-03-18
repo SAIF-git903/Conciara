@@ -17,6 +17,17 @@ import { requirePermission } from '../../../middleware/permissions.js';
 
 const router = express.Router();
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/members:
+ *   get:
+ *     summary: List workspace members and pending invites
+ *     tags: [Members]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters: [{ in: path, name: workspaceId, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200: { description: members, pendingInvites }
+ */
 router.get('/:workspaceId/members', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -38,6 +49,24 @@ router.get('/:workspaceId/members', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/invites/resend:
+ *   post:
+ *     summary: Resend invite email
+ *     tags: [Members]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters: [{ in: path, name: workspaceId, required: true, schema: { type: integer } }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { email: { type: string } }
+ *             required: [email]
+ *     responses:
+ *       200: { description: Invite resent }
+ */
 router.post('/:workspaceId/invites/resend', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -62,6 +91,24 @@ router.post('/:workspaceId/invites/resend', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/members:
+ *   post:
+ *     summary: Invite member to workspace (owner only)
+ *     tags: [Members]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters: [{ in: path, name: workspaceId, required: true, schema: { type: integer } }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { email: { type: string } }
+ *             required: [email]
+ *     responses:
+ *       201: { description: member or pendingInvite }
+ */
 router.post('/:workspaceId/members', requirePermission({ feature: 'inviteMembers', requireOwner: true }), async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -97,6 +144,25 @@ router.post('/:workspaceId/members', requirePermission({ feature: 'inviteMembers
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/members/{userId}:
+ *   delete:
+ *     summary: Remove member from workspace
+ *     tags: [Members]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Member removed }
+ */
 router.delete('/:workspaceId/members/:userId', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);

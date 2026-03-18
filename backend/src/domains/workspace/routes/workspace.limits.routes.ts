@@ -10,6 +10,17 @@ import { getWorkspaceMember } from '../workspace.service.js';
 
 const router = express.Router();
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/limits:
+ *   get:
+ *     summary: Get plan limits (canCreateAgent, canInviteMember, etc.)
+ *     tags: [Limits]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters: [{ in: path, name: workspaceId, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200: { description: plan, maxAgents, canCreateAgent, maxMembers, canInviteMember, hasApiAccess }
+ */
 router.get('/:workspaceId/limits', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);

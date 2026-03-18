@@ -11,6 +11,25 @@ import { prisma } from '../../../db/prisma.js';
 const router = express.Router();
 const SLACK_OAUTH_SCOPES = 'chat:write,app_mentions:read,channels:history,channels:read,groups:history,groups:read,im:history,im:read,im:write';
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/integrations/slack:
+ *   get:
+ *     summary: Get Slack integration status
+ *     tags: [Integrations]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: connected, teamName }
+ */
 router.get('/:workspaceId/agents/:agentId/integrations/slack', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -42,6 +61,25 @@ router.get('/:workspaceId/agents/:agentId/integrations/slack', async (req, res) 
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/integrations/slack/oauth-url:
+ *   get:
+ *     summary: Get Slack OAuth URL
+ *     tags: [Integrations]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: redirectUrl }
+ */
 router.get('/:workspaceId/agents/:agentId/integrations/slack/oauth-url', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -81,6 +119,25 @@ router.get('/:workspaceId/agents/:agentId/integrations/slack/oauth-url', async (
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/integrations/slack:
+ *   post:
+ *     summary: Connect Slack (use OAuth flow in UI)
+ *     tags: [Integrations]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       400: { description: Connect via OAuth }
+ */
 router.post('/:workspaceId/agents/:agentId/integrations/slack', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -117,6 +174,25 @@ router.post('/:workspaceId/agents/:agentId/integrations/slack', async (req, res)
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/integrations/slack:
+ *   delete:
+ *     summary: Disconnect Slack
+ *     tags: [Integrations]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Disconnected }
+ */
 router.delete('/:workspaceId/agents/:agentId/integrations/slack', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);

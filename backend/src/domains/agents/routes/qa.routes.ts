@@ -15,6 +15,25 @@ import {
 
 const router = express.Router();
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/qa:
+ *   get:
+ *     summary: List Q&A entries
+ *     tags: [QA]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: { entries } }
+ */
 router.get('/:workspaceId/agents/:agentId/qa', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -41,6 +60,31 @@ router.get('/:workspaceId/agents/:agentId/qa', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/qa:
+ *   post:
+ *     summary: Create Q&A entry
+ *     tags: [QA]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { question: { type: string }, answer: { type: string } }
+ *     responses:
+ *       201: { description: { entry } }
+ */
 router.post('/:workspaceId/agents/:agentId/qa', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -68,6 +112,32 @@ router.post('/:workspaceId/agents/:agentId/qa', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/qa/{qaId}/usage:
+ *   get:
+ *     summary: Get Q&A usage stats
+ *     tags: [QA]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: qaId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: days
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: usage array }
+ */
 router.get('/:workspaceId/agents/:agentId/qa/:qaId/usage', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -91,6 +161,35 @@ router.get('/:workspaceId/agents/:agentId/qa/:qaId/usage', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/qa/{qaId}:
+ *   put:
+ *     summary: Update Q&A entry
+ *     tags: [QA]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: qaId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { question: { type: string }, answer: { type: string } }
+ *     responses:
+ *       200: { description: { entry } }
+ */
 router.put('/:workspaceId/agents/:agentId/qa/:qaId', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -114,6 +213,29 @@ router.put('/:workspaceId/agents/:agentId/qa/:qaId', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/qa/{qaId}:
+ *   delete:
+ *     summary: Delete Q&A entry
+ *     tags: [QA]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: qaId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Deleted }
+ */
 router.delete('/:workspaceId/agents/:agentId/qa/:qaId', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);

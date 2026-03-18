@@ -9,7 +9,25 @@ import { prisma } from '../../../db/prisma.js';
 
 const router = express.Router();
 
-/** GET /:workspaceId/agents/:agentId/crawls - list crawls for agent (linked or workspace-level). */
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/crawls:
+ *   get:
+ *     summary: List crawls for agent
+ *     tags: [Crawls]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: { crawls } }
+ */
 router.get('/:workspaceId/agents/:agentId/crawls', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
