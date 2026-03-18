@@ -51,6 +51,7 @@ model Workspace {
   credits       WorkspaceCredits?
   workspaceApiKeys WorkspaceApiKey[]
   billingTransactions WorkspaceBillingTransaction[]
+  agentActions     AgentAction[]
 
   @@map("workspaces")
 }
@@ -105,8 +106,30 @@ model Agent {
   qaEntries      AgentQa[]
   chatSessions   AgentChatSession[]
   chatMessages   AgentChatMessage[]
+  actions       AgentAction[]
 
   @@map("agents")
+}
+
+model AgentAction {
+  id          Int      @id @default(autoincrement())
+  agentId     Int      @map("agent_id")
+  workspaceId Int      @map("workspace_id")
+  type        String   @map("type") // custom_api | web_search | collect_leads | escalate | calendly | cal_com | shopify | stripe | salesforce | slack | custom_button
+  name        String   @map("name")
+  description String?  @map("description")
+  enabled     Boolean  @default(true) @map("enabled")
+  config      Json?    @map("config") // type-specific: endpoint, method, inputs, whenToUse, etc.
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @map("updated_at")
+
+  agent     Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([workspaceId])
+  @@map("agent_actions")
 }
 
 model AgentChatSession {

@@ -14,6 +14,7 @@ const AGENT_PATH_TAILS: Record<string, string> = {
   'qa': 'data-sources/qa',
   'website': 'data-sources/website',
   'connected-apps': 'connected-apps',
+  'actions': 'actions',
 }
 
 /** Parse pathname to get workspaceId and agentId when present. */
@@ -64,4 +65,5 @@ export const AGENT_SUB_PATHS = [
   'data-sources/qa',
   'data-sources/website',
   'connected-apps',
+  'actions',
 ] as const

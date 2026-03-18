@@ -28,6 +28,7 @@ import {
   LogOut,
   Loader2,
   X,
+  Zap,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Suspense } from 'react'
@@ -78,6 +79,7 @@ const agentNavItems = [
   { href: '#', label: 'Analytics', Icon: BarChart3, children: ['Chats'] },
   { href: '#', label: 'Data sources', Icon: Database, children: ['Files', 'Q&A', 'Website'] },
   { href: '/dashboard/connected-apps', label: 'Connected Apps', Icon: Plug },
+  { href: '/dashboard/actions', label: 'Actions', Icon: Zap },
   { href: '/dashboard/settings/chatbot', label: 'Chat widget', Icon: Palette },
   { href: '#', label: 'Settings', Icon: Settings, children: ['General'] },
 ]
@@ -471,11 +473,11 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!parsed.workspaceId && pathname && pathname.startsWith('/dashboard/') && !pathname.includes('/new-agent')) {
       const rest = pathname.replace(/^\/dashboard\/?/, '').split('/')[0] ?? ''
-      const isOldAgentRoute = ['playground', 'settings', 'activity', 'analytics', 'data-sources', 'connected-apps'].includes(rest)
+      const isOldAgentRoute = ['playground', 'settings', 'activity', 'analytics', 'data-sources', 'connected-apps', 'actions'].includes(rest)
       if (isOldAgentRoute && currentWorkspace.id) {
         const agentId = agentIdFromUrl || currentAgent?.id
         if (agentId) {
-          const sub = pathname.includes('chatbot') ? 'settings/chatbot' : pathname.includes('chat-logs') ? 'activity/chat-logs' : pathname.includes('chats') ? 'analytics/chats' : pathname.includes('data-sources/files') ? 'data-sources/files' : pathname.includes('data-sources/qa') ? 'data-sources/qa' : pathname.includes('data-sources/website') ? 'data-sources/website' : pathname.includes('connected-apps') ? 'connected-apps' : 'playground'
+          const sub = pathname.includes('chatbot') ? 'settings/chatbot' : pathname.includes('chat-logs') ? 'activity/chat-logs' : pathname.includes('chats') ? 'analytics/chats' : pathname.includes('data-sources/files') ? 'data-sources/files' : pathname.includes('data-sources/qa') ? 'data-sources/qa' : pathname.includes('data-sources/website') ? 'data-sources/website' : pathname.includes('connected-apps') ? 'connected-apps' : pathname.includes('actions') ? 'actions' : 'playground'
           router.replace(buildDashboardUrl(currentWorkspace.id, { agentId, subPath: sub }))
         } else if (rest === 'playground') {
           const inWorkspace = agents.filter((a) => a.workspaceId === currentWorkspace.id)
@@ -663,6 +665,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     if (item.href === '/dashboard') return dashboardBase
     if (item.href === '/dashboard/playground') return agentBase('playground')
     if (item.href === '/dashboard/connected-apps') return agentBase('connected-apps')
+    if (item.href === '/dashboard/actions') return agentBase('actions')
     if (item.href === '/dashboard/settings/chatbot') return agentBase('settings/chatbot')
     if (item.label === 'Usage' && currentWorkspace.id) return buildDashboardUrl(currentWorkspace.id, { subPath: 'usage' })
     if (item.href === '#') return item.href
