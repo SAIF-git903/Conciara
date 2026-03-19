@@ -23,7 +23,7 @@ export default function AgentSettingsGeneralPage() {
         </p>
       </div>
 
-      <div className="flex-1 p-6">
+      <div className="flex-1 p-6 bg-white">
         <div className="mx-auto max-w-2xl space-y-8">
           {/* Delete agent */}
           <div className="rounded-2xl border border-red-200 bg-red-50/50 p-6">

@@ -21,11 +21,20 @@ Full monorepo rules: `**../.cursor/rules.md**` (repo root). Below: general conte
 - **Next.js 14** App Router (`app/`), **React 18**, **TypeScript**, dev port **3002**.
 - **Styling**: **Tailwind** (`tailwind.config.js`, `app/globals.css`); dashboard **v2** uses `**v2-theme`** CSS variables + Tailwind.
 - **Classes**: `**cn()`** in `lib/utils.ts` (**clsx** + **tailwind-merge**).
-- **HTTP**: **axios** in `**lib/api.ts`** — base URL, `ngrok-skip-browser-warning`, auth header, FormData handling, 401 refresh. Prefer `**api`** over raw `**fetch**` to the API.
+- **HTTP**: **axios** in `**lib/api.ts`** — base URL, `ngrok-skip-browser-warning`, auth header, FormData handling, 401 refresh. Prefer `**api`** over raw `**fetch`** to the API.
 - **Sockets**: **socket.io-client** + `**getSocketUrl()`** from `lib/api.ts`.
-- **UI**: Headless UI, Radix (select, popover, tooltip), Lucide, Framer Motion, Recharts, react-markdown + remark-gfm; Three.js / R3F + drei where 3D is used (e.g. skins/widget).
+- **UI**: Headless UI, Radix (select, popover, tooltip, Accordion), Lucide, Framer Motion, Recharts, react-markdown + remark-gfm; Three.js / R3F + drei where 3D is used (e.g. skins/widget).
 - **Dates**: date-fns, react-day-picker, react-date-range.
-- Styling Library: use shadcn/ui for every possible components. like dropdown, Accordion etc.
+
+## Skeleton Loading Rules
+
+- Use skeleton loaders **only for dynamically loaded data** (e.g., API responses, async content)
+- Do NOT use skeletons for static or hardcoded content
+- Static text and UI elements must be rendered immediately without placeholders
+- Skeletons should mimic the shape and layout of the actual dynamic content
+- Replace skeletons as soon as data is available (avoid unnecessary delay)
+- Avoid overusing skeletons; prefer them only where loading states impact user experience
+- Keep skeleton UI consistent with existing design patterns in the project
 
 ### Structure
 
@@ -39,7 +48,7 @@ Full monorepo rules: `**../.cursor/rules.md**` (repo root). Below: general conte
 
 ### Permissions & layout
 
-- Gate with `**PermissionGate`**, `**PermissionButton**`, `**usePermissions**` + `**workspaceLimits**`. Overlap backend feature names (`createAgent`, `inviteMembers`, `apiAccess`, …); extend `**FeatureKey**` consistently for new UI gates.
+- Gate with `**PermissionGate`**, `**PermissionButton`**, `**usePermissions**` + `**workspaceLimits**`. Overlap backend feature names (`createAgent`, `inviteMembers`, `apiAccess`, …); extend `**FeatureKey**` consistently for new UI gates.
 - `**app/dashboard/layout.tsx**`: large client shell (nav, providers, socket)—extract helpers instead of copying nav logic.
 - `**app/layout.tsx**`: next/font Inter, `**AuthProvider**`, `**LayoutShell**`.
 
