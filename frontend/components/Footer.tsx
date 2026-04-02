@@ -1,14 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { Bot, Mail, MessageCircle, FileText, HelpCircle } from 'lucide-react'
+import { Bot } from 'lucide-react'
 
 const footerLinks = {
   Product: [
     { label: 'Features', href: '/#features' },
     { label: 'Pricing', href: '/pricing' },
     { label: 'Integrations', href: '/#integrations' },
-    { label: 'Changelog', href: '#' },
   ],
   Resources: [
     { label: 'Documentation', href: '/docs' },
@@ -18,7 +17,7 @@ const footerLinks = {
   ],
   Company: [
     { label: 'About', href: '#' },
-    { label: 'Contact', href: '#' },
+    { label: 'Contact', href: '/contact-us' },
     { label: 'Careers', href: '#' },
     { label: 'Privacy', href: '#' },
   ],

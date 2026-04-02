@@ -43,7 +43,7 @@ export default function DocsShell({ children }: { children: ReactNode }) {
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-black">
               <BookOpen className="h-4 w-4" />
             </div>
-            <Link href="/docs" className="text-sm font-semibold text-white">Conciara Docs</Link>
+            <Link href="/" className="text-sm font-semibold text-white">Conciara Docs</Link>
             <span className="hidden text-xs text-slate-400 sm:inline">Production Documentation</span>
           </div>
           <div className="flex items-center gap-2">
