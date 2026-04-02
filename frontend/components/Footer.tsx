@@ -11,7 +11,7 @@ const footerLinks = {
     { label: 'Changelog', href: '#' },
   ],
   Resources: [
-    { label: 'Documentation', href: '#' },
+    { label: 'Documentation', href: '/docs' },
     { label: 'API Reference', href: '#' },
     { label: 'Help Center', href: '#' },
     { label: 'Blog', href: '#' },

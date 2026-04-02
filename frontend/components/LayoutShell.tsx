@@ -16,6 +16,7 @@ function LayoutShellWithParams({ children }: { children: ReactNode }) {
   const isDashboard = pathname?.startsWith('/dashboard')
   const isSettings = pathname === '/account' || pathname?.includes('/dashboard/') && pathname?.includes('/settings')
   const isEmbed = pathname?.startsWith('/embed')
+  const isDocs = pathname?.startsWith('/docs')
   const isLanding = pathname === '/'
 
   const [headerDark, setHeaderDark] = useState(false)
@@ -67,7 +68,7 @@ function LayoutShellWithParams({ children }: { children: ReactNode }) {
 
   return (
     <div className="v2-theme min-h-screen bg-white text-slate-900">
-      {!isOnboarding && !isDashboard && !isSettings && !isEmbed && (
+      {!isOnboarding && !isDashboard && !isSettings && !isEmbed && !isDocs && (
         <Header variant={isLanding ? (headerDark ? 'dark' : 'light') : undefined} />
       )}
 
@@ -77,6 +78,8 @@ function LayoutShellWithParams({ children }: { children: ReactNode }) {
             ? 'h-screen overflow-hidden p-0 max-w-none'
             : isEmbed
               ? 'min-h-screen p-0 max-w-none'
+              : isDocs
+                ? 'min-h-screen p-0 max-w-none'
               : isLanding
                 ? 'max-w-none p-0 pb-0'
                 : `mx-auto max-w-6xl px-4 pb-16 sm:px-5 lg:px-6 ${isOnboarding ? 'pt-8' : 'pt-10'}`
