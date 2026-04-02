@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
@@ -33,17 +34,15 @@ export default function Header({ variant }: { variant?: HeaderVariant }) {
       }`}
     >
       <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4 sm:px-5">
-        <Link href="/" className="flex items-center gap-2">
-          <div
-            className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${
-              isDark ? 'bg-white text-slate-900' : 'bg-[var(--v2-primary)] text-[var(--v2-primary-foreground)]'
-            }`}
-          >
-            <span className="text-sm font-semibold tracking-tight">CT</span>
-          </div>
-          <span className={`text-sm font-semibold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-            Conciara
-          </span>
+        <Link href="/" className="relative flex h-9 items-center">
+          <Image
+            src="/logo.png"
+            alt="Conciara"
+            width={160}
+            height={36}
+            className="h-9 w-auto max-h-9 object-contain object-left"
+            priority
+          />
         </Link>
 
         <nav className="hidden items-center gap-8 text-sm font-medium md:flex">
