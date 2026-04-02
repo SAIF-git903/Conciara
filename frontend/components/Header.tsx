@@ -1,8 +1,8 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { ConciaraLogo } from '@/components/branding/ConciaraLogo'
 import { useAuth } from '@/contexts/AuthContext'
 import { getSelectedWorkspaceId } from '@/lib/workspace-selection'
 import { buildDashboardUrl } from '@/lib/dashboard-url'
@@ -34,16 +34,7 @@ export default function Header({ variant }: { variant?: HeaderVariant }) {
       }`}
     >
       <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4 sm:px-5">
-        <Link href="/" className="relative flex h-9 items-center">
-          <Image
-            src="/logo.png"
-            alt="Conciara"
-            width={160}
-            height={36}
-            className="h-9 w-auto max-h-9 object-contain object-left"
-            priority
-          />
-        </Link>
+        <ConciaraLogo variant="dashboard" theme={isDark ? 'dark' : 'light'} />
 
         <nav className="hidden items-center gap-8 text-sm font-medium md:flex">
           <Link

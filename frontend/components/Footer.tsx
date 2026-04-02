@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Bot } from 'lucide-react'
+import { ConciaraLogo } from '@/components/branding/ConciaraLogo'
 
 const footerLinks = {
   Product: [
@@ -34,12 +34,7 @@ export default function Footer() {
       <div className="mx-auto w-full max-w-7xl px-4 py-14 sm:px-5 lg:py-16">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-6">
           <div className="sm:col-span-2">
-            <Link href="/" className="flex items-center gap-2">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--v2-primary)] text-[var(--v2-primary-foreground)]">
-                <Bot className="h-5 w-5" />
-              </div>
-              <span className="text-lg font-semibold text-white">Conciara</span>
-            </Link>
+            <ConciaraLogo variant="dashboard" theme="dark" className="[&_span]:text-lg [&_span]:font-semibold" />
             <p className="mt-4 max-w-xs text-sm text-slate-400">
               Build AI chatbots trained on your data. No code, no credit card to start.
             </p>

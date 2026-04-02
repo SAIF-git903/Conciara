@@ -23,6 +23,7 @@ import {
   Code2,
 } from 'lucide-react'
 import Footer from '@/components/Footer'
+import { ConciaraLogo } from '@/components/branding/ConciaraLogo'
 
 const CONTENT_PADDING = 'px-4 sm:px-5'
 const CONTENT_MAX = 'max-w-7xl mx-auto'
@@ -406,6 +407,14 @@ export default function LandingPage() {
         />
 
         <div className={`relative z-10 ${CONTENT_MAX} ${CONTENT_PADDING} py-24 text-center`}>
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, ease: smoothEase }}
+            className="mb-8 flex justify-center"
+          >
+            <ConciaraLogo variant="hero" theme="dark" href={null} />
+          </motion.div>
           <motion.p
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
