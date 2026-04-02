@@ -30,13 +30,34 @@ router.get('/health', (_req, res) => {
   res.json({ status: 'ok', message: 'Dialog Tree API is running' });
 });
 
+/**
+ * @swagger
+ * /api/models:
+ *   get:
+ *     summary: List supported LLM models
+ *     description: Returns available LLM models for agent configuration
+ *     tags: [Public]
+ *     responses:
+ *       200:
+ *         description: List of models
+ */
 router.get('/models', (_req, res) => {
   res.json({ models: SUPPORTED_LLM_MODELS.map((m) => ({ id: m.id, label: m.label })) });
 });
 
 const PLAN_DISPLAY_ORDER = ['free', 'hobby', 'standard', 'pro'];
 
-/** List all plans (for pricing page). Returns same structure as seed. Enterprise excluded for now. */
+/**
+ * @swagger
+ * /api/plans:
+ *   get:
+ *     summary: List subscription plans
+ *     description: Returns available plans for pricing page (enterprise excluded)
+ *     tags: [Public]
+ *     responses:
+ *       200:
+ *         description: List of plans
+ */
 router.get('/plans', async (_req, res) => {
   try {
     const rows = await prisma.plan.findMany({
@@ -65,6 +86,30 @@ router.get('/plans', async (_req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/public/widget-config:
+ *   get:
+ *     summary: Get widget config for embed
+ *     description: Public widget configuration by workspaceId and agentId (query params)
+ *     tags: [Public]
+ *     parameters:
+ *       - in: query
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Widget config
+ *       400:
+ *         description: workspaceId and agentId required
+ *       404:
+ *         description: Agent not found
+ */
 router.get('/public/widget-config', async (req, res) => {
   try {
     const workspaceId = parseInt(String(req.query.workspaceId ?? ''), 10);
@@ -86,6 +131,34 @@ router.get('/public/widget-config', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/public/workspaces/{workspaceId}/agents/{agentId}/chat/stream:
+ *   post:
+ *     summary: Public agent chat stream (embed)
+ *     description: Stream chat response for public embed (no auth)
+ *     tags: [Public]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               messages: { type: array, items: { type: object } }
+ *               sessionId: { type: string }
+ *     responses:
+ *       200:
+ *         description: SSE stream
+ */
 router.post('/public/workspaces/:workspaceId/agents/:agentId/chat/stream', publicChatRateLimiter, async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);

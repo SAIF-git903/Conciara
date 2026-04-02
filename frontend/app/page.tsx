@@ -356,7 +356,7 @@ function ProductVideo() {
 }
 
 const faqs = [
-  { q: 'Do I need to code to build a chatbot?', a: 'No. ConversaTree is fully no-code. You add your data, configure personality and behavior in the visual editor, and embed with a snippet or API.' },
+  { q: 'Do I need to code to build a chatbot?', a: 'No. Conciara is fully no-code. You add your data, configure personality and behavior in the visual editor, and embed with a snippet or API.' },
   { q: 'What kind of data can I train my bot on?', a: 'You can connect websites (we crawl and index), upload PDFs and documents, or add Q&A pairs manually. We support multiple data sources per chatbot.' },
   { q: 'Can I use this for ecommerce and support?', a: 'Yes. You can build different chatbot types—ecommerce (product recommendations, orders), customer support (tickets, handoff), or a custom knowledge-base bot.' },
   { q: 'Is there a free plan?', a: 'Yes. You can sign up for free with no credit card. Free tier includes a limited number of conversations and one chatbot so you can try the full experience.' },
@@ -467,7 +467,7 @@ export default function LandingPage() {
               <div className="relative bg-slate-800">
                 <Image
                   src="/hero-chat-widget.png"
-                  alt="ConversaTree chat widget — customize theme, components, and embed on your site"
+                  alt="Conciara chat widget — customize theme, components, and embed on your site"
                   width={1200}
                   height={720}
                   className="w-full object-contain object-top"
@@ -517,7 +517,7 @@ export default function LandingPage() {
       <FullBleed className="bg-slate-50 py-24">
         <SectionWrapper id="features">
           <motion.p variants={fadeInUp} custom={0} className="text-center text-sm font-semibold uppercase tracking-[0.2em] text-[var(--v2-primary)]">
-            Why ConversaTree
+            Why Conciara
           </motion.p>
           <motion.h2 variants={fadeInUp} custom={1} className="mt-2 text-center text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
             Everything you need to launch AI chatbots

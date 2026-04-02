@@ -28,6 +28,7 @@ import {
   LogOut,
   Loader2,
   X,
+  Zap,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Suspense } from 'react'
@@ -38,6 +39,12 @@ import { startNewAgentFlow } from '@/lib/onboarding'
 import { parseDashboardPath, buildDashboardUrl } from '@/lib/dashboard-url'
 import CreditUsageWidget from '@/components/CreditUsageWidget'
 import PermissionButton from '@/components/PermissionButton'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
 
 // Sidebar when on dashboard (Agents list). Members cannot access workspace settings or billing.
 const dashboardNavItemsOwner = [
@@ -78,6 +85,7 @@ const agentNavItems = [
   { href: '#', label: 'Analytics', Icon: BarChart3, children: ['Chats'] },
   { href: '#', label: 'Data sources', Icon: Database, children: ['Files', 'Q&A', 'Website'] },
   { href: '/dashboard/connected-apps', label: 'Connected Apps', Icon: Plug },
+  { href: '/dashboard/actions', label: 'Actions', Icon: Zap },
   { href: '/dashboard/settings/chatbot', label: 'Chat widget', Icon: Palette },
   { href: '#', label: 'Settings', Icon: Settings, children: ['General'] },
 ]
@@ -471,11 +479,11 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!parsed.workspaceId && pathname && pathname.startsWith('/dashboard/') && !pathname.includes('/new-agent')) {
       const rest = pathname.replace(/^\/dashboard\/?/, '').split('/')[0] ?? ''
-      const isOldAgentRoute = ['playground', 'settings', 'activity', 'analytics', 'data-sources', 'connected-apps'].includes(rest)
+      const isOldAgentRoute = ['playground', 'settings', 'activity', 'analytics', 'data-sources', 'connected-apps', 'actions'].includes(rest)
       if (isOldAgentRoute && currentWorkspace.id) {
         const agentId = agentIdFromUrl || currentAgent?.id
         if (agentId) {
-          const sub = pathname.includes('chatbot') ? 'settings/chatbot' : pathname.includes('chat-logs') ? 'activity/chat-logs' : pathname.includes('chats') ? 'analytics/chats' : pathname.includes('data-sources/files') ? 'data-sources/files' : pathname.includes('data-sources/qa') ? 'data-sources/qa' : pathname.includes('data-sources/website') ? 'data-sources/website' : pathname.includes('connected-apps') ? 'connected-apps' : 'playground'
+          const sub = pathname.includes('chatbot') ? 'settings/chatbot' : pathname.includes('chat-logs') ? 'activity/chat-logs' : pathname.includes('chats') ? 'analytics/chats' : pathname.includes('data-sources/files') ? 'data-sources/files' : pathname.includes('data-sources/qa') ? 'data-sources/qa' : pathname.includes('data-sources/website') ? 'data-sources/website' : pathname.includes('connected-apps') ? 'connected-apps' : pathname.includes('actions') ? 'actions' : 'playground'
           router.replace(buildDashboardUrl(currentWorkspace.id, { agentId, subPath: sub }))
         } else if (rest === 'playground') {
           const inWorkspace = agents.filter((a) => a.workspaceId === currentWorkspace.id)
@@ -629,10 +637,6 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     )
   }
 
-  const toggleExpanded = (label: string) => {
-    setExpanded((prev) => ({ ...prev, [label]: !prev[label] }))
-  }
-
   const filteredWorkspaces = workspaces.filter((w) =>
     w.name.toLowerCase().includes(workspaceSearch.toLowerCase())
   )
@@ -663,6 +667,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     if (item.href === '/dashboard') return dashboardBase
     if (item.href === '/dashboard/playground') return agentBase('playground')
     if (item.href === '/dashboard/connected-apps') return agentBase('connected-apps')
+    if (item.href === '/dashboard/actions') return agentBase('actions')
     if (item.href === '/dashboard/settings/chatbot') return agentBase('settings/chatbot')
     if (item.label === 'Usage' && currentWorkspace.id) return buildDashboardUrl(currentWorkspace.id, { subPath: 'usage' })
     if (item.href === '#') return item.href
@@ -935,37 +940,49 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                     (item as { children: string[] }).children.some(
                       (child) => pathname === getChildHrefForActive(item, child)
                     )
-                  const isExpanded =
-                    hasChildren && (expanded[item.label] || isChildRoute)
+                  const sectionValue = `nav-${item.label}`
+                  const isSectionOpen = Boolean(expanded[item.label] || isChildRoute)
 
-                  return (
-                    <div key={item.label} className="px-2">
-                      {hasChildren ? (
-                        <button
-                          type="button"
-                          onClick={() => toggleExpanded(item.label)}
-                          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
-                        >
-                          <item.Icon className="h-4 w-4 shrink-0" strokeWidth={2} />
-                          {item.label}
-                          <ChevronDown
-                            className={`ml-auto h-4 w-4 shrink-0 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                          />
-                        </button>
-                      ) : (
+                  if (!hasChildren) {
+                    return (
+                      <div key={item.label} className="px-2">
                         <Link
                           href={itemHref}
-                          className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition ${isActive
+                          className={`flex w-full min-w-0 items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition ${isActive
                             ? 'bg-slate-200 text-slate-900'
                             : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                             }`}
                         >
-                          <item.Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-slate-900' : 'text-slate-500'}`} strokeWidth={2} />
-                          {item.label}
+                          <span className="inline-flex h-4 w-5 shrink-0 items-center justify-center" aria-hidden>
+                            <item.Icon className={`h-4 w-4 ${isActive ? 'text-slate-900' : 'text-slate-500'}`} strokeWidth={2} />
+                          </span>
+                          <span className="min-w-0 flex-1 truncate">{item.label}</span>
                         </Link>
-                      )}
-                      {hasChildren && isExpanded && (
-                        <div className="ml-6 mt-1 space-y-0.5 border-l border-slate-200 pl-3">
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <Accordion
+                      key={item.label}
+                      type="single"
+                      collapsible
+                      value={isSectionOpen ? sectionValue : ''}
+                      onValueChange={(v) => {
+                        const nextOpen = v === sectionValue
+                        if (isChildRoute && !nextOpen) return
+                        setExpanded((prev) => ({ ...prev, [item.label]: nextOpen }))
+                      }}
+                    >
+                      <AccordionItem value={sectionValue} className="w-full border-0 px-2">
+                        <AccordionTrigger className="w-full min-w-0 gap-3 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 hover:no-underline [&[data-state=open]]:bg-slate-100/80">
+                          <span className="inline-flex h-4 w-5 shrink-0 items-center justify-center" aria-hidden>
+                            <item.Icon className="h-4 w-4 shrink-0" strokeWidth={2} />
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
+                          <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                        </AccordionTrigger>
+                        <AccordionContent className="ml-6 mt-1 space-y-0.5 border-l border-slate-200 pl-3">
                           {(item as { children: string[] }).children.map((child) => {
                             const childHref = getNavHref(item, child)
                             const isChildActive = pathname === getChildHrefForActive(item, child)
@@ -982,9 +999,9 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                               </Link>
                             )
                           })}
-                        </div>
-                      )}
-                    </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
                   )
                 })}
               </nav>

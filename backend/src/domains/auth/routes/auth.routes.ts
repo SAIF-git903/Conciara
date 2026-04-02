@@ -224,8 +224,20 @@ router.post('/login', async (req, res) => {
 });
 
 /**
- * POST /api/auth/forgot-password
- * Body: { email }. Sends a password reset link to the user's email if the account exists.
+ * @swagger
+ * /api/auth/forgot-password:
+ *   post:
+ *     summary: Request password reset email
+ *     tags: [Authentication]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { email: { type: string } }
+ *             required: [email]
+ *     responses:
+ *       200: { description: If account exists, reset link sent }
  */
 router.post('/forgot-password', async (req, res) => {
   try {
@@ -251,8 +263,20 @@ router.post('/forgot-password', async (req, res) => {
 });
 
 /**
- * POST /api/auth/reset-password
- * Body: { token, newPassword }. Sets a new password using a valid reset token.
+ * @swagger
+ * /api/auth/reset-password:
+ *   post:
+ *     summary: Reset password with token
+ *     tags: [Authentication]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { token: { type: string }, newPassword: { type: string } }
+ *             required: [token, newPassword]
+ *     responses:
+ *       200: { description: Password reset }
  */
 router.post('/reset-password', async (req, res) => {
   try {
@@ -287,8 +311,18 @@ router.post('/reset-password', async (req, res) => {
 });
 
 /**
- * GET /api/auth/invite/validate?token=...
- * Validate a workspace invite token. Returns { email, workspaceName, valid } if valid and not expired.
+ * @swagger
+ * /api/auth/invite/validate:
+ *   get:
+ *     summary: Validate workspace invite token
+ *     tags: [Authentication]
+ *     parameters:
+ *       - in: query
+ *         name: token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: email, workspaceName, valid }
  */
 router.get('/invite/validate', async (req, res) => {
   try {
@@ -306,9 +340,20 @@ router.get('/invite/validate', async (req, res) => {
 });
 
 /**
- * POST /api/auth/invite/accept
- * Accept a workspace invite: create account and join workspace. Body: { token, password, fullName? }.
- * Returns same shape as signup (token, refreshToken, user with workspaces).
+ * @swagger
+ * /api/auth/invite/accept:
+ *   post:
+ *     summary: Accept workspace invite (create account and join)
+ *     tags: [Authentication]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { token: { type: string }, password: { type: string }, fullName: { type: string } }
+ *             required: [token, password]
+ *     responses:
+ *       201: { description: token, refreshToken, user }
  */
 router.post('/invite/accept', async (req, res) => {
   try {
@@ -374,8 +419,20 @@ router.post('/invite/accept', async (req, res) => {
 });
 
 /**
- * POST /api/auth/signup - Public self-registration (for v2 UI).
- * Creates user as owner with no workspace; user must create one via onboarding.
+ * @swagger
+ * /api/auth/signup:
+ *   post:
+ *     summary: Public self-registration
+ *     tags: [Authentication]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { email: { type: string }, password: { type: string }, fullName: { type: string } }
+ *             required: [email, password]
+ *     responses:
+ *       201: { description: token, refreshToken, user }
  */
 router.post('/signup', async (req, res) => {
   try {
@@ -448,8 +505,14 @@ router.post('/signup', async (req, res) => {
 
 // ---------- Sign in with Google ----------
 /**
- * GET /api/auth/google
- * Redirects to Google OAuth consent. Call from frontend via window.location.
+ * @swagger
+ * /api/auth/google:
+ *   get:
+ *     summary: Redirect to Google OAuth
+ *     tags: [Authentication]
+ *     responses:
+ *       302: { description: Redirect to Google consent }
+ *       503: { description: Google sign-in not configured }
  */
 router.get('/google', (req, res) => {
   if (!GOOGLE_CLIENT_ID || !GOOGLE_REDIRECT_URI) {
@@ -469,9 +532,20 @@ router.get('/google', (req, res) => {
 });
 
 /**
- * GET /api/auth/google/callback
- * Google redirects here with ?code=...&state=... . Exchanges code for tokens, gets user info,
- * finds or creates user, then redirects to frontend with a one-time code.
+ * @swagger
+ * /api/auth/google/callback:
+ *   get:
+ *     summary: Google OAuth callback (redirect)
+ *     tags: [Authentication]
+ *     parameters:
+ *       - in: query
+ *         name: code
+ *         schema: { type: string }
+ *       - in: query
+ *         name: state
+ *         schema: { type: string }
+ *     responses:
+ *       302: { description: Redirect to frontend with code }
  */
 router.get('/google/callback', async (req, res) => {
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
@@ -574,8 +648,20 @@ router.get('/google/callback', async (req, res) => {
 });
 
 /**
- * POST /api/auth/google/complete
- * Body: { code }. Exchanges the one-time code from the redirect for token, refreshToken, user.
+ * @swagger
+ * /api/auth/google/complete:
+ *   post:
+ *     summary: Exchange one-time code for tokens (after Google redirect)
+ *     tags: [Authentication]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { code: { type: string } }
+ *             required: [code]
+ *     responses:
+ *       200: { description: token, refreshToken, user }
  */
 router.post('/google/complete', (req, res) => {
   const { code } = req.body || {};
@@ -597,8 +683,13 @@ router.post('/google/complete', (req, res) => {
 
 // ---------- Sign in with Apple ----------
 /**
- * GET /api/auth/apple
- * Redirects to Apple OAuth consent. Call from frontend via window.location.
+ * @swagger
+ * /api/auth/apple:
+ *   get:
+ *     summary: Redirect to Apple OAuth
+ *     tags: [Authentication]
+ *     responses:
+ *       302: { description: Redirect to Apple consent }
  */
 router.get('/apple', (req, res) => {
   if (!APPLE_CLIENT_ID || !APPLE_REDIRECT_URI) {
@@ -616,15 +707,33 @@ router.get('/apple', (req, res) => {
   res.redirect(302, `https://appleid.apple.com/auth/authorize?${params.toString()}`);
 });
 
-/** GET /apple/callback - Apple uses POST (form_post); redirect if hit via GET */
+/**
+ * @swagger
+ * /api/auth/apple/callback:
+ *   get:
+ *     summary: Apple callback GET (Apple uses POST; redirect if GET)
+ *     tags: [Authentication]
+ *     responses:
+ *       302: { description: Redirect to signin }
+ */
 router.get('/apple/callback', (_req, res) => {
   res.redirect(302, `${FRONTEND_URL}/signin?error=missing_code`);
 });
 
 /**
- * POST /api/auth/apple/callback
- * Apple POSTs here (response_mode=form_post) with code, id_token, user (optional), state, etc.
- * Exchanges code for tokens, verifies id_token, finds or creates user, redirects to frontend with one-time code.
+ * @swagger
+ * /api/auth/apple/callback:
+ *   post:
+ *     summary: Apple OAuth callback (form_post)
+ *     tags: [Authentication]
+ *     requestBody:
+ *       content:
+ *         application/x-www-form-urlencoded:
+ *           schema:
+ *             type: object
+ *             properties: { code: { type: string }, state: { type: string }, user: { type: string } }
+ *     responses:
+ *       302: { description: Redirect to frontend with code }
  */
 router.post('/apple/callback', async (req, res) => {
   if (!APPLE_CLIENT_ID || !APPLE_REDIRECT_URI || !APPLE_TEAM_ID || !APPLE_KEY_ID || !APPLE_PRIVATE_KEY) {
@@ -750,8 +859,20 @@ router.post('/apple/callback', async (req, res) => {
 });
 
 /**
- * POST /api/auth/apple/complete
- * Body: { code }. Exchanges the one-time code from the redirect for token, refreshToken, user.
+ * @swagger
+ * /api/auth/apple/complete:
+ *   post:
+ *     summary: Exchange one-time code for tokens (after Apple redirect)
+ *     tags: [Authentication]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { code: { type: string } }
+ *             required: [code]
+ *     responses:
+ *       200: { description: token, refreshToken, user }
  */
 router.post('/apple/complete', (req, res) => {
   const { code } = req.body || {};

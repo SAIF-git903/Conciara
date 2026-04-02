@@ -27,6 +27,25 @@ const crawlTrainingProgress = new Map<
   { trainedSizeBytesSoFar: number; trainedLinksSoFar: number; totalLinks: number }
 >();
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/crawl-stats:
+ *   get:
+ *     summary: Get crawl training stats
+ *     tags: [Crawl Training]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: linkCount, trainedSizeBytes, hasUnappliedChanges, etc. }
+ */
 router.get('/:workspaceId/agents/:agentId/crawl-stats', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -82,6 +101,25 @@ router.get('/:workspaceId/agents/:agentId/crawl-stats', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/train-from-crawls:
+ *   post:
+ *     summary: Train agent from crawl content
+ *     tags: [Crawl Training]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Training started (SSE progress) }
+ */
 router.post('/:workspaceId/agents/:agentId/train-from-crawls', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);

@@ -17,6 +17,24 @@ import { prisma } from '../../../db/prisma.js';
 
 const router = express.Router();
 
+/**
+ * @swagger
+ * /api/workspaces:
+ *   post:
+ *     summary: Create workspace
+ *     tags: [Workspaces]
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { name: { type: string }, slug: { type: string } }
+ *             required: [name]
+ *     responses:
+ *       201: { description: Workspace created }
+ *       400: { description: Workspace name required }
+ */
 router.post('/', async (req, res) => {
   try {
     const userId = req.user?.id;
@@ -35,6 +53,24 @@ router.post('/', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}:
+ *   patch:
+ *     summary: Update workspace
+ *     tags: [Workspaces]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters: [{ in: path, name: workspaceId, required: true, schema: { type: integer } }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { name: { type: string } }
+ *     responses:
+ *       200: { description: Workspace updated }
+ *       403: { description: Only owner can update }
+ */
 router.patch('/:workspaceId', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -59,6 +95,18 @@ router.patch('/:workspaceId', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}:
+ *   delete:
+ *     summary: Delete workspace
+ *     tags: [Workspaces]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters: [{ in: path, name: workspaceId, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200: { description: Workspace deleted }
+ *       403: { description: Only owner can delete }
+ */
 router.delete('/:workspaceId', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -82,6 +130,18 @@ router.delete('/:workspaceId', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/leave:
+ *   post:
+ *     summary: Leave workspace
+ *     tags: [Workspaces]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters: [{ in: path, name: workspaceId, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200: { description: Left workspace }
+ *       400: { description: Owners cannot leave }
+ */
 router.post('/:workspaceId/leave', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -105,6 +165,24 @@ router.post('/:workspaceId/leave', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/generate-preprompt:
+ *   get:
+ *     summary: Generate pre-prompt from crawl content
+ *     tags: [Workspaces]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: agentName
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Pre-prompt text }
+ */
 router.get('/:workspaceId/generate-preprompt', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);

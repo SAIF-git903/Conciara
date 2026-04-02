@@ -14,6 +14,31 @@ import {
 
 const router = express.Router();
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/analytics/chats:
+ *   get:
+ *     summary: Get chat analytics
+ *     tags: [Chat Logs]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: start
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: end
+ *         schema: { type: string, format: date }
+ *     responses:
+ *       200: { description: Analytics data }
+ */
 router.get('/:workspaceId/agents/:agentId/analytics/chats', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -48,6 +73,34 @@ router.get('/:workspaceId/agents/:agentId/analytics/chats', async (req, res) => 
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/chat-logs:
+ *   get:
+ *     summary: List chat sessions
+ *     tags: [Chat Logs]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: offset
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: { sessions } }
+ */
 router.get('/:workspaceId/agents/:agentId/chat-logs', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -88,6 +141,29 @@ router.get('/:workspaceId/agents/:agentId/chat-logs', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/chat-logs/{sessionId}:
+ *   get:
+ *     summary: Get chat session messages
+ *     tags: [Chat Logs]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: { messages } }
+ */
 router.get('/:workspaceId/agents/:agentId/chat-logs/:sessionId', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);

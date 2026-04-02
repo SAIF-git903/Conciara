@@ -42,28 +42,28 @@ export default function Header({ variant }: { variant?: HeaderVariant }) {
             <span className="text-sm font-semibold tracking-tight">CT</span>
           </div>
           <span className={`text-sm font-semibold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-            ConversaTree
+            Conciara
           </span>
         </Link>
 
         <nav className="hidden items-center gap-8 text-sm font-medium md:flex">
           <Link
-            href="/#features"
-            className={`transition-colors ${isDark ? 'text-slate-300 hover:text-white' : 'text-slate-600 hover:text-slate-900'}`}
-          >
-            Solutions
-          </Link>
-          <Link
-            href="/#integrations"
-            className={`transition-colors ${isDark ? 'text-slate-300 hover:text-white' : 'text-slate-600 hover:text-slate-900'}`}
-          >
-            Resources
-          </Link>
-          <Link
             href="/pricing"
             className={`transition-colors ${isDark ? 'text-slate-300 hover:text-white' : 'text-slate-600 hover:text-slate-900'}`}
           >
             Pricing
+          </Link>
+          <Link
+            href="/docs"
+            className={`transition-colors ${isDark ? 'text-slate-300 hover:text-white' : 'text-slate-600 hover:text-slate-900'}`}
+          >
+            Docs
+          </Link>
+          <Link
+            href="/contact-us"
+            className={`transition-colors ${isDark ? 'text-slate-300 hover:text-white' : 'text-slate-600 hover:text-slate-900'}`}
+          >
+            Contact Us
           </Link>
         </nav>
 

@@ -29,7 +29,17 @@ async function requireWorkspaceAccess(req: express.Request, res: express.Respons
   next();
 }
 
-/** GET /api/workspaces/:workspaceId/api-keys */
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/api-keys:
+ *   get:
+ *     summary: List workspace API keys
+ *     tags: [Workspace API Keys]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters: [{ in: path, name: workspaceId, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200: { description: List of API keys }
+ */
 router.get('/:workspaceId/api-keys', requireWorkspaceAccess, async (req, res) => {
   try {
     const workspaceId = (req as express.Request & { workspaceId: number }).workspaceId;
@@ -41,7 +51,24 @@ router.get('/:workspaceId/api-keys', requireWorkspaceAccess, async (req, res) =>
   }
 });
 
-/** POST /api/workspaces/:workspaceId/api-keys */
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/api-keys:
+ *   post:
+ *     summary: Create workspace API key (plan-gated)
+ *     tags: [Workspace API Keys]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters: [{ in: path, name: workspaceId, required: true, schema: { type: integer } }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { name: { type: string } }
+ *     responses:
+ *       201: { description: key (shown once), keyPrefix, id }
+ *       403: { description: API access not in plan }
+ */
 router.post('/:workspaceId/api-keys', requirePermission({ feature: 'apiAccess', requireOwner: true }), async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -76,7 +103,26 @@ router.post('/:workspaceId/api-keys', requirePermission({ feature: 'apiAccess', 
   }
 });
 
-/** DELETE /api/workspaces/:workspaceId/api-keys/:keyId */
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/api-keys/{keyId}:
+ *   delete:
+ *     summary: Revoke workspace API key
+ *     tags: [Workspace API Keys]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: keyId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: API key revoked }
+ *       404: { description: API key not found }
+ */
 router.delete('/:workspaceId/api-keys/:keyId', requireWorkspaceAccess, async (req, res) => {
   try {
     const workspaceId = (req as express.Request & { workspaceId: number }).workspaceId;

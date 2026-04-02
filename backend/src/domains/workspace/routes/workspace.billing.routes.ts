@@ -15,6 +15,17 @@ const PADDLE_API_BASE =
 
 const router = express.Router();
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/subscription:
+ *   get:
+ *     summary: Get workspace subscription
+ *     tags: [Billing]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters: [{ in: path, name: workspaceId, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200: { description: subscription or null }
+ */
 router.get('/:workspaceId/subscription', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -51,6 +62,17 @@ router.get('/:workspaceId/subscription', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/billing-history:
+ *   get:
+ *     summary: Get billing history
+ *     tags: [Billing]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters: [{ in: path, name: workspaceId, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200: { description: transactions array }
+ */
 router.get('/:workspaceId/billing-history', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -82,7 +104,26 @@ router.get('/:workspaceId/billing-history', async (req, res) => {
   }
 });
 
-/** Get a temporary invoice PDF URL for a transaction (Paddle API). Link expires in 1 hour. */
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/invoice/{paddleTransactionId}:
+ *   get:
+ *     summary: Get temporary invoice PDF URL
+ *     tags: [Billing]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: paddleTransactionId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: { url } }
+ *       404: { description: Transaction not found }
+ */
 router.get('/:workspaceId/invoice/:paddleTransactionId', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -129,7 +170,26 @@ router.get('/:workspaceId/invoice/:paddleTransactionId', async (req, res) => {
   }
 });
 
-// Store checkout context for hosted checkout (temporary storage for webhook resolution)
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/checkout-context:
+ *   post:
+ *     summary: Store checkout context for Paddle hosted checkout
+ *     tags: [Billing]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters: [{ in: path, name: workspaceId, required: true, schema: { type: integer } }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               priceId: { type: string }
+ *               successUrl: { type: string }
+ *               cancelUrl: { type: string }
+ *     responses:
+ *       200: { description: Checkout context stored }
+ */
 router.post('/:workspaceId/checkout-context', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);

@@ -95,7 +95,7 @@ function EmbedChatContent() {
         })
         if (res.status === 401) {
           setAuthError(true)
-          return 'Chat is not available for public embed. The site owner can enable it in ConversaTree settings.'
+          return 'Chat is not available for public embed. The site owner can enable it in Conciara settings.'
         }
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
@@ -187,7 +187,7 @@ function EmbedChatContent() {
           onMessage={handleMessage}
           onEmbedClose={() => {
             if (typeof window !== 'undefined' && window.parent !== window) {
-              window.parent.postMessage({ type: 'conversatree-embed-close' }, '*')
+              window.parent.postMessage({ type: 'conciara-embed-close' }, '*')
             }
           }}
         />

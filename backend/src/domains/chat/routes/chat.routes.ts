@@ -1,12 +1,13 @@
 /**
  * Agent chat (message + stream) and exports for public embed / Slack.
  * Mounted under /api/workspaces (via agents aggregator).
+ * When the agent has Custom API actions, uses tool calling and executes them before replying.
  */
 
 import express from 'express';
 import { canManageAgent } from '../../agents/agent.service.js';
 import { prisma } from '../../../db/prisma.js';
-import { chatCompletion, chatCompletionStream } from '../../../shared/llm.service.js';
+import { chatCompletion, chatCompletionStream, chatCompletionWithTools } from '../../../shared/llm.service.js';
 import { retrieveChunks } from '../../training/services/rag.service.js';
 import { retrieveQa, recordQaUsage } from '../../qa/qa.service.js';
 import { createOrGetSession, appendMessage } from '../services/chatLog.service.js';
@@ -19,6 +20,99 @@ import { buildAgentChatSystemContent } from '../chatHelpers.js';
 import { getRemainingCredits, deductCredits } from '../../billing/credits.service.js';
 import { getCreditsForModel } from '../../billing/model-credits.js';
 import { emitCreditsUpdated } from '../../../socket/index.js';
+import { getEnabledCustomApiActions } from '../../agents/actions.service.js';
+import {
+  buildToolsFromCustomApiActions,
+  executeCustomApiAction,
+  actionIdFromToolName,
+} from '../../agents/chatTools.js';
+
+const MAX_TOOL_ROUNDS = 5;
+
+type ChatMessage =
+  | { role: 'user' | 'assistant'; content: string }
+  | { role: 'assistant'; content: string | null; toolCalls?: { id: string; name: string; arguments: string }[] }
+  | { role: 'tool'; content: string; toolCallId: string };
+
+/**
+ * Run chat with optional Custom API tools: loop until we get a text reply or hit max rounds.
+ */
+async function runChatWithTools(
+  agentId: number,
+  modelId: string,
+  systemContent: string,
+  historyList: { role: 'user' | 'assistant'; content: string }[],
+  userMessage: string
+): Promise<string> {
+  const actions = await getEnabledCustomApiActions(agentId);
+  if (actions.length === 0) {
+    return chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
+      maxTokens: 1024,
+      temperature: 0.7,
+    });
+  }
+  const tools = buildToolsFromCustomApiActions(actions);
+  const toolList = tools.map((t) => ({
+    type: 'function' as const,
+    function: {
+      name: t.function.name,
+      description: t.function.description,
+      parameters: t.function.parameters as Record<string, unknown>,
+    },
+  }));
+
+  let messages: ChatMessage[] = [...historyList, { role: 'user', content: userMessage }];
+  let lastContent: string | null = null;
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const result = await chatCompletionWithTools(
+      modelId,
+      systemContent,
+      messages,
+      toolList.length > 0 ? toolList : [],
+      { maxTokens: 1024, temperature: 0.7 }
+    );
+
+    if (result.content !== null) {
+      lastContent = result.content;
+      break;
+    }
+
+    if (!result.toolCalls?.length) break;
+
+    const assistantContent = round === 0 ? '' : (lastContent ?? '');
+    messages.push({
+      role: 'assistant',
+      content: assistantContent,
+      toolCalls: result.toolCalls,
+    });
+
+    for (const tc of result.toolCalls) {
+      const actionId = actionIdFromToolName(tc.name);
+      let toolResult: string;
+      if (actionId === null) {
+        toolResult = JSON.stringify({ error: 'Unknown tool.' });
+      } else {
+        try {
+          let args: { inputs?: Record<string, unknown> } = {};
+          try {
+            args = JSON.parse(tc.arguments || '{}');
+          } catch {
+            args = {};
+          }
+          toolResult = await executeCustomApiAction(agentId, actionId, args);
+        } catch (err: unknown) {
+          toolResult = JSON.stringify({
+            error: err instanceof Error ? err.message : 'Tool execution failed',
+          });
+        }
+      }
+      messages.push({ role: 'tool', content: toolResult, toolCallId: tc.id });
+    }
+  }
+
+  return lastContent?.trim() ?? "I couldn't complete that. Please try again.";
+}
 
 const router = express.Router();
 
@@ -104,14 +198,26 @@ export async function runAgentChatStream(
 
   let fullReply = '';
   try {
-    for await (const chunk of chatCompletionStream(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
-      maxTokens: 1024,
-      temperature: 0.7,
-    })) {
-      fullReply += chunk;
-      res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
-      if (typeof (res as any).flush === 'function') (res as any).flush();
+    const customApiActions = await getEnabledCustomApiActions(agentId);
+    const useTools = customApiActions.length > 0;
+
+    if (useTools) {
+      fullReply = await runChatWithTools(agentId, modelId, systemContent, historyList, userMessage);
+      if (fullReply) {
+        res.write(`data: ${JSON.stringify({ content: fullReply })}\n\n`);
+        if (typeof (res as any).flush === 'function') (res as any).flush();
+      }
+    } else {
+      for await (const chunk of chatCompletionStream(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
+        maxTokens: 1024,
+        temperature: 0.7,
+      })) {
+        fullReply += chunk;
+        res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
+        if (typeof (res as any).flush === 'function') (res as any).flush();
+      }
     }
+
     const replyText = fullReply.trim();
     const deducted = await deductCredits(workspaceId, creditCost);
     const creditsUsed = deducted ? creditCost : 0;
@@ -198,10 +304,14 @@ export async function getAgentReply(
     throw new Error('Message credits exhausted. Please upgrade your plan or add credits.');
   }
 
-  const reply = await chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
-    maxTokens: 1024,
-    temperature: 0.7,
-  });
+  const customApiActions = await getEnabledCustomApiActions(agentId);
+  const reply =
+    customApiActions.length > 0
+      ? await runChatWithTools(agentId, modelId, systemContent, historyList, userMessage)
+      : await chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
+          maxTokens: 1024,
+          temperature: 0.7,
+        });
 
   if (!isConversational && qaMatches.length > 0) {
     await recordQaUsage(qaMatches.map((q) => q.id)).catch((err) => console.error('Record Q&A usage:', err));
@@ -217,6 +327,32 @@ export async function getAgentReply(
   return reply;
 }
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/chat:
+ *   post:
+ *     summary: Send chat message (authenticated)
+ *     tags: [Chat]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { message: { type: string }, history: { type: array }, sessionId: { type: string } }
+ *             required: [message]
+ *     responses:
+ *       200: { description: { message, sessionId } }
+ */
 router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -285,10 +421,15 @@ router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
     });
 
     const modelId = agent.model || 'gpt-4o-mini';
-    const reply = await chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
-      maxTokens: 1024,
-      temperature: 0.7,
-    });
+
+    const customApiActions = await getEnabledCustomApiActions(agentId);
+    const reply =
+      customApiActions.length > 0
+        ? await runChatWithTools(agentId, modelId, systemContent, historyList, userMessage)
+        : await chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
+            maxTokens: 1024,
+            temperature: 0.7,
+          });
 
     if (!isConversational && qaMatches.length > 0) {
       await recordQaUsage(qaMatches.map((q) => q.id)).catch((err) => console.error('Record Q&A usage:', err));
@@ -305,6 +446,32 @@ router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/chat/stream:
+ *   post:
+ *     summary: Send chat message with SSE stream (authenticated)
+ *     tags: [Chat]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { message: { type: string }, history: { type: array }, sessionId: { type: string } }
+ *             required: [message]
+ *     responses:
+ *       200: { description: SSE stream }
+ */
 router.post('/:workspaceId/agents/:agentId/chat/stream', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);

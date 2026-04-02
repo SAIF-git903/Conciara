@@ -10,6 +10,17 @@ import { getWorkspaceMember } from '../workspace.service.js';
 
 const router = express.Router();
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/usage:
+ *   get:
+ *     summary: Get usage and per-agent breakdown
+ *     tags: [Usage]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters: [{ in: path, name: workspaceId, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200: { description: includedCredits, usedCredits, remaining, perAgent }
+ */
 router.get('/:workspaceId/usage', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);

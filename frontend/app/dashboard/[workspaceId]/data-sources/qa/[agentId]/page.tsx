@@ -1,23 +1,10 @@
 'use client'
 
-import { useState, useRef, useCallback, useEffect } from 'react'
-import {
-  HelpCircle,
-  Pencil,
-  Trash2,
-  Bold,
-  Italic,
-  Underline,
-  Link,
-  List,
-  ListOrdered,
-  Code,
-  Quote,
-  BarChart3,
-  X,
-} from 'lucide-react'
+import { useState, useCallback, useEffect } from 'react'
+import { LuCircleHelp, LuPencil, LuTrash2, LuChartColumn, LuX } from 'react-icons/lu'
 import { useDashboard } from '@/contexts/DashboardContext'
 import api from '@/lib/api'
+import QaAnswerEditor from '@/components/QaAnswerEditor'
 
 type QAPair = {
   id: number
@@ -32,29 +19,6 @@ type QAPair = {
 }
 
 type UsageDay = { date: string; count: number }
-
-const MARKDOWN_ACTIONS: { icon: typeof Bold; wrap: [string, string]; label: string }[] = [
-  { icon: Bold, wrap: ['**', '**'], label: 'Bold' },
-  { icon: Italic, wrap: ['*', '*'], label: 'Italic' },
-  { icon: Underline, wrap: ['<u>', '</u>'], label: 'Underline' },
-  { icon: Link, wrap: ['[', '](url)'], label: 'Link' },
-  { icon: List, wrap: ['\n- ', ''], label: 'Bullet list' },
-  { icon: ListOrdered, wrap: ['\n1. ', ''], label: 'Numbered list' },
-  { icon: Code, wrap: ['`', '`'], label: 'Code' },
-  { icon: Quote, wrap: ['\n> ', ''], label: 'Quote' },
-]
-
-function insertAtCursor(textarea: HTMLTextAreaElement, before: string, after: string) {
-  const start = textarea.selectionStart
-  const end = textarea.selectionEnd
-  const value = textarea.value
-  const selected = value.slice(start, end)
-  const newValue = value.slice(0, start) + before + selected + after + value.slice(end)
-  textarea.value = newValue
-  textarea.focus()
-  textarea.setSelectionRange(start + before.length, end + before.length)
-  return newValue
-}
 
 function formatLastAsked(iso: string | null): string {
   if (!iso) return 'Never'
@@ -82,7 +46,8 @@ export default function DataSourcesQAPage() {
   const [usageLoading, setUsageLoading] = useState(false)
   const [usageError, setUsageError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const answerRef = useRef<HTMLTextAreaElement>(null)
+  /** Bumps when the “new answer” editor should remount (clear / after save). */
+  const [answerEditorNonce, setAnswerEditorNonce] = useState(0)
 
   const workspaceId = currentWorkspace?.id
   const agentId = currentAgent?.id
@@ -150,6 +115,7 @@ export default function DataSourcesQAPage() {
       await api.post(`/workspaces/${workspaceId}/agents/${agentId}/qa`, { question: q, answer: a })
       setQuestion('')
       setAnswer('')
+      setAnswerEditorNonce((n) => n + 1)
       await fetchQa()
     } catch (e: unknown) {
       const msg = e && typeof e === 'object' && 'response' in e && (e as { response?: { data?: { error?: unknown } } }).response?.data?.error
@@ -194,13 +160,6 @@ export default function DataSourcesQAPage() {
       const msg = e && typeof e === 'object' && 'response' in e && (e as { response?: { data?: { error?: unknown } } }).response?.data?.error
       setError(typeof msg === 'string' ? msg : (e instanceof Error ? e.message : 'Failed to delete'))
     }
-  }
-
-  const handleFormat = (before: string, after: string) => {
-    const el = answerRef.current
-    if (!el) return
-    const newValue = insertAtCursor(el, before, after)
-    setAnswer(newValue)
   }
 
   const hasData = pairs.length > 0
@@ -251,38 +210,26 @@ export default function DataSourcesQAPage() {
                   <label htmlFor="qa-answer" className="block text-sm font-medium text-slate-700">
                     Answer
                   </label>
-                  <span className="text-xs text-slate-500">Markdown supported</span>
+                  <span className="text-xs text-slate-500">Rich text · stored as Markdown</span>
                 </div>
-                <div className="mt-1.5 rounded-lg border border-slate-200 bg-white focus-within:border-[var(--v2-primary)] focus-within:ring-1 focus-within:ring-[var(--v2-primary)]">
-                  <div className="flex flex-wrap gap-0.5 border-b border-slate-100 bg-slate-50/80 px-2 py-1.5">
-                    {MARKDOWN_ACTIONS.map(({ icon: Icon, wrap, label }) => (
-                      <button
-                        key={label}
-                        type="button"
-                        onClick={() => handleFormat(wrap[0], wrap[1])}
-                        className="rounded p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
-                        title={label}
-                        aria-label={label}
-                      >
-                        <Icon className="h-4 w-4" />
-                      </button>
-                    ))}
-                  </div>
-                  <textarea
-                    id="qa-answer"
-                    ref={answerRef}
+                <div className="mt-1.5" id="qa-answer">
+                  <QaAnswerEditor
+                    instanceKey={`create-${answerEditorNonce}`}
                     value={answer}
-                    onChange={(e) => setAnswer(e.target.value)}
+                    onChange={setAnswer}
                     placeholder="e.g. We're open Monday to Friday, 9am to 5pm EST."
-                    rows={5}
-                    className="w-full resize-y rounded-b-lg border-0 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-0"
+                    disabled={saving}
                   />
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-1">
                 <button
                   type="button"
-                  onClick={() => { setQuestion(''); setAnswer('') }}
+                  onClick={() => {
+                    setQuestion('')
+                    setAnswer('')
+                    setAnswerEditorNonce((n) => n + 1)
+                  }}
                   className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
                 >
                   Cancel
@@ -311,7 +258,7 @@ export default function DataSourcesQAPage() {
               <div className="mt-4 py-8 text-center text-sm text-slate-500">Loading…</div>
             ) : !hasData ? (
               <div className="mt-4 flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 py-12 text-center">
-                <HelpCircle className="h-10 w-10 text-slate-300" />
+                <LuCircleHelp className="h-10 w-10 text-slate-300" />
                 <p className="mt-3 text-sm text-slate-500">No Q&A pairs yet. Add one above.</p>
               </div>
             ) : (
@@ -336,7 +283,7 @@ export default function DataSourcesQAPage() {
                             onClick={() => setUsageQaId(usageQaId === pair.id ? null : pair.id)}
                             className="inline-flex items-center gap-1 font-medium text-[var(--v2-primary)] hover:underline"
                           >
-                            <BarChart3 className="h-3.5 w-3.5" />
+                            <LuChartColumn className="h-3.5 w-3.5" />
                             Usage
                           </button>
                         </div>
@@ -383,7 +330,7 @@ export default function DataSourcesQAPage() {
                           className="rounded p-2 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
                           aria-label="Edit"
                         >
-                          <Pencil className="h-4 w-4" />
+                          <LuPencil className="h-4 w-4" />
                         </button>
                         <button
                           type="button"
@@ -391,7 +338,7 @@ export default function DataSourcesQAPage() {
                           className="rounded p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"
                           aria-label="Delete"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <LuTrash2 className="h-4 w-4" />
                         </button>
                       </div>
                     </div>
@@ -413,7 +360,7 @@ export default function DataSourcesQAPage() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-slate-900">Edit Q&A</h3>
               <button type="button" onClick={() => setEditing(null)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label="Close">
-                <X className="h-5 w-5" />
+                <LuX className="h-5 w-5" />
               </button>
             </div>
             <div className="space-y-4">
@@ -428,12 +375,15 @@ export default function DataSourcesQAPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700">Answer</label>
-                <textarea
-                  value={editAnswer}
-                  onChange={(e) => setEditAnswer(e.target.value)}
-                  rows={4}
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
+                <div className="mt-1">
+                  <QaAnswerEditor
+                    instanceKey={`edit-${editing.id}`}
+                    value={editAnswer}
+                    onChange={setEditAnswer}
+                    placeholder="Answer…"
+                    disabled={saving}
+                  />
+                </div>
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setEditing(null)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">

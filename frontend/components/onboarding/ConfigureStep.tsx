@@ -38,7 +38,7 @@ export interface ConfigureStepProps {
 export default function ConfigureStep({ nextPath, router, onForbidden }: ConfigureStepProps) {
   const { user } = useAuth()
   const workspaceId = getOnboardingWorkspaceId()
-  const [name, setName] = useState('ConversaTree')
+  const [name, setName] = useState('Conciara')
   const [logoUrl, setLogoUrl] = useState('')
   const [crawlLoading, setCrawlLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -103,7 +103,7 @@ export default function ConfigureStep({ nextPath, router, onForbidden }: Configu
   const handleSaveAndContinue = (e: React.MouseEvent) => {
     e.preventDefault()
     if (workspaceId == null) return
-    setOnboardingAgentName(name.trim() || 'ConversaTree')
+    setOnboardingAgentName(name.trim() || 'Conciara')
     setOnboardingAgentLogoUrl(logoUrl || '')
     router.push(nextPath)
   }
@@ -182,7 +182,7 @@ export default function ConfigureStep({ nextPath, router, onForbidden }: Configu
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="ConversaTree"
+              placeholder="Conciara"
               className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm ring-1 ring-slate-200/50 transition focus:border-[var(--v2-primary)] focus:ring-2 focus:ring-[var(--v2-primary)]/20"
             />
             <p className="mt-1 text-xs text-slate-500">Pre-filled from your website title. You can change it.</p>

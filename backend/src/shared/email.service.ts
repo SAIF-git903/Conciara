@@ -37,7 +37,7 @@ export async function sendEmail(options: {
   html?: string;
 }): Promise<void> {
   const transporter = getTransporter();
-  const from = typeof MAIL_FROM === 'string' && MAIL_FROM.includes('<') ? MAIL_FROM : `"ConversaTree" <${MAIL_FROM}>`;
+  const from = typeof MAIL_FROM === 'string' && MAIL_FROM.includes('<') ? MAIL_FROM : `"Conciara" <${MAIL_FROM}>`;
 
   if (!transporter) {
     console.log('[Email not configured – would have sent]', {
@@ -99,9 +99,9 @@ export async function sendWorkspaceInviteEmail(
  * Send password reset email with link to set new password.
  */
 export async function sendPasswordResetEmail(to: string, resetLink: string): Promise<void> {
-  const subject = 'Reset your ConversaTree password';
+  const subject = 'Reset your Conciara password';
   const text = [
-    'You requested a password reset for your ConversaTree account.',
+    'You requested a password reset for your Conciara account.',
     '',
     'Click the link below to set a new password:',
     resetLink,
@@ -114,7 +114,7 @@ export async function sendPasswordResetEmail(to: string, resetLink: string): Pro
 <html>
 <head><meta charset="utf-8"></head>
 <body style="font-family: system-ui, sans-serif; line-height: 1.5; color: #334155; max-width: 480px;">
-  <p>You requested a password reset for your ConversaTree account.</p>
+  <p>You requested a password reset for your Conciara account.</p>
   <p>Click the button below to set a new password:</p>
   <p><a href="${escapeHtml(resetLink)}" style="display: inline-block; background: #0f172a; color: #fff; padding: 10px 18px; text-decoration: none; border-radius: 8px;">Reset password</a></p>
   <p style="font-size: 13px; color: #64748b;">This link expires in 1 hour. If you didn't request this, you can ignore this email.</p>

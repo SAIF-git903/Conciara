@@ -1,24 +1,23 @@
 'use client'
 
 import Link from 'next/link'
-import { Bot, Mail, MessageCircle, FileText, HelpCircle } from 'lucide-react'
+import { Bot } from 'lucide-react'
 
 const footerLinks = {
   Product: [
     { label: 'Features', href: '/#features' },
     { label: 'Pricing', href: '/pricing' },
     { label: 'Integrations', href: '/#integrations' },
-    { label: 'Changelog', href: '#' },
   ],
   Resources: [
-    { label: 'Documentation', href: '#' },
+    { label: 'Documentation', href: '/docs' },
     { label: 'API Reference', href: '#' },
     { label: 'Help Center', href: '#' },
     { label: 'Blog', href: '#' },
   ],
   Company: [
     { label: 'About', href: '#' },
-    { label: 'Contact', href: '#' },
+    { label: 'Contact', href: '/contact-us' },
     { label: 'Careers', href: '#' },
     { label: 'Privacy', href: '#' },
   ],
@@ -39,7 +38,7 @@ export default function Footer() {
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--v2-primary)] text-[var(--v2-primary-foreground)]">
                 <Bot className="h-5 w-5" />
               </div>
-              <span className="text-lg font-semibold text-white">ConversaTree</span>
+              <span className="text-lg font-semibold text-white">Conciara</span>
             </Link>
             <p className="mt-4 max-w-xs text-sm text-slate-400">
               Build AI chatbots trained on your data. No code, no credit card to start.
@@ -119,7 +118,7 @@ export default function Footer() {
         </div>
         <div className="mt-12 flex flex-col items-center justify-between border-t border-slate-800 pt-8 sm:flex-row">
           <p className="text-sm text-slate-500">
-            &copy; {new Date().getFullYear()} ConversaTree. All rights reserved.
+            &copy; {new Date().getFullYear()} Conciara. All rights reserved.
           </p>
           <p className="mt-4 text-sm text-slate-500 sm:mt-0">
             Built for teams who care about conversation.

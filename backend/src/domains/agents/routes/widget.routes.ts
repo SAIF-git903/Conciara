@@ -10,6 +10,25 @@ import { uploadImage } from '../../../common/uploads.js';
 
 const router = express.Router();
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/widget-config:
+ *   get:
+ *     summary: Get agent widget config
+ *     tags: [Widget]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: { config } }
+ */
 router.get('/:workspaceId/agents/:agentId/widget-config', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -39,6 +58,31 @@ router.get('/:workspaceId/agents/:agentId/widget-config', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/widget-config:
+ *   patch:
+ *     summary: Update agent widget config
+ *     tags: [Widget]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { config: { type: object } }
+ *     responses:
+ *       200: { description: ok, config }
+ */
 router.patch('/:workspaceId/agents/:agentId/widget-config', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -76,6 +120,31 @@ router.patch('/:workspaceId/agents/:agentId/widget-config', async (req, res) => 
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/widget-header-image:
+ *   post:
+ *     summary: Upload widget header image
+ *     tags: [Widget]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties: { file: { type: string, format: binary } }
+ *     responses:
+ *       200: { description: { url } }
+ */
 router.post('/:workspaceId/agents/:agentId/widget-header-image', uploadImage.single('file'), async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);

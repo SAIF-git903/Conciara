@@ -168,7 +168,7 @@ export default function LinkStep({ nextPath, router, onForbidden }: LinkStepProp
       await new Promise((r) => setTimeout(r, CRAWL_COMPLETE_DELAY_MS))
       setCrawlData(data.crawl)
       setOnboardingCrawlId(data.crawl.id)
-      setOnboardingAgentName(data.crawl.title?.trim() || 'ConversaTree')
+      setOnboardingAgentName(data.crawl.title?.trim() || 'Conciara')
       setOnboardingAgentLogoUrl(data.crawl.logoUrl?.trim() || '')
       // Don't redirect: show "Train Agent" or "Skip it" so user can choose
     } catch (err: unknown) {

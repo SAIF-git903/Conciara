@@ -16,6 +16,17 @@ import { requirePermission } from '../../../middleware/permissions.js';
 
 const router = express.Router();
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents:
+ *   get:
+ *     summary: List agents in workspace
+ *     tags: [Agents]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters: [{ in: path, name: workspaceId, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200: { description: { agents } }
+ */
 router.get('/:workspaceId/agents', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -38,6 +49,23 @@ router.get('/:workspaceId/agents', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents:
+ *   post:
+ *     summary: Create agent
+ *     tags: [Agents]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters: [{ in: path, name: workspaceId, required: true, schema: { type: integer } }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { name: { type: string }, model: { type: string }, prePrompt: { type: string }, logoUrl: { type: string } }
+ *     responses:
+ *       201: { description: { agent } }
+ */
 router.post('/:workspaceId/agents', requirePermission({ feature: 'createAgent' }), async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -69,6 +97,26 @@ router.post('/:workspaceId/agents', requirePermission({ feature: 'createAgent' }
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}:
+ *   get:
+ *     summary: Get agent by ID
+ *     tags: [Agents]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: { agent } }
+ *       404: { description: Agent not found }
+ */
 router.get('/:workspaceId/agents/:agentId', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -91,6 +139,31 @@ router.get('/:workspaceId/agents/:agentId', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}:
+ *   patch:
+ *     summary: Update agent
+ *     tags: [Agents]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties: { name: { type: string }, model: { type: string }, prePrompt: { type: string }, logoUrl: { type: string } }
+ *     responses:
+ *       200: { description: { agent } }
+ */
 router.patch('/:workspaceId/agents/:agentId', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -120,6 +193,26 @@ router.patch('/:workspaceId/agents/:agentId', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}:
+ *   delete:
+ *     summary: Delete agent
+ *     tags: [Agents]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Agent deleted }
+ *       404: { description: Agent not found }
+ */
 router.delete('/:workspaceId/agents/:agentId', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);

@@ -19,6 +19,25 @@ import { requireFileUploadPermission } from '../../../middleware/permissions.js'
 
 const router = express.Router();
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/documents:
+ *   get:
+ *     summary: List agent documents
+ *     tags: [Documents]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: { documents } }
+ */
 router.get('/:workspaceId/agents/:agentId/documents', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -45,6 +64,31 @@ router.get('/:workspaceId/agents/:agentId/documents', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/documents:
+ *   post:
+ *     summary: Upload document for training
+ *     tags: [Documents]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties: { file: { type: string, format: binary } }
+ *     responses:
+ *       201: { description: { document } }
+ */
 router.post('/:workspaceId/agents/:agentId/documents', requireFileUploadPermission(), upload.single('file'), async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -95,6 +139,25 @@ router.post('/:workspaceId/agents/:agentId/documents', requireFileUploadPermissi
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/documents/train:
+ *   post:
+ *     summary: Train pending documents
+ *     tags: [Documents]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: { trained } }
+ */
 router.post('/:workspaceId/agents/:agentId/documents/train', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
@@ -121,6 +184,29 @@ router.post('/:workspaceId/agents/:agentId/documents/train', async (req, res) =>
   }
 });
 
+/**
+ * @swagger
+ * /api/workspaces/{workspaceId}/agents/{agentId}/documents/{documentId}:
+ *   delete:
+ *     summary: Delete document
+ *     tags: [Documents]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: workspaceId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: agentId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: documentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Deleted }
+ */
 router.delete('/:workspaceId/agents/:agentId/documents/:documentId', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);

@@ -1,6 +1,6 @@
 # Database Migrations (v2)
 
-This directory contains versioned database migrations for ConversaTree **v2** (workspaces, agents, website crawls, RAG, etc.). Older v1 migrations have been removed.
+This directory contains versioned database migrations for Conciara **v2** (workspaces, agents, website crawls, RAG, etc.). Older v1 migrations have been removed.
 
 ## Migration File Format
 

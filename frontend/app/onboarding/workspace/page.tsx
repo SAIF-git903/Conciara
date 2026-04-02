@@ -138,7 +138,7 @@ function OnboardingWorkspaceContent() {
               URL slug <span className="text-slate-400 font-normal">(optional)</span>
             </label>
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/50 shadow-sm ring-1 ring-slate-200/50">
-              <span className="pl-4 text-sm text-slate-400">conversatree.app/</span>
+              <span className="pl-4 text-sm text-slate-400">conciara.app/</span>
               <input
                 id="workspace-slug"
                 type="text"

@@ -215,3 +215,12 @@ input:disabled, textarea:disabled {
   animation: crawl-shimmer 1.5s ease-in-out infinite;
 }
 
+/* TipTap Q&A answer editor — placeholder (extension adds data-placeholder on empty nodes) */
+.qa-answer-editor .ProseMirror p.is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: rgb(148 163 184);
+  pointer-events: none;
+}
+

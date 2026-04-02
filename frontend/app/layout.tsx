@@ -7,7 +7,7 @@ import LayoutShell from '@/components/LayoutShell'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'ConversaTree - Dialog Tree Manager',
+  title: 'Conciara - Dialog Tree Manager',
   description: 'Create and manage dialog trees with vector embeddings',
 }
 
