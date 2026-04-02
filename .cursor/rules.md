@@ -1,4 +1,4 @@
-# Cursor rules — Concierge / ConversaTree
+# Cursor rules — Concierge / Conciara
 
 Persistent conventions inferred from this repo. Prefer matching existing code over introducing new patterns.
 
@@ -7,7 +7,7 @@ Persistent conventions inferred from this repo. Prefer matching existing code ov
 ## 1. General project conventions
 
 - **Monorepo layout**: `frontend/` (Next.js app) and `backend/` (Express API) are separate packages with their own `package.json` and `npm` scripts; use **npm** and existing lockfiles.
-- **Product naming**: UI/metadata often use **ConversaTree**; npm package names still reference **dialog-tree** — keep env/docs consistent with what users see unless migrating branding.
+- **Product naming**: UI/metadata often use **Conciara**; npm package names still reference **dialog-tree** — keep env/docs consistent with what users see unless migrating branding.
 - **Local dev defaults**: Backend `npm run dev` → **tsx** watching `src/server.ts`, typically port **3001**; frontend `npm run dev` → Next on **3002** (`package.json`). Align `NEXT_PUBLIC_API_URL` and `FRONTEND_URL` with actual ports.
 - **API contract**: JSON under **`/api`**; preserve path prefixes and response shapes unless doing an explicit breaking migration and updating all clients (dashboard + embed/widget).
 - **Auth between apps**: Browser stores **`auth_token`**, **`auth_refresh_token`**, **`auth_user`** in `localStorage`; API expects **`Authorization: Bearer <token>`**. Do not bypass the shared axios client on the frontend without replicating refresh + redirect behavior.

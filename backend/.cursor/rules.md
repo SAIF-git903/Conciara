@@ -1,4 +1,4 @@
-# Backend — Cursor rules (ConversaTree)
+# Backend — Cursor rules (Conciara)
 
 Full monorepo rules: **`../.cursor/rules.md`** (repo root). Below: general context + **backend-only** conventions.
 

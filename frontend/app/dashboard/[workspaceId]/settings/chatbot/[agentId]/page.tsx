@@ -16,7 +16,7 @@ type TabType = 'theme' | 'components' | 'embed'
 function buildEmbedSnippet(apiUrl: string, workspaceId: number, agentId: number | string): string {
   const baseUrl = apiUrl.replace(/\/+$/, '')
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://your-app.com'
-  return `<!-- ConversaTree chat widget -->
+  return `<!-- Conciara chat widget -->
 <script
   src="${origin}/embed.js"
   data-api-url="${baseUrl}"

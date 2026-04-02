@@ -1,5 +1,5 @@
 /**
- * ConversaTree embed loader
+ * Conciara embed loader
  *
  * Loads the chat widget in an iframe. Add to your site:
  * <script
@@ -35,7 +35,7 @@
 
   if (!apiUrl || !workspaceId || !agentId) {
     if (typeof console !== 'undefined' && console.warn) {
-      console.warn('[ConversaTree] embed.js: data-api-url, data-workspace-id, and data-agent-id are required.');
+      console.warn('[Conciara] embed.js: data-api-url, data-workspace-id, and data-agent-id are required.');
     }
     return;
   }
@@ -72,7 +72,7 @@
   }
 
   var container = document.createElement('div');
-  container.id = 'conversatree-embed';
+  container.id = 'conciara-embed';
   container.style.cssText = 'position:fixed;z-index:' + zIndex + ';' + toCss(positionStyles);
 
   var launcher = document.createElement('button');
@@ -111,7 +111,7 @@
   };
 
   window.addEventListener('message', function (event) {
-    if (event.data && event.data.type === 'conversatree-embed-close') {
+    if (event.data && event.data.type === 'conciara-embed-close') {
       panel.style.display = 'none';
       launcher.style.display = 'flex';
     }

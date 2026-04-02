@@ -105,7 +105,7 @@ async function fetchAndParsePage(
     signal: controller.signal,
     headers: {
       'User-Agent':
-        'Mozilla/5.0 (compatible; ConversaTreeCrawler/1.0; +https://conversatree.com)',
+        'Mozilla/5.0 (compatible; ConciaraCrawler/1.0; +https://conciara.com)',
       Accept: 'text/html,application/xhtml+xml',
     },
     redirect: 'follow',

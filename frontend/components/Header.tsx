@@ -42,7 +42,7 @@ export default function Header({ variant }: { variant?: HeaderVariant }) {
             <span className="text-sm font-semibold tracking-tight">CT</span>
           </div>
           <span className={`text-sm font-semibold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-            ConversaTree
+            Conciara
           </span>
         </Link>
 

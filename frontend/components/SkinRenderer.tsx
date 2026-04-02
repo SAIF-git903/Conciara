@@ -457,7 +457,7 @@ export default function SkinRenderer({
                 <div
                   className="flex-1 overflow-y-auto p-6 flex flex-col items-center justify-center min-h-[280px]"
                   style={{ backgroundColor: config.theme?.backgroundColor || '#ffffff' }}
-                  data-conversatree="language-picker"
+                  data-conciara="language-picker"
                 >
                   <p className="text-base font-semibold mb-1" style={{ color: config.theme?.textColor || '#1f2937' }}>
                     {getWidgetTranslations('en').chooseLanguage}

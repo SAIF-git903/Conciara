@@ -1,4 +1,4 @@
-# Frontend — Cursor rules (ConversaTree)
+# Frontend — Cursor rules (Conciara)
 
 Full monorepo rules: `**../.cursor/rules.md**` (repo root). Below: general context + **frontend-only** conventions.
 

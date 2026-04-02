@@ -65,7 +65,7 @@ app.use('/api', generalApiRateLimiter);
 // Swagger API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'ConversaTree API Documentation',
+  customSiteTitle: 'Conciara API Documentation',
 }));
 
 // Routes (JSON body)

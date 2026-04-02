@@ -39,7 +39,7 @@ export default function Footer() {
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--v2-primary)] text-[var(--v2-primary-foreground)]">
                 <Bot className="h-5 w-5" />
               </div>
-              <span className="text-lg font-semibold text-white">ConversaTree</span>
+              <span className="text-lg font-semibold text-white">Conciara</span>
             </Link>
             <p className="mt-4 max-w-xs text-sm text-slate-400">
               Build AI chatbots trained on your data. No code, no credit card to start.
@@ -119,7 +119,7 @@ export default function Footer() {
         </div>
         <div className="mt-12 flex flex-col items-center justify-between border-t border-slate-800 pt-8 sm:flex-row">
           <p className="text-sm text-slate-500">
-            &copy; {new Date().getFullYear()} ConversaTree. All rights reserved.
+            &copy; {new Date().getFullYear()} Conciara. All rights reserved.
           </p>
           <p className="mt-4 text-sm text-slate-500 sm:mt-0">
             Built for teams who care about conversation.

@@ -1,6 +1,6 @@
 /**
  * Slack Events API handler.
- * Uses a single ConversaTree Slack app: SLACK_SIGNING_SECRET verifies all events.
+ * Uses a single Conciara Slack app: SLACK_SIGNING_SECRET verifies all events.
  * OAuth callback stores bot token per agent; no user-supplied token or signing secret.
  * Must be mounted with express.raw({ type: 'application/json' }) for POST /events so raw body is available.
  */
