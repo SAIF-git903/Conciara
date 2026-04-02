@@ -37,6 +37,7 @@ import { UpgradeProvider } from '@/contexts/UpgradeContext'
 import { getSelectedWorkspaceId, setSelectedWorkspaceId } from '@/lib/workspace-selection'
 import { startNewAgentFlow } from '@/lib/onboarding'
 import { parseDashboardPath, buildDashboardUrl } from '@/lib/dashboard-url'
+import { ConciaraMark } from '@/components/branding/ConciaraMark'
 import CreditUsageWidget from '@/components/CreditUsageWidget'
 import PermissionButton from '@/components/PermissionButton'
 import {
@@ -704,11 +705,11 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
       {/* Full-width top header - workspace name and agent dropdowns */}
       <header className="relative flex h-12 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4">
         <Link
-          href={'/'}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-[var(--v2-primary)] text-sm font-bold text-white hover:opacity-90 transition"
-          aria-label="Dashboard"
+          href="/"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-[var(--v2-primary)] hover:opacity-90 transition"
+          aria-label="Conciara home"
         >
-          C
+          <ConciaraMark size={22} tone="onDark" />
         </Link>
         <span className="text-slate-300">/</span>
 
