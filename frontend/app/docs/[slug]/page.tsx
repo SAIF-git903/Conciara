@@ -34,7 +34,7 @@ export default function DocTopicPage({ params }: { params: { slug: string } }) {
               <div className="mt-6">
                 {section.milestones.map((milestone, index) => (
                   <div key={milestone.title} className="relative pl-14 pb-7 last:pb-0">
-                    {index < section.milestones.length - 1 ? (
+                    {index < section.milestones!.length - 1 ? (
                       <span className="absolute left-6 top-11 h-[calc(100%-20px)] w-px bg-white/15" />
                     ) : null}
                     <span className="absolute left-0 top-0 flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 text-sm font-semibold text-white">
