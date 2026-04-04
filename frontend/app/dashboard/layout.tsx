@@ -929,9 +929,9 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
       <UpgradeProvider>
         <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} agentsLoading={agentsLoading} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete} socket={socket} refreshUsage={fetchUsage} openAgentLimitModal={undefined} openMemberLimitModal={undefined} workspaceLimits={workspaceLimits} workspaceLimitsLoading={workspaceLimitsLoading} refreshWorkspaceLimits={refreshWorkspaceLimits}>
           <div className="flex min-h-0 flex-1">
-            {/* Left sidebar - dashboard vs agent context */}
-            <aside className="flex w-56 shrink-0 flex-col border-r border-slate-200 bg-slate-50">
-              <nav className="flex-1 overflow-y-auto py-3">
+            {/* Left sidebar — matches main dashboard surface; clear active / nested hierarchy */}
+            <aside className="flex w-56 shrink-0 flex-col border-r border-slate-200/80 bg-[rgb(250,251,253)]">
+              <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 py-4" aria-label="Dashboard">
                 {navItems.map((item) => {
                   const itemHref = getNavHref(item)
                   const isActive = !('children' in item && (item as { children?: string[] }).children?.length) && pathname === itemHref
@@ -946,16 +946,20 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
 
                   if (!hasChildren) {
                     return (
-                      <div key={item.label} className="px-2">
+                      <div key={item.label}>
                         <Link
                           href={itemHref}
-                          className={`flex w-full min-w-0 items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition ${isActive
-                            ? 'bg-slate-200 text-slate-900'
-                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                            }`}
+                          className={`flex w-full min-w-0 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--v2-primary)]/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(250,251,253)] ${
+                            isActive
+                              ? 'bg-white text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/80'
+                              : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'
+                          }`}
                         >
                           <span className="inline-flex h-4 w-5 shrink-0 items-center justify-center" aria-hidden>
-                            <item.Icon className={`h-4 w-4 ${isActive ? 'text-slate-900' : 'text-slate-500'}`} strokeWidth={2} />
+                            <item.Icon
+                              className={`h-4 w-4 ${isActive ? 'text-[var(--v2-primary)]' : 'text-slate-400'}`}
+                              strokeWidth={2}
+                            />
                           </span>
                           <span className="min-w-0 flex-1 truncate">{item.label}</span>
                         </Link>
@@ -975,15 +979,24 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                         setExpanded((prev) => ({ ...prev, [item.label]: nextOpen }))
                       }}
                     >
-                      <AccordionItem value={sectionValue} className="w-full border-0 px-2">
-                        <AccordionTrigger className="w-full min-w-0 gap-3 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 hover:no-underline [&[data-state=open]]:bg-slate-100/80">
+                      <AccordionItem value={sectionValue} className="w-full border-0">
+                        <AccordionTrigger
+                          className={`w-full min-w-0 gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-colors duration-200 hover:no-underline focus-visible:ring-2 focus-visible:ring-[var(--v2-primary)]/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(250,251,253)] ${
+                            isChildRoute
+                              ? 'bg-white/90 text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70 [&[data-state=open]]:bg-white [&[data-state=open]]:shadow-[0_1px_2px_rgba(15,23,42,0.06)]'
+                              : 'text-slate-600 hover:bg-white/70 hover:text-slate-900 [&[data-state=open]]:bg-white/80 [&[data-state=open]]:text-slate-900'
+                          }`}
+                        >
                           <span className="inline-flex h-4 w-5 shrink-0 items-center justify-center" aria-hidden>
-                            <item.Icon className="h-4 w-4 shrink-0" strokeWidth={2} />
+                            <item.Icon
+                              className={`h-4 w-4 shrink-0 ${isChildRoute ? 'text-[var(--v2-primary)]' : 'text-slate-400'}`}
+                              strokeWidth={2}
+                            />
                           </span>
                           <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
                           <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                         </AccordionTrigger>
-                        <AccordionContent className="ml-6 mt-1 space-y-0.5 border-l border-slate-200 pl-3">
+                        <AccordionContent className="ml-5 space-y-0.5 border-l border-slate-200/70 pb-1 pl-3 pt-1.5">
                           {(item as { children: string[] }).children.map((child) => {
                             const childHref = getNavHref(item, child)
                             const isChildActive = pathname === getChildHrefForActive(item, child)
@@ -991,10 +1004,11 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                               <Link
                                 key={child}
                                 href={childHref}
-                                className={`block py-1.5 text-xs ${isChildActive
-                                  ? 'font-medium text-slate-900'
-                                  : 'text-slate-500 hover:text-slate-700'
-                                  }`}
+                                className={`block rounded-lg py-2 pl-2.5 pr-2 text-xs transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--v2-primary)]/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(250,251,253)] ${
+                                  isChildActive
+                                    ? 'border border-slate-200/80 bg-white font-medium text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)]'
+                                    : 'border border-transparent text-slate-500 hover:bg-white/60 hover:text-slate-800'
+                                }`}
                               >
                                 {child}
                               </Link>
@@ -1006,18 +1020,20 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                   )
                 })}
               </nav>
-              <div className="border-t border-slate-200 bg-slate-50 p-4">
+              <div className="border-t border-slate-200/80 bg-white/50 p-3 backdrop-blur-sm">
                 {currentWorkspace.id ? (
-                  <CreditUsageWidget className="border-0 p-0 bg-transparent" />
+                  <div className="rounded-xl border border-slate-200/60 bg-white/90 p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                    <CreditUsageWidget className="border-0 bg-transparent p-0 shadow-none rounded-none" />
+                  </div>
                 ) : (
                   <>
-                    <p className="text-xs font-medium text-slate-500">Credits —</p>
-                    <p className="mt-0.5 text-xs text-slate-400">Select a workspace</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Credits</p>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-500">Select a workspace to see usage.</p>
                     <Link
                       href="/pricing"
-                      className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                      className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors duration-200 hover:bg-slate-50"
                     >
-                      <span>↑</span> Upgrade
+                      <span aria-hidden>↑</span> Upgrade
                     </Link>
                   </>
                 )}
