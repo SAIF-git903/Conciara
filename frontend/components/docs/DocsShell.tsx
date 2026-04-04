@@ -1,13 +1,17 @@
 'use client'
 
-import Link from 'next/link'
-import { BookOpen, Search } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { usePathname } from 'next/navigation'
+import { useAuth } from '@/contexts/AuthContext'
+import { buildDashboardUrl } from '@/lib/dashboard-url'
 import { DOC_CATEGORIES, DOC_TOPICS } from '@/lib/docs'
+import { getSelectedWorkspaceId } from '@/lib/workspace-selection'
+import { BookOpen, Search } from 'lucide-react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 export default function DocsShell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
+  const { user } = useAuth()
   const [query, setQuery] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -34,6 +38,15 @@ export default function DocsShell({ children }: { children: ReactNode }) {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
+
+  const dashboardHref = (() => {
+    const workspaces = user?.workspaces ?? []
+    if (workspaces.length === 0) return '/dashboard'
+    const selectedId = getSelectedWorkspaceId()
+    const selectedWorkspace = selectedId ? workspaces.find((w) => w.id === selectedId) : null
+    const targetWorkspace = selectedWorkspace ?? workspaces[0]
+    return buildDashboardUrl(targetWorkspace.id)
+  })()
 
   return (
     <div className="min-h-screen bg-black text-slate-100">
@@ -63,7 +76,7 @@ export default function DocsShell({ children }: { children: ReactNode }) {
               <span className="rounded border border-white/10 px-1 py-0.5 text-[10px] text-slate-400">Ctrl K</span>
             </label>
             <Link
-              href="/signin"
+              href={dashboardHref}
               className="rounded-md border border-white/15 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/10"
             >
               Dashboard

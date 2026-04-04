@@ -23,20 +23,12 @@ function CheckIcon() {
 
 function PricingContent() {
   const searchParams = useSearchParams()
-  const router = useRouter()
   const [interval, setInterval] = useState<BillingInterval>('yearly')
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null)
 
   const workspaceIdParam = searchParams.get('workspaceId')
   const workspaceId = workspaceIdParam ? parseInt(workspaceIdParam, 10) : getSelectedWorkspaceId()
   const effectiveWorkspaceId = Number.isNaN(workspaceId) ? null : workspaceId
-
-  // Redirect to workspace plans page if workspace context is available
-  useEffect(() => {
-    if (effectiveWorkspaceId) {
-      router.replace(`/dashboard/${effectiveWorkspaceId}/settings/plans`)
-    }
-  }, [effectiveWorkspaceId, router])
 
   const handleIntervalChange = (newInterval: BillingInterval) => {
     if (newInterval === interval) return
