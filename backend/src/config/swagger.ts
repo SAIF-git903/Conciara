@@ -102,7 +102,6 @@ const options: swaggerJsdoc.Options = {
       { name: 'Chat Logs', description: 'Chat history and analytics' },
       { name: 'Documents', description: 'Agent document training' },
       { name: 'QA', description: 'Q&A pairs for agents' },
-      { name: 'Actions', description: 'Agent custom actions' },
       { name: 'Integrations', description: 'Agent integrations (e.g. Slack)' },
       { name: 'Widget', description: 'Agent widget config' },
       { name: 'Crawl Training', description: 'Train from crawls' },
