@@ -105,8 +105,38 @@ model Agent {
   qaEntries      AgentQa[]
   chatSessions   AgentChatSession[]
   chatMessages   AgentChatMessage[]
+  actions        Action[]
 
   @@map("agents")
+}
+
+enum ActionType {
+  CUSTOM_ACTION
+  CUSTOM_BUTTONS
+  WEB_SEARCH
+  COLLECT_LEADS
+  ESCALATE_HUMAN
+  SLACK
+  CALENDLY
+  STRIPE
+  SHOPIFY
+  SALESFORCE
+}
+
+model Action {
+  id        String     @id @default(uuid())
+  chatbotId Int        @map("chatbot_id")
+  type      ActionType @map("type")
+  name      String     @map("name")
+  isEnabled Boolean    @default(false) @map("is_enabled")
+  config    Json       @map("config")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  chatbot Agent @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+
+  @@unique([chatbotId, type, name])
+  @@map("actions")
 }
 
 model AgentChatSession {

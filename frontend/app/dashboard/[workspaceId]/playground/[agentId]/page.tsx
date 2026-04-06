@@ -66,6 +66,23 @@ interface AgentDetails {
   logoUrl: string | null
 }
 
+interface PlaygroundAvailableActions {
+  customButtons: Array<{
+    id: string
+    name: string
+    triggerInstructions: string
+    buttons: Array<{ id: string; label: string; url: string; openInNewTab: boolean }>
+  }>
+  customActions: Array<{
+    id: string
+    name: string
+    actionFunctionName: string
+    triggerInstructions: string
+    executionMode: string
+    inputFields: Array<{ name: string; description: string; required: boolean; type: string }>
+  }>
+}
+
 export default function PlaygroundAgentPage() {
   const { currentWorkspace, currentAgent, refreshUsage } = useDashboard()
   const messagesRef = useRef<{ id: string; type: 'user' | 'bot'; content: string; timestamp: Date }[]>([])
@@ -79,6 +96,7 @@ export default function PlaygroundAgentPage() {
   const [prePrompt, setPrePrompt] = useState('')
   const [saveLoading, setSaveLoading] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [availableActions, setAvailableActions] = useState<PlaygroundAvailableActions>({ customButtons: [], customActions: [] })
 
   useEffect(() => {
     sessionIdRef.current = null
@@ -153,6 +171,30 @@ export default function PlaygroundAgentPage() {
       })
     return () => { cancelled = true }
   }, [currentWorkspace?.id, currentAgent?.id, currentAgent?.name, (currentAgent as { logoUrl?: string | null })?.logoUrl])
+
+  useEffect(() => {
+    if (!currentWorkspace?.id || !currentAgent?.id) {
+      setAvailableActions({ customButtons: [], customActions: [] })
+      return
+    }
+    let cancelled = false
+    api
+      .get<PlaygroundAvailableActions>(`/workspaces/${currentWorkspace.id}/agents/${currentAgent.id}/active-actions`)
+      .then(({ data }) => {
+        if (cancelled) return
+        setAvailableActions({
+          customButtons: Array.isArray(data.customButtons) ? data.customButtons : [],
+          customActions: Array.isArray(data.customActions) ? data.customActions : [],
+        })
+      })
+      .catch(() => {
+        if (cancelled) return
+        setAvailableActions({ customButtons: [], customActions: [] })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [currentWorkspace?.id, currentAgent?.id])
 
   const handleSaveLLM = useCallback(async () => {
     if (!currentWorkspace?.id || !currentAgent?.id) return
@@ -335,7 +377,16 @@ export default function PlaygroundAgentPage() {
               style={{ minWidth: CHAT_WIDGET_PREVIEW_MIN_WIDTH, maxWidth: CHAT_WIDGET_PREVIEW_MAX_WIDTH, borderRadius: `${effectiveConfig.components?.window?.borderRadius ?? 20}px` }}
             >
               <div className="flex-1 min-h-0 overflow-hidden rounded-2xl shadow-lg bg-white" style={{ borderRadius: effectiveConfig.components?.window?.borderRadius ?? 20 }}>
-                <SkinRenderer config={effectiveConfig} apiUrl="" treeId={null} initialMessages={PLAYGROUND_WELCOME} previewMode onMessage={handleMessage} onMessagesChange={handleMessagesChange} />
+                <SkinRenderer
+                  config={effectiveConfig}
+                  apiUrl=""
+                  treeId={null}
+                  initialMessages={PLAYGROUND_WELCOME}
+                  previewMode
+                  onMessage={handleMessage}
+                  onMessagesChange={handleMessagesChange}
+                  availableActions={availableActions}
+                />
               </div>
             </div>
           )}
