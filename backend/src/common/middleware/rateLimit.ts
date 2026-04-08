@@ -9,9 +9,6 @@
 
 import rateLimit from 'express-rate-limit';
 
-/** Trust proxy when behind load balancer/reverse proxy (Heroku, AWS, etc.) so IP is correct */
-const trustProxy = process.env.TRUST_PROXY === 'true' || process.env.NODE_ENV === 'production';
-
 function parsePositiveInt(value: string | undefined, defaultVal: number): number {
   if (value === undefined || value === '') return defaultVal;
   const n = parseInt(value, 10);
@@ -40,7 +37,6 @@ export const authRateLimiter = rateLimit({
   message: { error: 'Too many authentication attempts. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
-  trustProxy,
 });
 
 /**
@@ -52,7 +48,6 @@ export const generalApiRateLimiter = rateLimit({
   message: { error: 'Too many requests. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
-  trustProxy,
 });
 
 /**
@@ -65,5 +60,4 @@ export const publicChatRateLimiter = rateLimit({
   message: { error: 'Too many messages. Please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
-  trustProxy,
 });

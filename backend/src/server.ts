@@ -21,6 +21,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Ensure correct client IPs behind reverse proxies (needed for rate limiting, logs, etc.)
+app.set('trust proxy', process.env.TRUST_PROXY === 'true' || process.env.NODE_ENV === 'production');
+
 // CORS configuration - allow all localhost ports for development
 app.use(cors({
   origin: function (origin, callback) {
