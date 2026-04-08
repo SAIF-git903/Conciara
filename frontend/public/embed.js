@@ -13,6 +13,32 @@
 (function () {
   'use strict';
 
+  if (!window.ChatbotActions) {
+    var registry = {};
+    var pendingResults = {};
+    window.ChatbotActions = {
+      register: function (functionName, handler) {
+        if (!functionName || typeof handler !== 'function') return;
+        registry[String(functionName)] = handler;
+      },
+      invoke: async function (functionName, inputs) {
+        var fn = registry[String(functionName)];
+        if (!fn) throw new Error('No client-side action registered: ' + functionName);
+        var result = await fn(inputs || {});
+        return result;
+      },
+      respond: function (functionName, result) {
+        pendingResults[String(functionName)] = result;
+        window.dispatchEvent(new CustomEvent('chatbot:action:result', {
+          detail: { functionName: String(functionName), result: result }
+        }));
+      },
+      getLastResult: function (functionName) {
+        return pendingResults[String(functionName)];
+      }
+    };
+  }
+
   var scriptTag = document.currentScript;
   if (!scriptTag) return;
 

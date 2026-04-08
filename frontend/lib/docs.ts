@@ -360,40 +360,11 @@ export const DOC_TOPICS: DocTopic[] = [
     ],
   },
   {
-    slug: 'actions',
-    title: 'Workflow Actions',
-    category: 'Agent Operations',
-    description: 'Custom actions for external automation.',
-    route: '/dashboard/[workspaceId]/actions/[agentId]',
-    access: 'Authenticated + feature permission',
-    updatedAt: 'April 2, 2026',
-    sections: [
-      {
-        id: 'capabilities',
-        title: 'Capabilities',
-        points: [
-          'Define action name, description, and execution target.',
-          'Connect workflows like lead capture, ticketing, and CRM updates.',
-          'Apply permission and plan constraints to action usage.',
-        ],
-      },
-      {
-        id: 'hardening',
-        title: 'Production hardening',
-        points: [
-          'Validate action endpoint auth and timeout handling.',
-          'Audit action payload schema before release.',
-          'Log action outcomes for support and debugging.',
-        ],
-      },
-    ],
-  },
-  {
     slug: 'contacts',
     title: 'Contact Capture',
     category: 'Agent Operations',
     description: 'Lead/contact collection patterns for agent interactions.',
-    route: 'Actions + integrations + custom workflows',
+    route: 'Integrations + custom workflows',
     access: 'Feature dependent',
     updatedAt: 'April 2, 2026',
     sections: [
@@ -401,8 +372,8 @@ export const DOC_TOPICS: DocTopic[] = [
         id: 'collection',
         title: 'Collection model',
         points: [
-          'Capture contact details through structured action prompts.',
-          'Map captured data to CRM or support systems through actions.',
+          'Capture contact details through structured conversation prompts.',
+          'Map captured data to CRM or support systems through integrations.',
           'Use confirmation responses to avoid malformed lead records.',
         ],
       },

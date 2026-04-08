@@ -5,9 +5,11 @@
  */
 
 import express from 'express';
+import { ActionType } from '@prisma/client';
 import { canManageAgent } from '../../agents/agent.service.js';
+import { executeServerSideActionProxyRuntime } from '../../agents/routes/actions.routes.js';
 import { prisma } from '../../../db/prisma.js';
-import { chatCompletion, chatCompletionStream, chatCompletionWithTools } from '../../../shared/llm.service.js';
+import { chatCompletion, chatCompletionStream } from '../../../shared/llm.service.js';
 import { retrieveChunks } from '../../training/services/rag.service.js';
 import { retrieveQa, recordQaUsage } from '../../qa/qa.service.js';
 import { createOrGetSession, appendMessage } from '../services/chatLog.service.js';
@@ -20,101 +22,387 @@ import { buildAgentChatSystemContent } from '../chatHelpers.js';
 import { getRemainingCredits, deductCredits } from '../../billing/credits.service.js';
 import { getCreditsForModel } from '../../billing/model-credits.js';
 import { emitCreditsUpdated } from '../../../socket/index.js';
-import { getEnabledCustomApiActions } from '../../agents/actions.service.js';
-import {
-  buildToolsFromCustomApiActions,
-  executeCustomApiAction,
-  actionIdFromToolName,
-} from '../../agents/chatTools.js';
-
-const MAX_TOOL_ROUNDS = 5;
-
-type ChatMessage =
-  | { role: 'user' | 'assistant'; content: string }
-  | { role: 'assistant'; content: string | null; toolCalls?: { id: string; name: string; arguments: string }[] }
-  | { role: 'tool'; content: string; toolCallId: string };
-
-/**
- * Run chat with optional Custom API tools: loop until we get a text reply or hit max rounds.
- */
-async function runChatWithTools(
-  agentId: number,
-  modelId: string,
-  systemContent: string,
-  historyList: { role: 'user' | 'assistant'; content: string }[],
-  userMessage: string
-): Promise<string> {
-  const actions = await getEnabledCustomApiActions(agentId);
-  if (actions.length === 0) {
-    return chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
-      maxTokens: 1024,
-      temperature: 0.7,
-    });
-  }
-  const tools = buildToolsFromCustomApiActions(actions);
-  const toolList = tools.map((t) => ({
-    type: 'function' as const,
-    function: {
-      name: t.function.name,
-      description: t.function.description,
-      parameters: t.function.parameters as Record<string, unknown>,
-    },
-  }));
-
-  let messages: ChatMessage[] = [...historyList, { role: 'user', content: userMessage }];
-  let lastContent: string | null = null;
-
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const result = await chatCompletionWithTools(
-      modelId,
-      systemContent,
-      messages,
-      toolList.length > 0 ? toolList : [],
-      { maxTokens: 1024, temperature: 0.7 }
-    );
-
-    if (result.content !== null) {
-      lastContent = result.content;
-      break;
-    }
-
-    if (!result.toolCalls?.length) break;
-
-    const assistantContent = round === 0 ? '' : (lastContent ?? '');
-    messages.push({
-      role: 'assistant',
-      content: assistantContent,
-      toolCalls: result.toolCalls,
-    });
-
-    for (const tc of result.toolCalls) {
-      const actionId = actionIdFromToolName(tc.name);
-      let toolResult: string;
-      if (actionId === null) {
-        toolResult = JSON.stringify({ error: 'Unknown tool.' });
-      } else {
-        try {
-          let args: { inputs?: Record<string, unknown> } = {};
-          try {
-            args = JSON.parse(tc.arguments || '{}');
-          } catch {
-            args = {};
-          }
-          toolResult = await executeCustomApiAction(agentId, actionId, args);
-        } catch (err: unknown) {
-          toolResult = JSON.stringify({
-            error: err instanceof Error ? err.message : 'Tool execution failed',
-          });
-        }
-      }
-      messages.push({ role: 'tool', content: toolResult, toolCallId: tc.id });
-    }
-  }
-
-  return lastContent?.trim() ?? "I couldn't complete that. Please try again.";
-}
 
 const router = express.Router();
+
+function toObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function toStringValue(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function extractNumericCandidates(text: string): number[] {
+  const matches = text.match(/-?\d+(\.\d+)?/g) ?? [];
+  return matches
+    .map((raw) => Number(raw))
+    .filter((n) => Number.isFinite(n));
+}
+
+function inferCollectedInputsFromMessage(
+  inputFields: Array<{ name: string; required: boolean; type: string }>,
+  userMessage: string
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const nums = extractNumericCandidates(userMessage);
+  const normalized = userMessage.trim();
+  const lower = normalized.toLowerCase();
+  const maybeYes = ['yes', 'true', 'y', 'ok'].includes(lower);
+  const maybeNo = ['no', 'false', 'n'].includes(lower);
+
+  for (const field of inputFields) {
+    const fieldName = field.name.trim();
+    if (!fieldName) continue;
+    if (field.type === 'number') {
+      if (nums.length > 0) {
+        out[fieldName] = nums[0];
+        continue;
+      }
+    } else if (field.type === 'boolean') {
+      if (maybeYes) {
+        out[fieldName] = true;
+        continue;
+      }
+      if (maybeNo) {
+        out[fieldName] = false;
+        continue;
+      }
+    } else {
+      if (normalized) {
+        out[fieldName] = normalized;
+        continue;
+      }
+    }
+  }
+  return out;
+}
+
+function hasAllRequiredInputs(
+  inputFields: Array<{ name: string; required: boolean; type: string }>,
+  collectedInputs: Record<string, unknown>
+): boolean {
+  const requiredFields = inputFields.filter((field) => field.required && field.name.trim());
+  if (requiredFields.length === 0) return true;
+  return requiredFields.every((field) => {
+    const value = collectedInputs[field.name.trim()];
+    return value !== undefined && value !== null && String(value).trim() !== '';
+  });
+}
+
+function buildActionResultFallbackReply(params: {
+  userMessage: string;
+  collectedInputs: Record<string, unknown>;
+  executionResult: { success: boolean; statusCode: number; responseBody: unknown };
+}): string {
+  const { collectedInputs, executionResult } = params;
+  const firstInputValue = Object.values(collectedInputs)[0];
+  const displayInput = firstInputValue !== undefined ? String(firstInputValue) : 'the provided value';
+  const body = executionResult.responseBody;
+  const prettyBody = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
+
+  if (!executionResult.success) {
+    return `I tried checking details for ${displayInput}, but the request failed (status ${executionResult.statusCode}). Please try again or provide another product ID.`;
+  }
+
+  return `I checked the product details for ${displayInput}. Here is what we found:\n\n\`\`\`json\n${prettyBody}\n\`\`\``;
+}
+
+function responseStillAsksForInput(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    /provide|confirm|specific/.test(lower) &&
+    /product id|id/.test(lower)
+  ) || /please hold|let me check|one moment|checking/.test(lower);
+}
+
+function responseClaimsNotFound(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    /not found/.test(lower) ||
+    /couldn'?t find/.test(lower) ||
+    /don't have information/.test(lower) ||
+    /do not have information/.test(lower) ||
+    /not sure about that product/.test(lower)
+  );
+}
+
+function responseBodyLooksLikeProduct(body: unknown): boolean {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+  const row = body as Record<string, unknown>;
+  return typeof row.title === 'string' || typeof row.image === 'string' || typeof row.price === 'number';
+}
+
+async function tryHeuristicActionExecution(params: {
+  agentId: number;
+  userMessage: string;
+  firstReply: string;
+}): Promise<{ actionId: string; collectedInputs: Record<string, unknown> } | null> {
+  const { agentId, userMessage, firstReply } = params;
+  const hasNumericCandidate = extractNumericCandidates(userMessage).length > 0;
+  const asksForId = /product id|order id|ticket id|provide.*id|confirm.*id/i.test(firstReply);
+  const looksLikeInputMessage =
+    /^\s*\d+(\.\d+)?\s*$/.test(userMessage) ||
+    /product\s*id|id\s*is|order\s*id|ticket\s*id/i.test(userMessage) ||
+    (hasNumericCandidate && /product|details|check|lookup/i.test(userMessage));
+  const looksLikeHoldMessage =
+    /please hold|let me check|i(?:'|’)ll check|one moment|checking/i.test(firstReply);
+  if (!looksLikeInputMessage && !looksLikeHoldMessage && !(asksForId && hasNumericCandidate)) return null;
+
+  const enabledServerActions = await prisma.action.findMany({
+    where: {
+      chatbotId: agentId,
+      isEnabled: true,
+      type: ActionType.CUSTOM_ACTION,
+    },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, config: true },
+  });
+  if (enabledServerActions.length !== 1) return null;
+
+  const action = enabledServerActions[0];
+  const config = toRecord(action.config);
+  const executionMode = toStringValue(config.executionMode);
+  if (executionMode !== 'server_side') return null;
+
+  const inputFieldsRaw = Array.isArray(config.inputFields) ? config.inputFields : [];
+  const inputFields = inputFieldsRaw
+    .map((field) => toRecord(field))
+    .map((field) => ({
+      name: toStringValue(field.name),
+      required: Boolean(field.required),
+      type: toStringValue(field.type) || 'string',
+    }))
+    .filter((field) => !!field.name);
+  const collectedInputs = inferCollectedInputsFromMessage(inputFields, userMessage);
+  if (!hasAllRequiredInputs(inputFields, collectedInputs)) return null;
+
+  return { actionId: action.id, collectedInputs };
+}
+
+function parseActionDirective(rawContent: string): { actionId: string; collectedInputs: Record<string, unknown> } | null {
+  const tryParse = (candidate: string): { actionId: string; collectedInputs: Record<string, unknown> } | null => {
+    try {
+      const parsed = JSON.parse(candidate) as Record<string, unknown>;
+      const directType = typeof parsed.type === 'string' ? parsed.type.trim().toLowerCase() : '';
+      const directActionId =
+        directType === 'action' && typeof parsed.actionId === 'string'
+          ? parsed.actionId.trim()
+          : '';
+      const directInputs =
+        parsed.collectedInputs && typeof parsed.collectedInputs === 'object' && !Array.isArray(parsed.collectedInputs)
+          ? (parsed.collectedInputs as Record<string, unknown>)
+          : {};
+      if (directActionId) return { actionId: directActionId, collectedInputs: directInputs };
+
+      const toolCall = parsed.tool_call && typeof parsed.tool_call === 'object' ? (parsed.tool_call as Record<string, unknown>) : null;
+      const nestedType = toolCall && typeof toolCall.type === 'string' ? String(toolCall.type).trim().toLowerCase() : '';
+      const nestedActionId =
+        toolCall && nestedType === 'action' && typeof toolCall.actionId === 'string'
+          ? toolCall.actionId.trim()
+          : '';
+      const nestedInputs =
+        toolCall && toolCall.collectedInputs && typeof toolCall.collectedInputs === 'object' && !Array.isArray(toolCall.collectedInputs)
+          ? (toolCall.collectedInputs as Record<string, unknown>)
+          : {};
+      if (nestedActionId) return { actionId: nestedActionId, collectedInputs: nestedInputs };
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  const trimmed = rawContent.trim();
+  const full = tryParse(trimmed);
+  if (full) return full;
+
+  // Try JSON code blocks first.
+  const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fencedMatch?.[1]) {
+    const fenced = tryParse(fencedMatch[1].trim());
+    if (fenced) return fenced;
+  }
+
+  const lines = rawContent.split('\n').map((line) => line.trim()).filter(Boolean);
+  if (lines.length > 0) {
+    const fromLastLine = tryParse(lines[lines.length - 1]);
+    if (fromLastLine) return fromLastLine;
+  }
+
+  // Embedded JSON object anywhere in text, e.g. "Let me check...\n{...}".
+  const startCandidates = ['{"type":"action"', '{"tool_call"'];
+  for (const needle of startCandidates) {
+    const start = rawContent.indexOf(needle);
+    if (start < 0) continue;
+    let depth = 0;
+    let end = -1;
+    for (let i = start; i < rawContent.length; i += 1) {
+      const ch = rawContent[i];
+      if (ch === '{') depth += 1;
+      if (ch === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      }
+    }
+    if (end > start) {
+      const embedded = tryParse(rawContent.slice(start, end + 1));
+      if (embedded) return embedded;
+    }
+  }
+
+  return null;
+}
+
+async function resolveReplyWithActions(params: {
+  modelId: string;
+  systemContent: string;
+  historyList: { role: 'user' | 'assistant'; content: string }[];
+  userMessage: string;
+  agentId: number;
+  sessionId?: string | null;
+}): Promise<string> {
+  const { modelId, systemContent, historyList, userMessage, agentId, sessionId } = params;
+  const firstReply = await chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
+    maxTokens: 1024,
+    temperature: 0.7,
+  });
+  const directive =
+    parseActionDirective(firstReply) ??
+    (await tryHeuristicActionExecution({
+      agentId,
+      userMessage,
+      firstReply,
+    }));
+  if (!directive) return firstReply;
+
+  let executionResult: { success: boolean; statusCode: number; responseBody: unknown; durationMs: number };
+  try {
+    executionResult = await executeServerSideActionProxyRuntime({
+      chatbotId: agentId,
+      actionId: directive.actionId,
+      collectedInputs: directive.collectedInputs,
+      context: { sessionId: sessionId ?? undefined },
+      isTest: false,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '';
+    // If model emitted a non-server-side or stale action id, keep the original reply instead of failing chat.
+    if (message.toLowerCase().includes('enabled server-side custom action not found')) {
+      return firstReply;
+    }
+    throw error;
+  }
+
+  const followUpSystemContent = `${systemContent}
+
+The requested server-side custom action has been executed.
+Action ID: ${directive.actionId}
+Status code: ${executionResult.statusCode}
+Success: ${executionResult.success ? 'true' : 'false'}
+Execution duration ms: ${executionResult.durationMs}
+Action result JSON:
+${JSON.stringify(executionResult.responseBody)}
+
+Now respond to the user naturally using this action result and the CURRENT user message only.
+Important:
+- Do NOT ask again for inputs that were already collected and used.
+- Do NOT output action JSON again for this turn.
+- Do NOT say "please hold on" or "checking now"; provide the final answer immediately.
+- If the API result indicates "not found", mention the exact provided input value and suggest trying another value.`;
+
+  const followUpReply = await chatCompletion(modelId, followUpSystemContent, [
+    ...historyList,
+    { role: 'assistant', content: firstReply },
+    { role: 'user', content: userMessage },
+  ], {
+    maxTokens: 1024,
+    temperature: 0.2,
+  });
+
+  if (responseStillAsksForInput(followUpReply)) {
+    return buildActionResultFallbackReply({
+      userMessage,
+      collectedInputs: directive.collectedInputs,
+      executionResult,
+    });
+  }
+
+  // Guard against model hallucinating "not found" when API actually returned product-like data.
+  if (executionResult.success && responseBodyLooksLikeProduct(executionResult.responseBody) && responseClaimsNotFound(followUpReply)) {
+    return buildActionResultFallbackReply({
+      userMessage,
+      collectedInputs: directive.collectedInputs,
+      executionResult,
+    });
+  }
+
+  return followUpReply;
+}
+
+async function buildActionsSystemBlock(agentId: number): Promise<string> {
+  const actions = await prisma.action.findMany({
+    where: { chatbotId: agentId, isEnabled: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (actions.length === 0) return '';
+
+  const lines: string[] = [];
+  lines.push('\n\n## Available Actions');
+  lines.push('');
+  lines.push('You have access to the following actions. Use them when appropriate based on the trigger instructions.');
+  lines.push('');
+
+  for (const action of actions) {
+    const config = toObject(action.config);
+    if (action.type === ActionType.CUSTOM_ACTION) {
+      const inputFields = Array.isArray(config.inputFields) ? config.inputFields : [];
+      const inputList = inputFields
+        .map((field) => {
+          const row = toObject(field);
+          const name = toStringValue(row.name);
+          const description = toStringValue(row.description);
+          const required = Boolean(row.required);
+          if (!name) return '';
+          return `- ${name}${required ? ' (required)' : ''}: ${description || 'No description provided'}`;
+        })
+        .filter(Boolean)
+        .join('\n');
+      lines.push(`Action: ${action.name}`);
+      lines.push(`Function: ${toStringValue(config.actionFunctionName)}`);
+      lines.push(`When to use: ${toStringValue(config.triggerInstructions) || 'When relevant to user intent'}`);
+      lines.push(`Inputs to collect:\n${inputList || '- No inputs defined'}`);
+      lines.push(`Response handling: ${toStringValue(config.responseMapping) || 'Return the result naturally'}`);
+      lines.push(`Execution instruction: Once all required inputs are collected for this server-side action, output ONLY JSON in this exact format:
+{"type":"action","actionId":"${action.id}","collectedInputs":{"input_name":"value"}}`);
+      lines.push('');
+      continue;
+    }
+    if (action.type === ActionType.CUSTOM_BUTTONS) {
+      const buttons = Array.isArray(config.buttons) ? config.buttons : [];
+      const labels = buttons
+        .map((row) => toStringValue(toObject(row).label))
+        .filter(Boolean)
+        .join(', ');
+      lines.push(`Action: ${action.name}`);
+      lines.push(`When to use: ${toStringValue(config.triggerInstructions) || 'When relevant to user intent'}`);
+      lines.push(`Available buttons: ${labels || 'No buttons defined'}`);
+      lines.push(`Instruction: When triggered, output buttons in the following JSON format so the widget can render them: {"type":"buttons","actionId":"${action.id}","buttons":[{"id":"","label":""}]}`);
+      lines.push('');
+    }
+  }
+
+  lines.push('Always collect ALL required inputs before calling any action. If an action fails, inform the user politely and offer to try again or take an alternative path.');
+  return lines.join('\n');
+}
 
 /** Run SSE stream for agent chat. Used by auth and public-embed routes. */
 export async function runAgentChatStream(
@@ -143,6 +431,7 @@ export async function runAgentChatStream(
   let qaBlock = '';
   let contextBlock = '';
   let websiteBlock = '';
+  const actionsBlock = await buildActionsSystemBlock(agentId);
   let qaMatches: { id: number }[] = [];
 
   if (!isConversational) {
@@ -169,6 +458,7 @@ export async function runAgentChatStream(
     qaBlock,
     contextBlock,
     websiteBlock,
+    actionsBlock,
     sessionState,
     isConversational,
   });
@@ -198,15 +488,17 @@ export async function runAgentChatStream(
 
   let fullReply = '';
   try {
-    const customApiActions = await getEnabledCustomApiActions(agentId);
-    const useTools = customApiActions.length > 0;
-
-    if (useTools) {
-      fullReply = await runChatWithTools(agentId, modelId, systemContent, historyList, userMessage);
-      if (fullReply) {
-        res.write(`data: ${JSON.stringify({ content: fullReply })}\n\n`);
-        if (typeof (res as any).flush === 'function') (res as any).flush();
-      }
+    if (actionsBlock.trim()) {
+      fullReply = await resolveReplyWithActions({
+        modelId,
+        systemContent,
+        historyList,
+        userMessage,
+        agentId,
+        sessionId: bodySessionId ?? null,
+      });
+      res.write(`data: ${JSON.stringify({ content: fullReply })}\n\n`);
+      if (typeof (res as any).flush === 'function') (res as any).flush();
     } else {
       for await (const chunk of chatCompletionStream(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
         maxTokens: 1024,
@@ -266,6 +558,7 @@ export async function getAgentReply(
   let qaBlock = '';
   let contextBlock = '';
   let websiteBlock = '';
+  const actionsBlock = await buildActionsSystemBlock(agentId);
   let qaMatches: { id: number }[] = [];
 
   if (!isConversational) {
@@ -292,6 +585,7 @@ export async function getAgentReply(
     qaBlock,
     contextBlock,
     websiteBlock,
+    actionsBlock,
     sessionState,
     isConversational,
   });
@@ -304,14 +598,19 @@ export async function getAgentReply(
     throw new Error('Message credits exhausted. Please upgrade your plan or add credits.');
   }
 
-  const customApiActions = await getEnabledCustomApiActions(agentId);
-  const reply =
-    customApiActions.length > 0
-      ? await runChatWithTools(agentId, modelId, systemContent, historyList, userMessage)
-      : await chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
-          maxTokens: 1024,
-          temperature: 0.7,
-        });
+  const reply = actionsBlock.trim()
+    ? await resolveReplyWithActions({
+        modelId,
+        systemContent,
+        historyList,
+        userMessage,
+        agentId,
+        sessionId: bodySessionId ?? null,
+      })
+    : await chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
+        maxTokens: 1024,
+        temperature: 0.7,
+      });
 
   if (!isConversational && qaMatches.length > 0) {
     await recordQaUsage(qaMatches.map((q) => q.id)).catch((err) => console.error('Record Q&A usage:', err));
@@ -390,6 +689,7 @@ router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
     let qaBlock = '';
     let contextBlock = '';
     let websiteBlock = '';
+    const actionsBlock = await buildActionsSystemBlock(agentId);
     let qaMatches: { id: number }[] = [];
 
     if (!isConversational) {
@@ -416,20 +716,26 @@ router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
       qaBlock,
       contextBlock,
       websiteBlock,
+      actionsBlock,
       sessionState,
       isConversational,
     });
 
     const modelId = agent.model || 'gpt-4o-mini';
 
-    const customApiActions = await getEnabledCustomApiActions(agentId);
-    const reply =
-      customApiActions.length > 0
-        ? await runChatWithTools(agentId, modelId, systemContent, historyList, userMessage)
-        : await chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
-            maxTokens: 1024,
-            temperature: 0.7,
-          });
+    const reply = actionsBlock.trim()
+      ? await resolveReplyWithActions({
+          modelId,
+          systemContent,
+          historyList,
+          userMessage,
+          agentId,
+          sessionId: bodySessionId ?? null,
+        })
+      : await chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
+          maxTokens: 1024,
+          temperature: 0.7,
+        });
 
     if (!isConversational && qaMatches.length > 0) {
       await recordQaUsage(qaMatches.map((q) => q.id)).catch((err) => console.error('Record Q&A usage:', err));

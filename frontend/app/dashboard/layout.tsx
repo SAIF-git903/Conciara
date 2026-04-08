@@ -486,7 +486,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
       if (isOldAgentRoute && currentWorkspace.id) {
         const agentId = agentIdFromUrl || currentAgent?.id
         if (agentId) {
-          const sub = pathname.includes('chatbot') ? 'settings/chatbot' : pathname.includes('chat-logs') ? 'activity/chat-logs' : pathname.includes('chats') ? 'analytics/chats' : pathname.includes('data-sources/files') ? 'data-sources/files' : pathname.includes('data-sources/qa') ? 'data-sources/qa' : pathname.includes('data-sources/website') ? 'data-sources/website' : pathname.includes('connected-apps') ? 'connected-apps' : pathname.includes('actions') ? 'actions' : 'playground'
+          const sub = pathname.includes('chatbot') ? 'settings/chatbot' : pathname.includes('chat-logs') ? 'activity/chat-logs' : pathname.includes('chats') ? 'analytics/chats' : pathname.includes('data-sources/files') ? 'data-sources/files' : pathname.includes('data-sources/qa') ? 'data-sources/qa' : pathname.includes('data-sources/website') ? 'data-sources/website' : pathname.includes('connected-apps') ? 'connected-apps' : pathname.includes('/actions') ? 'actions' : 'playground'
           router.replace(buildDashboardUrl(currentWorkspace.id, { agentId, subPath: sub }))
         } else if (rest === 'playground') {
           const inWorkspace = agents.filter((a) => a.workspaceId === currentWorkspace.id)

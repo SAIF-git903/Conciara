@@ -45,12 +45,13 @@ export interface AgentChatSystemParams {
   qaBlock: string;
   contextBlock: string;
   websiteBlock: string;
+  actionsBlock?: string;
   sessionState: AgentSessionState;
   isConversational: boolean;
 }
 
 export function buildAgentChatSystemContent(params: AgentChatSystemParams): string {
-  const { prePrompt, role, qaBlock, contextBlock, websiteBlock, sessionState, isConversational } = params;
+  const { prePrompt, role, qaBlock, contextBlock, websiteBlock, actionsBlock = '', sessionState, isConversational } = params;
   const rolePrompt = getRolePrompt(role);
   const base = prePrompt?.trim() ? `${prePrompt}\n\n${rolePrompt}` : rolePrompt;
 
@@ -59,10 +60,11 @@ export function buildAgentChatSystemContent(params: AgentChatSystemParams): stri
       sessionState.lastProductViewed && (sessionState.userIntent === 'thanks' || sessionState.userIntent === 'goodbye')
         ? `\n\nOptional: You may briefly mention they can ask again if they need help with "${sessionState.lastProductViewed}"—but keep it to one short sentence.`
         : '';
-    return `${base}${CONVERSATION_RULES}${stateHint}`;
+    // Keep actions available in short follow-up turns (e.g. user provides "4" as a required input).
+    return `${base}${actionsBlock}${CONVERSATION_RULES}${stateHint}`;
   }
 
   const supportBlock =
     sessionState.userIntent === 'support_request' ? SUPPORT_INTENT_INSTRUCTIONS : '';
-  return `${base}${qaBlock}${contextBlock}${websiteBlock}${supportBlock}${CONVERSATION_RULES}`;
+  return `${base}${qaBlock}${contextBlock}${websiteBlock}${actionsBlock}${supportBlock}${CONVERSATION_RULES}`;
 }

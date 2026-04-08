@@ -27,6 +27,7 @@ interface Message {
   content: string
   timestamp: Date
   media?: MediaItem[]
+  buttons?: Array<{ id: string; label: string; url: string; openInNewTab: boolean }>
 }
 
 interface OnMessageContext {
@@ -56,6 +57,22 @@ export interface SkinRendererProps {
   previewMode?: boolean
   /** When in previewMode (embed), called when user clicks close so the host can hide the panel and show the launcher. */
   onEmbedClose?: () => void
+  availableActions?: {
+    customButtons: Array<{
+      id: string
+      name: string
+      triggerInstructions: string
+      buttons: Array<{ id: string; label: string; url: string; openInNewTab: boolean }>
+    }>
+    customActions: Array<{
+      id: string
+      name: string
+      actionFunctionName: string
+      triggerInstructions: string
+      executionMode: 'server_side' | 'client_side' | string
+      inputFields: Array<{ name: string; description: string; required: boolean; type: string }>
+    }>
+  }
 }
 
 export default function SkinRenderer({
@@ -72,21 +89,115 @@ export default function SkinRenderer({
   initialMessages = [],
   sessionId: initialSessionId = null,
   previewMode = false,
-  onEmbedClose
+  onEmbedClose,
+  availableActions = { customButtons: [], customActions: [] },
 }: SkinRendererProps) {
   const [isOpen, setIsOpen] = useState(previewMode)
   const [isMinimized, setIsMinimized] = useState(false)
   const [messages, setMessages] = useState<Message[]>(initialMessages)
 
-  const addMessage = (type: 'user' | 'bot', content: string, media?: MediaItem[]) => {
+  const addMessage = (
+    type: 'user' | 'bot',
+    content: string,
+    media?: MediaItem[],
+    buttons?: Array<{ id: string; label: string; url: string; openInNewTab: boolean }>
+  ) => {
     const newMessage: Message = {
       id: `${Date.now()}_${Math.random()}`,
       type,
       content,
       timestamp: new Date(),
-      media
+      media,
+      buttons,
     }
     setMessages(prev => [...prev, newMessage])
+  }
+
+  const resolveButtonsPayload = (rawContent: string): {
+    buttons: Array<{ id: string; label: string; url: string; openInNewTab: boolean }>
+    cleanedContent: string
+  } | null => {
+    const parseDirective = (candidate: string) => {
+      try {
+        const parsed = JSON.parse(candidate) as { type?: string; actionId?: string; buttons?: Array<{ id?: string; label?: string }> }
+        if (parsed.type !== 'buttons' || !parsed.actionId) return null
+        const action = availableActions.customButtons.find((item) => item.id === parsed.actionId)
+        if (!action) return null
+        if (!Array.isArray(parsed.buttons) || parsed.buttons.length === 0) {
+          return action.buttons
+        }
+        const allowedIds = new Set(parsed.buttons.map((button) => button.id).filter(Boolean) as string[])
+        const mapped = action.buttons.filter((button) => allowedIds.has(button.id))
+        return mapped.length > 0 ? mapped : action.buttons
+      } catch {
+        return null
+      }
+    }
+
+    // 1) Full message is directive JSON.
+    const fullMatch = parseDirective(rawContent.trim())
+    if (fullMatch) {
+      return { buttons: fullMatch, cleanedContent: '' }
+    }
+
+    // 2) Last non-empty line is directive JSON (common "text + JSON" shape).
+    const lines = rawContent.split('\n')
+    const nonEmptyLines = lines.filter((line) => line.trim())
+    if (nonEmptyLines.length > 0) {
+      const lastLine = nonEmptyLines[nonEmptyLines.length - 1].trim()
+      const lineMatch = parseDirective(lastLine)
+      if (lineMatch) {
+        const idx = rawContent.lastIndexOf(lastLine)
+        const cleaned = idx >= 0 ? rawContent.slice(0, idx).trim() : rawContent.trim()
+        return { buttons: lineMatch, cleanedContent: cleaned }
+      }
+    }
+
+    // 3) Embedded JSON object anywhere in content.
+    const start = rawContent.indexOf('{"type":"buttons"')
+    if (start >= 0) {
+      let depth = 0
+      let end = -1
+      for (let i = start; i < rawContent.length; i += 1) {
+        const ch = rawContent[i]
+        if (ch === '{') depth += 1
+        if (ch === '}') {
+          depth -= 1
+          if (depth === 0) {
+            end = i
+            break
+          }
+        }
+      }
+      if (end > start) {
+        const candidate = rawContent.slice(start, end + 1)
+        const embeddedMatch = parseDirective(candidate)
+        if (embeddedMatch) {
+          const cleaned = `${rawContent.slice(0, start)}${rawContent.slice(end + 1)}`.trim()
+          return { buttons: embeddedMatch, cleanedContent: cleaned }
+        }
+      }
+    }
+
+    return null
+  }
+
+  const getStreamingDisplayContent = (rawContent: string): string => {
+    const directiveStart = rawContent.indexOf('{"type":"buttons"')
+    if (directiveStart >= 0) {
+      return rawContent.slice(0, directiveStart).trimEnd()
+    }
+
+    // Hide a trailing JSON line while it is still streaming to avoid flicker.
+    const lines = rawContent.split('\n')
+    if (lines.length > 1) {
+      const lastLine = lines[lines.length - 1]
+      if (lastLine.trimStart().startsWith('{')) {
+        return lines.slice(0, -1).join('\n').trimEnd()
+      }
+    }
+
+    return rawContent
   }
 
   useEffect(() => {
@@ -236,21 +347,25 @@ export default function SkinRenderer({
 
     try {
       if (onMessage) {
+        let streamedRaw = ''
         const onChunk = (chunk: string) => {
           if (activeRequestIdRef.current !== requestId) return
+          streamedRaw += chunk
+          const displayContent = getStreamingDisplayContent(streamedRaw)
           setMessages(prev => {
             const p = [...prev]
             const last = p[p.length - 1]
             if (!last || last.type !== 'bot') {
+              if (!displayContent.trim()) return p
               p.push({
                 id: `${Date.now()}_${Math.random()}`,
                 type: 'bot',
-                content: chunk,
+                content: displayContent,
                 timestamp: new Date(),
               })
               return p
             }
-            p[p.length - 1] = { ...last, content: `${last.content}${chunk}` }
+            p[p.length - 1] = { ...last, content: displayContent }
             return p
           })
         }
@@ -261,28 +376,41 @@ export default function SkinRenderer({
           const last = p[p.length - 1]
           const hasBotTail = !!last && last.type === 'bot'
           if (typeof result === 'string' && result.trim()) {
+            const parsedButtons = resolveButtonsPayload(result.trim())
             if (hasBotTail) {
-              p[p.length - 1] = { ...last, content: result.trim() }
+              p[p.length - 1] = {
+                ...last,
+                content: parsedButtons ? parsedButtons.cleanedContent : result.trim(),
+                buttons: parsedButtons?.buttons ?? undefined,
+              }
             } else {
               p.push({
                 id: `${Date.now()}_${Math.random()}`,
                 type: 'bot',
-                content: result.trim(),
+                content: parsedButtons ? parsedButtons.cleanedContent : result.trim(),
                 timestamp: new Date(),
+                buttons: parsedButtons?.buttons ?? undefined,
               })
             }
           } else if (result && typeof result === 'object' && typeof (result as { content?: string }).content === 'string') {
             const { content, media } = result as { content: string; media?: MediaItem[] }
             const normalized = content.trim()
+            const parsedButtons = resolveButtonsPayload(normalized)
             if (hasBotTail) {
-              p[p.length - 1] = { ...last, content: normalized, media }
+              p[p.length - 1] = {
+                ...last,
+                content: parsedButtons ? parsedButtons.cleanedContent : normalized,
+                media,
+                buttons: parsedButtons?.buttons ?? undefined,
+              }
             } else if (normalized || (media && media.length > 0)) {
               p.push({
                 id: `${Date.now()}_${Math.random()}`,
                 type: 'bot',
-                content: normalized,
+                content: parsedButtons ? parsedButtons.cleanedContent : normalized,
                 timestamp: new Date(),
                 media,
+                buttons: parsedButtons?.buttons ?? undefined,
               })
             }
           }

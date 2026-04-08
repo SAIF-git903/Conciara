@@ -61,6 +61,22 @@ function EmbedChatContent() {
   const [config, setConfig] = useState<MergedSkinConfig | null>(null)
   const [configError, setConfigError] = useState<string | null>(null)
   const [authError, setAuthError] = useState(false)
+  const [availableActions, setAvailableActions] = useState<{
+    customButtons: Array<{
+      id: string
+      name: string
+      triggerInstructions: string
+      buttons: Array<{ id: string; label: string; url: string; openInNewTab: boolean }>
+    }>
+    customActions: Array<{
+      id: string
+      name: string
+      actionFunctionName: string
+      triggerInstructions: string
+      executionMode: string
+      inputFields: Array<{ name: string; description: string; required: boolean; type: string }>
+    }>
+  }>({ customButtons: [], customActions: [] })
 
   useEffect(() => {
     if (!apiUrl || !workspaceId || !agentId) {
@@ -75,6 +91,19 @@ function EmbedChatContent() {
         setConfigError(null)
       })
       .catch(() => setConfigError('Failed to load chat config'))
+
+    const actionsUrl = `${apiUrl}/public/workspaces/${workspaceId}/agents/${agentId}/active-actions`
+    fetch(actionsUrl)
+      .then((r) => r.json())
+      .then((data) => {
+        setAvailableActions({
+          customButtons: Array.isArray(data.customButtons) ? data.customButtons : [],
+          customActions: Array.isArray(data.customActions) ? data.customActions : [],
+        })
+      })
+      .catch(() => {
+        setAvailableActions({ customButtons: [], customActions: [] })
+      })
   }, [apiUrl, workspaceId, agentId])
 
   const handleMessage = useCallback(
@@ -178,6 +207,11 @@ function EmbedChatContent() {
           Chat may require the site owner to enable public embed.
         </div>
       )}
+      {availableActions.customActions.some((action) => action.executionMode === 'client_side') && (
+        <div className="shrink-0 bg-amber-50 px-4 py-2 text-center text-xs text-amber-800">
+          Client-side actions only run on your live website, not in this preview.
+        </div>
+      )}
       <div className="flex flex-1 min-h-0 w-full overflow-hidden">
         <SkinRenderer
           config={config}
@@ -185,6 +219,7 @@ function EmbedChatContent() {
           treeId={null}
           previewMode
           onMessage={handleMessage}
+          availableActions={availableActions}
           onEmbedClose={() => {
             if (typeof window !== 'undefined' && window.parent !== window) {
               window.parent.postMessage({ type: 'conciara-embed-close' }, '*')

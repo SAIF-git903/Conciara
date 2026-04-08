@@ -20,6 +20,17 @@ interface Message {
   content: string
   timestamp: Date
   media?: MediaItem[]
+  buttons?: Array<{ id: string; label: string; url: string; openInNewTab: boolean }>
+}
+
+interface ProductPayload {
+  id?: number
+  title: string
+  price?: number
+  description?: string
+  category?: string
+  image?: string
+  rating?: { rate?: number; count?: number }
 }
 
 interface DynamicMessagesProps {
@@ -166,6 +177,64 @@ export default function DynamicMessages({
     td: ({ children }) => <td className="px-3 py-1.5 text-sm border-b border-slate-100">{children}</td>,
   }
 
+  const extractProductPayload = (content: string): { product: ProductPayload; cleanedContent: string } | null => {
+    const parseCandidate = (candidate: string): ProductPayload | null => {
+      try {
+        const parsed = JSON.parse(candidate) as Record<string, unknown>
+        const title = typeof parsed.title === 'string' ? parsed.title : ''
+        if (!title) return null
+        const hasProductShape =
+          typeof parsed.image === 'string' ||
+          typeof parsed.price === 'number' ||
+          typeof parsed.category === 'string' ||
+          (parsed.rating && typeof parsed.rating === 'object')
+        if (!hasProductShape) return null
+        return {
+          id: typeof parsed.id === 'number' ? parsed.id : undefined,
+          title,
+          price: typeof parsed.price === 'number' ? parsed.price : undefined,
+          description: typeof parsed.description === 'string' ? parsed.description : undefined,
+          category: typeof parsed.category === 'string' ? parsed.category : undefined,
+          image: typeof parsed.image === 'string' ? parsed.image : undefined,
+          rating: parsed.rating && typeof parsed.rating === 'object'
+            ? {
+                rate: typeof (parsed.rating as Record<string, unknown>).rate === 'number'
+                  ? (parsed.rating as Record<string, unknown>).rate as number
+                  : undefined,
+                count: typeof (parsed.rating as Record<string, unknown>).count === 'number'
+                  ? (parsed.rating as Record<string, unknown>).count as number
+                  : undefined,
+              }
+            : undefined,
+        }
+      } catch {
+        return null
+      }
+    }
+
+    const fenced = content.match(/```json\s*([\s\S]*?)\s*```/i)
+    if (fenced?.[1]) {
+      const product = parseCandidate(fenced[1].trim())
+      if (product) {
+        return {
+          product,
+          cleanedContent: content.replace(fenced[0], '').trim(),
+        }
+      }
+    }
+
+    const trimmed = content.trim()
+    const direct = parseCandidate(trimmed)
+    if (direct) {
+      return {
+        product: direct,
+        cleanedContent: '',
+      }
+    }
+
+    return null
+  }
+
   return (
     <div
       className={`p-4 ${isList ? 'space-y-2' : isCards ? 'space-y-3' : 'space-y-4'}`}
@@ -188,6 +257,16 @@ export default function DynamicMessages({
               <img src={messagesConfig.botAvatar} alt="" className="w-full h-full object-cover" />
             </div>
           )}
+          {(() => {
+            const parsedProduct = message.type === 'bot' ? extractProductPayload(message.content) : null
+            const displayContent = parsedProduct ? parsedProduct.cleanedContent : message.content
+            const product = parsedProduct?.product
+            const formattedPrice =
+              typeof product?.price === 'number'
+                ? new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(product.price)
+                : null
+
+            return (
           <div
             className={`${bubbleMaxWidth} ${bubbleRadius} px-3 py-2 ${bubbleLayoutClasses} ${
               message.type === 'user'
@@ -203,12 +282,43 @@ export default function DynamicMessages({
             <div className="text-sm ct-message-body" style={{ color: message.type === 'user' ? 'white' : textColor }}>
               {message.type === 'bot' ? (
                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                  {message.content}
+                  {displayContent || ''}
                 </ReactMarkdown>
               ) : (
-                <p className="whitespace-pre-wrap">{message.content}</p>
+                <p className="whitespace-pre-wrap">{displayContent || ''}</p>
               )}
             </div>
+
+            {product ? (
+              <div className="mt-2 overflow-hidden rounded-lg border border-slate-200 bg-white text-slate-900">
+                {product.image ? (
+                  <img
+                    src={product.image}
+                    alt={product.title}
+                    className="h-36 w-full object-contain bg-slate-50 p-2"
+                  />
+                ) : null}
+                <div className="space-y-1.5 p-3">
+                  <p className="line-clamp-2 text-sm font-semibold text-slate-900">{product.title}</p>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    {formattedPrice ? (
+                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">{formattedPrice}</span>
+                    ) : null}
+                    {product.category ? (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">{product.category}</span>
+                    ) : null}
+                    {typeof product.rating?.rate === 'number' ? (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">
+                        {product.rating.rate.toFixed(1)}{typeof product.rating.count === 'number' ? ` (${product.rating.count})` : ''}
+                      </span>
+                    ) : null}
+                  </div>
+                  {product.description ? (
+                    <p className="line-clamp-3 text-xs text-slate-600">{product.description}</p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
             
             {/* Media Display */}
             {message.media && message.media.length > 0 && (
@@ -246,6 +356,33 @@ export default function DynamicMessages({
                 })()}
               </div>
             )}
+
+            {message.buttons && message.buttons.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {message.buttons.map((button) => (
+                  <button
+                    key={button.id}
+                    type="button"
+                    onClick={() => {
+                      if (button.openInNewTab) {
+                        window.open(button.url, '_blank', 'noopener,noreferrer')
+                      } else {
+                        window.location.href = button.url
+                      }
+                    }}
+                    className="max-w-[220px] truncate rounded-full border px-3 py-1 text-xs font-medium transition-colors hover:opacity-90"
+                    style={{
+                      borderColor: primaryColor,
+                      color: message.type === 'user' ? '#ffffff' : primaryColor,
+                      backgroundColor: message.type === 'user' ? 'rgba(255,255,255,0.2)' : '#ffffff',
+                    }}
+                    title={button.label}
+                  >
+                    {button.label.slice(0, 30)}
+                  </button>
+                ))}
+              </div>
+            )}
             
             {messagesConfig.showTimestamps && (
               <span className="text-xs opacity-70 mt-1 block">
@@ -255,6 +392,8 @@ export default function DynamicMessages({
               </span>
             )}
           </div>
+            )
+          })()}
           {message.type === 'user' && showUserAvatar && messagesConfig.userAvatar && (
             <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden bg-slate-200">
               <img src={messagesConfig.userAvatar} alt="" className="w-full h-full object-cover" />
@@ -371,31 +510,33 @@ function LoadingIndicator({ config }: { config: MergedSkinConfig }) {
   const loadingConfig = config.states?.loading || {}
   const type = loadingConfig.type || 'dots'
   const primaryColor = config.theme?.primaryColor || '#6366f1'
+  const message = typeof loadingConfig.message === 'string' && loadingConfig.message.trim()
+    ? loadingConfig.message.trim()
+    : 'Calling API...'
 
   if (type === 'dots') {
     return (
-      <div className="flex gap-1">
-        <div 
-          className="w-2 h-2 rounded-full animate-bounce" 
-          style={{ 
-            backgroundColor: loadingConfig.color === 'primary' ? primaryColor : '#9ca3af',
-            animationDelay: '0ms' 
-          }}
-        />
-        <div 
-          className="w-2 h-2 rounded-full animate-bounce" 
-          style={{ 
-            backgroundColor: loadingConfig.color === 'primary' ? primaryColor : '#9ca3af',
-            animationDelay: '150ms' 
-          }}
-        />
-        <div 
-          className="w-2 h-2 rounded-full animate-bounce" 
-          style={{ 
-            backgroundColor: loadingConfig.color === 'primary' ? primaryColor : '#9ca3af',
-            animationDelay: '300ms' 
-          }}
-        />
+      <div className="flex min-w-[190px] items-center gap-3">
+        <div className="relative h-6 w-6">
+          <span
+            className="absolute inset-0 rounded-full border-2 border-transparent border-t-current animate-spin"
+            style={{ color: primaryColor }}
+          />
+          <span
+            className="absolute inset-[6px] rounded-full animate-pulse"
+            style={{ backgroundColor: loadingConfig.color === 'primary' ? primaryColor : '#9ca3af' }}
+          />
+        </div>
+
+        <div className="min-w-0 flex-1 space-y-1">
+          <p className="text-xs font-medium text-slate-700">{message}</p>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+            <div
+              className="h-full w-1/2 animate-pulse rounded-full"
+              style={{ backgroundColor: loadingConfig.color === 'primary' ? primaryColor : '#9ca3af' }}
+            />
+          </div>
+        </div>
       </div>
     )
   }
