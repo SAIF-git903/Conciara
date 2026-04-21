@@ -196,6 +196,47 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const refreshAgentsForWorkspace = useCallback(async (workspaceId: number) => {
+    if (!workspaceId || workspaceId === 0) {
+      setAgents([])
+      setAgentsLoading(false)
+      return
+    }
+    setAgentsLoading(true)
+    try {
+      const res = await api.get<{ agents: Array<{ id: number; workspaceId: number; name: string }> }>(
+        `/workspaces/${workspaceId}/agents`
+      )
+      if (currentWorkspaceIdRef.current !== workspaceId) return
+      const list = (res.data.agents ?? []).map((a) => ({
+        id: String(a.id),
+        name: a.name,
+        workspaceId: a.workspaceId,
+      }))
+      setAgents(list)
+    } catch {
+      if (currentWorkspaceIdRef.current !== workspaceId) return
+      setAgents([])
+    } finally {
+      if (currentWorkspaceIdRef.current === workspaceId) {
+        setAgentsLoading(false)
+      }
+    }
+  }, [])
+
+  const bumpWorkspaceAgentUsage = useCallback((delta: number) => {
+    if (!delta) return
+    setWorkspaceLimits((prev: any) => {
+      if (!prev || typeof prev.currentAgents !== 'number' || typeof prev.maxAgents !== 'number') return prev
+      const nextCurrentAgents = Math.max(0, prev.currentAgents + delta)
+      return {
+        ...prev,
+        currentAgents: nextCurrentAgents,
+        canCreateAgent: nextCurrentAgents < prev.maxAgents,
+      }
+    })
+  }, [])
+
   useEffect(() => {
     fetchUsage()
     refreshWorkspaceLimits()
@@ -409,35 +450,31 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   // Load agents for the current workspace (must be before any early return to satisfy Rules of Hooks)
   useEffect(() => {
     const workspaceId = currentWorkspace.id
-    if (workspaceId === 0) {
-      setAgents([])
-      setAgentsLoading(false)
-      return
+    refreshAgentsForWorkspace(workspaceId)
+  }, [currentWorkspace.id, refreshAgentsForWorkspace])
+
+  // Onboarding creates agents outside this layout's createAgent helper, so listen and refresh.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onAgentCreated = (
+      event: Event
+    ) => {
+      const custom = event as CustomEvent<{
+        workspaceId?: number
+        agent?: { id: string; name: string; workspaceId: number }
+      }>
+      const workspaceId = custom.detail?.workspaceId
+      if (!workspaceId || workspaceId !== currentWorkspaceIdRef.current) return
+      const createdAgent = custom.detail?.agent
+      if (createdAgent) {
+        setAgents((prev) => (prev.some((a) => a.id === createdAgent.id) ? prev : [...prev, createdAgent]))
+      }
+      refreshAgentsForWorkspace(workspaceId).catch(() => {})
+      refreshWorkspaceLimits().catch(() => {})
     }
-    let cancelled = false
-    setAgentsLoading(true)
-    api.get<{ agents: Array<{ id: number; workspaceId: number; name: string }> }>(`/workspaces/${workspaceId}/agents`)
-      .then((res) => {
-        if (cancelled || currentWorkspaceIdRef.current !== workspaceId) return
-        const list = (res.data.agents ?? []).map((a) => ({
-          id: String(a.id),
-          name: a.name,
-          workspaceId: a.workspaceId,
-        }))
-        setAgents(list)
-      })
-      .catch(() => {
-        if (cancelled || currentWorkspaceIdRef.current !== workspaceId) return
-        setAgents([])
-      })
-      .finally(() => {
-        if (cancelled || currentWorkspaceIdRef.current !== workspaceId) return
-        setAgentsLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [currentWorkspace.id])
+    window.addEventListener('dashboard-agent-created', onAgentCreated as EventListener)
+    return () => window.removeEventListener('dashboard-agent-created', onAgentCreated as EventListener)
+  }, [refreshAgentsForWorkspace, refreshWorkspaceLimits])
 
   // Sync currentAgent from URL when path has agentId, or default to first in workspace
   useEffect(() => {
@@ -530,12 +567,14 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
       const agent = res.data.agent
       const newAgent = { id: String(agent.id), name: agent.name, workspaceId: agent.workspaceId }
       setAgents((prev) => [...prev, newAgent])
-      // Removed fetchWorkspaceLimits call
+      // Keep permissions in sync immediately, then reconcile with server.
+      bumpWorkspaceAgentUsage(1)
+      refreshWorkspaceLimits().catch(() => {})
       return newAgent
     } catch {
       return null
     }
-  }, [currentWorkspace.id])
+  }, [currentWorkspace.id, bumpWorkspaceAgentUsage, refreshWorkspaceLimits])
 
   useEffect(() => {
     if (agentToDelete) setDeleteConfirmText('')
@@ -547,6 +586,9 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     try {
       await api.delete(`/workspaces/${currentWorkspace.id}/agents/${agentToDelete.id}`)
       setAgents((prev) => prev.filter((a) => a.id !== agentToDelete.id))
+      // Keep permissions in sync immediately, then reconcile with server.
+      bumpWorkspaceAgentUsage(-1)
+      refreshWorkspaceLimits().catch(() => {})
       if (currentAgent?.id === agentToDelete.id) {
         const remaining = agents.filter((a) => a.workspaceId === currentWorkspace.id && a.id !== agentToDelete.id)
         setCurrentAgent(remaining[0] ?? null)
@@ -561,7 +603,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     } finally {
       setDeleteLoading(false)
     }
-  }, [agentToDelete, currentWorkspace?.id, currentAgent?.id, agents, deleteConfirmText, router])
+  }, [agentToDelete, currentWorkspace?.id, currentAgent?.id, agents, deleteConfirmText, router, bumpWorkspaceAgentUsage, refreshWorkspaceLimits])
 
   useEffect(() => {
     if (createWorkspaceOpen) {

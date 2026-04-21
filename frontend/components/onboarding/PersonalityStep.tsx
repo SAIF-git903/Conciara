@@ -102,6 +102,20 @@ export default function PersonalityStep({
         `/workspaces/${workspaceId}/agents`,
         { name, model, prePrompt: prePrompt.trim() || undefined, logoUrl: logoUrl || undefined }
       )
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('dashboard-agent-created', {
+            detail: {
+              workspaceId: data.agent.workspaceId,
+              agent: {
+                id: String(data.agent.id),
+                name: data.agent.name,
+                workspaceId: data.agent.workspaceId,
+              },
+            },
+          })
+        )
+      }
       const crawlId = getOnboardingCrawlId()
       if (crawlId != null) {
         await api.patch(`/workspaces/${workspaceId}/crawls/${crawlId}`, { agentId: data.agent.id })
