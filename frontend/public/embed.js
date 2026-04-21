@@ -9,9 +9,71 @@
  *   data-agent-id="2"
  *   data-position="bottom-right">
  * </script>
+ *
+ * Optional session init params:
+ *   <script>ChatbotWidget.init({ sessionData: { customer_id: 'cust_4821' } });</script>
+ * Values are forwarded to every chat request for server-side action injection.
  */
 (function () {
   'use strict';
+
+  if (!window.ChatbotWidget) {
+    var _iframes = [];
+    var _sessionData = {};
+
+    function _relayTo(iframe) {
+      if (!iframe || !iframe.contentWindow) return;
+      try {
+        iframe.contentWindow.postMessage(
+          { type: 'conciara-session-data', sessionData: _sessionData },
+          '*'
+        );
+      } catch (err) { /* no-op */ }
+    }
+
+    function _relayAll() {
+      for (var i = 0; i < _iframes.length; i += 1) _relayTo(_iframes[i]);
+    }
+
+    function _normalizeSessionData(raw) {
+      if (!raw || typeof raw !== 'object') return {};
+      var out = {};
+      for (var k in raw) {
+        if (!Object.prototype.hasOwnProperty.call(raw, k)) continue;
+        var v = raw[k];
+        if (typeof v === 'string') out[k] = v;
+        else if (typeof v === 'number' || typeof v === 'boolean') out[k] = String(v);
+      }
+      return out;
+    }
+
+    window.ChatbotWidget = {
+      init: function (config) {
+        if (!config || typeof config !== 'object') return;
+        if (config.sessionData) {
+          _sessionData = _normalizeSessionData(config.sessionData);
+          _relayAll();
+        }
+      },
+      /** Internal: embed.js IIFE registers its iframe so init() relays find it. */
+      _registerIframe: function (iframe) {
+        if (!iframe) return;
+        _iframes.push(iframe);
+        if (iframe.addEventListener) {
+          iframe.addEventListener('load', function () { _relayTo(iframe); });
+        }
+        _relayTo(iframe);
+      }
+    };
+
+    // Iframe announces readiness on mount → re-send the stored sessionData to that frame.
+    window.addEventListener('message', function (event) {
+      if (!event || !event.data || event.data.type !== 'conciara-embed-ready') return;
+      for (var i = 0; i < _iframes.length; i += 1) {
+        if (_iframes[i].contentWindow === event.source) _relayTo(_iframes[i]);
+      }
+    });
+  }
 
   if (!window.ChatbotActions) {
     var registry = {};
@@ -130,6 +192,10 @@
   iframe.title = 'Chat';
   iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
   panel.appendChild(iframe);
+
+  if (window.ChatbotWidget && typeof window.ChatbotWidget._registerIframe === 'function') {
+    window.ChatbotWidget._registerIframe(iframe);
+  }
 
   launcher.onclick = function () {
     launcher.style.display = 'none';

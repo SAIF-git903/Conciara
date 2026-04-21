@@ -34,6 +34,28 @@ export interface ActionPathParam {
   value: string
 }
 
+export type AuthType = 'none' | 'api_key' | 'bearer' | 'basic' | 'oauth_bearer'
+
+export interface ActionAuthConfig {
+  type: AuthType
+  // api_key
+  apiKeyHeader?: string
+  apiKeyValue?: string
+  // bearer
+  bearerToken?: string
+  // basic
+  basicUsername?: string
+  basicPassword?: string
+  // oauth_bearer
+  accessToken?: string
+  refreshToken?: string
+  /** ISO timestamp */
+  expiresAt?: string
+  refreshEndpoint?: string
+  refreshClientId?: string
+  refreshClientSecret?: string
+}
+
 export interface CustomActionConfig {
   executionMode: ExecutionMode
   apiUrl?: string
@@ -46,6 +68,8 @@ export interface CustomActionConfig {
   actionFunctionName: string
   inputFields: ActionInputField[]
   responseMapping?: string
+  /** Dedicated auth config (per-action). Injected server-side at call time, bypasses header denylist. */
+  authConfig?: ActionAuthConfig
 }
 
 export interface CustomButtonsButton {

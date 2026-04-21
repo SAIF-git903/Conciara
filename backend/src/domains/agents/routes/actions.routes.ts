@@ -27,6 +27,48 @@ const INTERNAL_HEADER_DENYLIST = new Set([
 
 const proxyRateLimitByChatbot = new Map<number, number[]>();
 
+type AuthType = 'none' | 'api_key' | 'bearer' | 'basic' | 'oauth_bearer';
+
+interface ActionAuthConfig {
+  type: AuthType;
+  apiKeyHeader?: string;
+  apiKeyValue?: string;
+  bearerToken?: string;
+  basicUsername?: string;
+  basicPassword?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresAt?: string;
+  refreshEndpoint?: string;
+  refreshClientId?: string;
+  refreshClientSecret?: string;
+}
+
+/** In-flight refresh dedupe per action id to avoid parallel token refresh storms. */
+const inFlightOAuthRefreshes = new Map<string, Promise<string>>();
+
+function parseAuthConfigFromJson(config: JsonObject): ActionAuthConfig | null {
+  const raw = config.authConfig;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const row = raw as JsonObject;
+  const type = getString(row, 'type') as AuthType;
+  if (!type || type === 'none') return null;
+  return {
+    type,
+    apiKeyHeader: getString(row, 'apiKeyHeader'),
+    apiKeyValue: getString(row, 'apiKeyValue'),
+    bearerToken: getString(row, 'bearerToken'),
+    basicUsername: getString(row, 'basicUsername'),
+    basicPassword: getString(row, 'basicPassword'),
+    accessToken: getString(row, 'accessToken'),
+    refreshToken: getString(row, 'refreshToken'),
+    expiresAt: getString(row, 'expiresAt'),
+    refreshEndpoint: getString(row, 'refreshEndpoint'),
+    refreshClientId: getString(row, 'refreshClientId'),
+    refreshClientSecret: getString(row, 'refreshClientSecret'),
+  };
+}
+
 function parseWorkspaceAndChatbotIds(req: RequestLike): { workspaceId: number; chatbotId: number } | null {
   const workspaceId = parseInt(req.params.workspaceId, 10);
   const chatbotId = parseInt(req.params.chatbotId, 10);
@@ -171,6 +213,43 @@ function validateCustomActionConfig(config: JsonObject): string[] {
     if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
       errors.push('method is required for server-side actions');
     }
+    errors.push(...validateAuthConfig(config));
+  }
+  return errors;
+}
+
+function validateAuthConfig(config: JsonObject): string[] {
+  const errors: string[] = [];
+  const rawAuth = config.authConfig;
+  if (!rawAuth || typeof rawAuth !== 'object' || Array.isArray(rawAuth)) return errors;
+  const row = rawAuth as JsonObject;
+  const type = getString(row, 'type');
+  if (!type || type === 'none') return errors;
+  if (!['api_key', 'bearer', 'basic', 'oauth_bearer'].includes(type)) {
+    errors.push('authConfig.type must be none, api_key, bearer, basic, or oauth_bearer');
+    return errors;
+  }
+  if (type === 'api_key') {
+    if (!getString(row, 'apiKeyHeader')) errors.push('authConfig.apiKeyHeader is required for API Key auth');
+    if (!getString(row, 'apiKeyValue')) errors.push('authConfig.apiKeyValue is required for API Key auth');
+  }
+  if (type === 'bearer') {
+    if (!getString(row, 'bearerToken')) errors.push('authConfig.bearerToken is required for Bearer auth');
+  }
+  if (type === 'basic') {
+    if (!getString(row, 'basicUsername')) errors.push('authConfig.basicUsername is required for Basic auth');
+    if (!getString(row, 'basicPassword')) errors.push('authConfig.basicPassword is required for Basic auth');
+  }
+  if (type === 'oauth_bearer') {
+    if (!getString(row, 'accessToken')) errors.push('authConfig.accessToken is required for OAuth Bearer auth');
+    if (!getString(row, 'refreshToken')) errors.push('authConfig.refreshToken is required for OAuth Bearer auth');
+    if (!getString(row, 'expiresAt')) errors.push('authConfig.expiresAt is required for OAuth Bearer auth');
+    const refreshEndpoint = getString(row, 'refreshEndpoint');
+    if (!refreshEndpoint || !isHttpUrl(refreshEndpoint)) {
+      errors.push('authConfig.refreshEndpoint must be a valid http(s) URL');
+    }
+    if (!getString(row, 'refreshClientId')) errors.push('authConfig.refreshClientId is required for OAuth Bearer auth');
+    if (!getString(row, 'refreshClientSecret')) errors.push('authConfig.refreshClientSecret is required for OAuth Bearer auth');
   }
   return errors;
 }
@@ -283,17 +362,23 @@ function buildProxyRequestFromConfig(params: {
   chatbotName?: string;
   currentUrl?: string;
   sessionId?: string;
+  sessionData?: Record<string, string>;
 }) {
-  const { actionConfig, collectedInputs, chatbotName, currentUrl, sessionId } = params;
-  const resolveContextValue = (contextKey: string): string => (
-    contextKey === 'chatbot_name'
-      ? String(chatbotName ?? '')
-      : contextKey === 'current_url'
-        ? String(currentUrl ?? '')
-        : contextKey === 'session_id'
-          ? String(sessionId ?? '')
-          : ''
-  );
+  const { actionConfig, collectedInputs, chatbotName, currentUrl, sessionId, sessionData } = params;
+  const resolveContextValue = (contextKey: string): string => {
+    if (contextKey === 'chatbot_name') return String(chatbotName ?? '');
+    if (contextKey === 'current_url') return String(currentUrl ?? '');
+    if (contextKey === 'session_id') return String(sessionId ?? '');
+    return sessionData?.[contextKey] ?? '';
+  };
+  /** Same as resolveContextValue, but preserves null vs "" distinction for the JSON body. */
+  const resolveContextValueForBody = (contextKey: string): string | null => {
+    if (contextKey === 'chatbot_name') return chatbotName ?? null;
+    if (contextKey === 'current_url') return currentUrl ?? null;
+    if (contextKey === 'session_id') return sessionId ?? null;
+    const fromSession = sessionData?.[contextKey];
+    return fromSession !== undefined ? fromSession : null;
+  };
   const resolveInputValue = (inputKey: string): string => String(collectedInputs[inputKey] ?? '');
   const interpolateUrlTemplate = (rawApiUrl: string): string => {
     if (!rawApiUrl) return rawApiUrl;
@@ -368,13 +453,7 @@ function buildProxyRequestFromConfig(params: {
     }
     if (source === 'context') {
       const contextKey = getString(row, 'contextKey');
-      body[key] = contextKey === 'chatbot_name'
-        ? chatbotName ?? null
-        : contextKey === 'current_url'
-          ? currentUrl ?? null
-          : contextKey === 'session_id'
-            ? sessionId ?? null
-            : null;
+      body[key] = resolveContextValueForBody(contextKey);
       continue;
     }
     body[key] = row.value ?? null;
@@ -383,12 +462,171 @@ function buildProxyRequestFromConfig(params: {
   return { url: url.toString(), method, headers, body };
 }
 
+/**
+ * Resolve a valid OAuth access token. Refreshes if within the 5-minute skew
+ * or when `forceRefresh` is true (used on 401 retry). Persists the new
+ * accessToken + expiresAt on the action's stored authConfig.
+ */
+async function resolveOAuthToken(
+  actionId: string,
+  authConfig: ActionAuthConfig,
+  forceRefresh: boolean,
+): Promise<string> {
+  const FIVE_MIN_MS = 5 * 60 * 1000;
+  const expiresAtMs = authConfig.expiresAt ? Date.parse(authConfig.expiresAt) : NaN;
+  const needsRefresh =
+    forceRefresh ||
+    !authConfig.accessToken ||
+    !Number.isFinite(expiresAtMs) ||
+    expiresAtMs - Date.now() < FIVE_MIN_MS;
+
+  if (!needsRefresh) return authConfig.accessToken ?? '';
+
+  if (!authConfig.refreshEndpoint || !authConfig.refreshToken) {
+    throw new Error('OAuth refresh requires refreshEndpoint and refreshToken');
+  }
+
+  const existingRefresh = inFlightOAuthRefreshes.get(actionId);
+  if (existingRefresh) return existingRefresh;
+
+  const refreshPromise = (async (): Promise<string> => {
+    await validateTargetUrlForProxy(authConfig.refreshEndpoint!);
+    const form = new URLSearchParams();
+    form.set('grant_type', 'refresh_token');
+    form.set('refresh_token', authConfig.refreshToken ?? '');
+    if (authConfig.refreshClientId) form.set('client_id', authConfig.refreshClientId);
+    if (authConfig.refreshClientSecret) form.set('client_secret', authConfig.refreshClientSecret);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
+    try {
+      const response = await fetch(authConfig.refreshEndpoint!, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: form.toString(),
+        signal: controller.signal,
+      });
+      const text = await response.text();
+      let parsed: JsonObject = {};
+      try {
+        parsed = text ? (JSON.parse(text) as JsonObject) : {};
+      } catch {
+        parsed = {};
+      }
+      if (!response.ok) {
+        throw new Error(`OAuth refresh failed with status ${response.status}`);
+      }
+      const newAccessToken = getString(parsed, 'access_token');
+      if (!newAccessToken) {
+        throw new Error('OAuth refresh response missing access_token');
+      }
+      const expiresInRaw = parsed.expires_in;
+      const expiresInSec =
+        typeof expiresInRaw === 'number' && Number.isFinite(expiresInRaw)
+          ? expiresInRaw
+          : typeof expiresInRaw === 'string' && expiresInRaw.trim()
+            ? Number(expiresInRaw)
+            : 3600;
+      const newExpiresAt = new Date(Date.now() + Math.max(60, expiresInSec) * 1000).toISOString();
+      const maybeNewRefresh = getString(parsed, 'refresh_token');
+
+      const existing = await prisma.action.findUnique({
+        where: { id: actionId },
+        select: { config: true },
+      });
+      if (existing) {
+        const existingConfig = parseBodyObject(existing.config);
+        const existingAuth = parseBodyObject(existingConfig.authConfig);
+        const mergedAuth: JsonObject = {
+          ...existingAuth,
+          type: 'oauth_bearer',
+          accessToken: newAccessToken,
+          expiresAt: newExpiresAt,
+          ...(maybeNewRefresh ? { refreshToken: maybeNewRefresh } : {}),
+        };
+        const mergedConfig: JsonObject = { ...existingConfig, authConfig: mergedAuth };
+        await prisma.action.update({
+          where: { id: actionId },
+          data: { config: mergedConfig as Prisma.InputJsonValue },
+        });
+      }
+
+      authConfig.accessToken = newAccessToken;
+      authConfig.expiresAt = newExpiresAt;
+      if (maybeNewRefresh) authConfig.refreshToken = maybeNewRefresh;
+      return newAccessToken;
+    } finally {
+      clearTimeout(timer);
+    }
+  })();
+
+  inFlightOAuthRefreshes.set(actionId, refreshPromise);
+  try {
+    return await refreshPromise;
+  } finally {
+    inFlightOAuthRefreshes.delete(actionId);
+  }
+}
+
+/**
+ * Build and merge auth headers on top of the user-configured headers.
+ * Runs AFTER the INTERNAL_HEADER_DENYLIST filter in buildProxyRequestFromConfig,
+ * so auth headers intentionally bypass the denylist.
+ */
+async function injectAuthHeaders(
+  headers: Record<string, string>,
+  authConfig: ActionAuthConfig,
+  actionId: string,
+  forceRefresh = false,
+): Promise<Record<string, string>> {
+  const out = { ...headers };
+  switch (authConfig.type) {
+    case 'none':
+      return out;
+    case 'api_key': {
+      if (authConfig.apiKeyHeader && authConfig.apiKeyValue) {
+        out[authConfig.apiKeyHeader] = authConfig.apiKeyValue;
+      }
+      return out;
+    }
+    case 'bearer': {
+      if (authConfig.bearerToken) {
+        out['Authorization'] = `Bearer ${authConfig.bearerToken}`;
+      }
+      return out;
+    }
+    case 'basic': {
+      const username = authConfig.basicUsername ?? '';
+      const password = authConfig.basicPassword ?? '';
+      const encoded = Buffer.from(`${username}:${password}`, 'utf8').toString('base64');
+      out['Authorization'] = `Basic ${encoded}`;
+      return out;
+    }
+    case 'oauth_bearer': {
+      const token = await resolveOAuthToken(actionId, authConfig, forceRefresh);
+      if (token) {
+        out['Authorization'] = `Bearer ${token}`;
+      }
+      return out;
+    }
+    default:
+      return out;
+  }
+}
+
 async function executeServerSideCustomAction(params: {
   action: { id: string; chatbotId: number; config: Prisma.JsonValue };
   collectedInputs: JsonObject;
   isTest: boolean;
-  context?: { currentUrl?: string; sessionId?: string };
-}): Promise<{ success: boolean; statusCode: number; responseBody: unknown; durationMs: number }> {
+  context?: { currentUrl?: string; sessionId?: string; sessionData?: Record<string, string> };
+}): Promise<{
+  success: boolean;
+  statusCode: number;
+  responseBody: unknown;
+  durationMs: number;
+  error?: string;
+  message?: string;
+}> {
   const config = parseBodyObject(params.action.config);
   const executionMode = getString(config, 'executionMode');
   if (executionMode !== 'server_side') {
@@ -411,33 +649,84 @@ async function executeServerSideCustomAction(params: {
     chatbotName: agent?.name,
     currentUrl: params.context?.currentUrl,
     sessionId: params.context?.sessionId,
+    sessionData: params.context?.sessionData,
   });
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
+  const authConfig = parseAuthConfigFromJson(config);
+  const methodUpper = requestPayload.method.toUpperCase();
+  const shouldAttachBody = !['GET', 'DELETE'].includes(methodUpper);
   const startedAt = Date.now();
-  try {
-    const methodUpper = requestPayload.method.toUpperCase();
-    const shouldAttachBody = !['GET', 'DELETE'].includes(methodUpper);
-    const response = await fetch(requestPayload.url, {
-      method: methodUpper,
-      headers: {
+
+  const doFetch = async (
+    forceAuthRefresh: boolean,
+  ): Promise<{ response: Response; parsedBody: unknown }> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
+    try {
+      const finalHeaders: Record<string, string> = {
         ...requestPayload.headers,
         ...(shouldAttachBody ? { 'content-type': 'application/json' } : {}),
-      },
-      body: shouldAttachBody ? JSON.stringify(requestPayload.body) : undefined,
-      signal: controller.signal,
-    });
-    const text = await response.text();
-    let parsedBody: unknown = text;
-    try {
-      parsedBody = text ? JSON.parse(text) : null;
-    } catch {
-      // Keep raw text.
+      };
+      const headersWithAuth = authConfig
+        ? await injectAuthHeaders(finalHeaders, authConfig, params.action.id, forceAuthRefresh)
+        : finalHeaders;
+      const response = await fetch(requestPayload.url, {
+        method: methodUpper,
+        headers: headersWithAuth,
+        body: shouldAttachBody ? JSON.stringify(requestPayload.body) : undefined,
+        signal: controller.signal,
+      });
+      const text = await response.text();
+      let parsedBody: unknown = text;
+      try {
+        parsedBody = text ? JSON.parse(text) : null;
+      } catch {
+        // Keep raw text.
+      }
+      return { response, parsedBody };
+    } catch (error: unknown) {
+      if (controller.signal.aborted) {
+        throw Object.assign(new Error('timeout'), { __timeout: true });
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
     }
+  };
+
+  try {
+    let { response, parsedBody } = await doFetch(false);
+
+    if (response.status === 401 && authConfig?.type === 'oauth_bearer') {
+      try {
+        const retry = await doFetch(true);
+        response = retry.response;
+        parsedBody = retry.parsedBody;
+      } catch (retryError: unknown) {
+        console.warn(
+          `[actions-proxy] ts=${new Date().toISOString()} actionId=${params.action.id} oauthRefreshRetryFailed=${retryError instanceof Error ? retryError.message : 'unknown'}`,
+        );
+      }
+      if (response.status === 401) {
+        const durationMs = Date.now() - startedAt;
+        console.warn(
+          `[actions-proxy] ts=${new Date().toISOString()} actionId=${params.action.id} statusCode=401 authExpired=true`,
+        );
+        return {
+          success: false,
+          statusCode: 401,
+          responseBody: parsedBody,
+          durationMs,
+          error: 'auth_expired',
+          message: 'Action authorization expired. Please reconnect in your dashboard.',
+        };
+      }
+    }
+
     const durationMs = Date.now() - startedAt;
-    const logLine = `[actions-proxy] ts=${new Date().toISOString()} actionId=${params.action.id} statusCode=${response.status}`;
-    console.info(logLine);
+    console.info(
+      `[actions-proxy] ts=${new Date().toISOString()} actionId=${params.action.id} statusCode=${response.status}`,
+    );
     return {
       success: response.ok,
       statusCode: response.status,
@@ -446,8 +735,10 @@ async function executeServerSideCustomAction(params: {
     };
   } catch (error: unknown) {
     const durationMs = Date.now() - startedAt;
-    if (controller.signal.aborted) {
-      console.warn(`[actions-proxy] ts=${new Date().toISOString()} actionId=${params.action.id} statusCode=408 timeout=true`);
+    if (error && typeof error === 'object' && (error as { __timeout?: boolean }).__timeout) {
+      console.warn(
+        `[actions-proxy] ts=${new Date().toISOString()} actionId=${params.action.id} statusCode=408 timeout=true`,
+      );
       return {
         success: false,
         statusCode: 408,
@@ -456,8 +747,6 @@ async function executeServerSideCustomAction(params: {
       };
     }
     throw error;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -465,9 +754,16 @@ export async function executeServerSideActionProxyRuntime(params: {
   chatbotId: number;
   actionId: string;
   collectedInputs: Record<string, unknown>;
-  context?: { currentUrl?: string; sessionId?: string };
+  context?: { currentUrl?: string; sessionId?: string; sessionData?: Record<string, string> };
   isTest?: boolean;
-}): Promise<{ success: boolean; statusCode: number; responseBody: unknown; durationMs: number }> {
+}): Promise<{
+  success: boolean;
+  statusCode: number;
+  responseBody: unknown;
+  durationMs: number;
+  error?: string;
+  message?: string;
+}> {
   const action = await prisma.action.findFirst({
     where: {
       id: params.actionId,

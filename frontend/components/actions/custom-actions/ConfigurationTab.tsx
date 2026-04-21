@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import InputFieldBuilder from './InputFieldBuilder'
 import KeyValueBuilder from './KeyValueBuilder'
 import ClientSideCodeSnippet from './ClientSideCodeSnippet'
-import type { CustomActionConfig } from '@/components/actions/types'
+import type { ActionAuthConfig, AuthType, CustomActionConfig } from '@/components/actions/types'
 
 interface ConfigurationTabProps {
   name: string
@@ -174,6 +174,10 @@ export default function ConfigurationTab({
           <div className="rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-600">
             Values are encrypted at rest and never exposed to the frontend.
           </div>
+          <AuthorizationSection
+            authConfig={config.authConfig}
+            onChange={(authConfig) => onConfigChange({ ...config, authConfig })}
+          />
           <KeyValueBuilder label="Headers" rows={config.headers ?? []} onChange={(headers) => onConfigChange({ ...config, headers })} />
           <KeyValueBuilder label="Query Parameters" rows={config.queryParams ?? []} onChange={(queryParams) => onConfigChange({ ...config, queryParams })} />
           <KeyValueBuilder
@@ -183,6 +187,10 @@ export default function ConfigurationTab({
             rows={config.bodyParams ?? []}
             onChange={(bodyParams) => onConfigChange({ ...config, bodyParams })}
           />
+          <p className="text-xs text-slate-500">
+            &ldquo;From context&rdquo; rows resolve from <code>chatbot_name</code>, <code>current_url</code>, <code>session_id</code>, or any key from
+            <code> sessionData </code>passed at widget init (e.g. <code>customer_id</code>, <code>cart_id</code>).
+          </p>
           <div>
             <label className="block text-sm font-medium text-slate-700">Response Mapping</label>
             <textarea
@@ -201,6 +209,185 @@ export default function ConfigurationTab({
         </section>
       )}
 
+    </div>
+  )
+}
+
+interface AuthorizationSectionProps {
+  authConfig: ActionAuthConfig | undefined
+  onChange: (next: ActionAuthConfig | undefined) => void
+}
+
+function AuthorizationSection({ authConfig, onChange }: AuthorizationSectionProps) {
+  const type: AuthType = authConfig?.type ?? 'none'
+
+  const update = (patch: Partial<ActionAuthConfig>) => {
+    onChange({ ...(authConfig ?? { type }), type, ...patch })
+  }
+
+  const handleTypeChange = (nextType: AuthType) => {
+    if (nextType === 'none') {
+      onChange({ type: 'none' })
+      return
+    }
+    onChange({ ...(authConfig ?? { type: nextType }), type: nextType })
+  }
+
+  const inputCls =
+    'mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm focus:border-[var(--v2-primary)] focus:outline-none'
+  const labelCls = 'block text-xs font-medium text-slate-700'
+
+  return (
+    <div className="space-y-3 rounded-lg border border-slate-200 p-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-slate-700">Authorization</p>
+      </div>
+      <div>
+        <label className={labelCls}>Auth Type</label>
+        <select
+          value={type}
+          onChange={(event) => handleTypeChange(event.target.value as AuthType)}
+          className={inputCls}
+        >
+          <option value="none">None</option>
+          <option value="api_key">API Key</option>
+          <option value="bearer">Bearer Token</option>
+          <option value="basic">Basic Auth</option>
+          <option value="oauth_bearer">OAuth Bearer</option>
+        </select>
+        <p className="mt-1 text-xs text-slate-500">
+          Auth headers are injected server-side at call time and bypass the internal header denylist.
+        </p>
+      </div>
+
+      {type === 'api_key' ? (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div>
+            <label className={labelCls}>Header Name</label>
+            <input
+              type="text"
+              value={authConfig?.apiKeyHeader ?? ''}
+              onChange={(event) => update({ apiKeyHeader: event.target.value })}
+              placeholder="X-API-Key"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>API Key</label>
+            <input
+              type="password"
+              value={authConfig?.apiKeyValue ?? ''}
+              onChange={(event) => update({ apiKeyValue: event.target.value })}
+              placeholder="sk_live_..."
+              className={inputCls}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {type === 'bearer' ? (
+        <div>
+          <label className={labelCls}>Bearer Token</label>
+          <input
+            type="password"
+            value={authConfig?.bearerToken ?? ''}
+            onChange={(event) => update({ bearerToken: event.target.value })}
+            placeholder="eyJhbGciOi..."
+            className={inputCls}
+          />
+        </div>
+      ) : null}
+
+      {type === 'basic' ? (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div>
+            <label className={labelCls}>Username</label>
+            <input
+              type="text"
+              value={authConfig?.basicUsername ?? ''}
+              onChange={(event) => update({ basicUsername: event.target.value })}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Password</label>
+            <input
+              type="password"
+              value={authConfig?.basicPassword ?? ''}
+              onChange={(event) => update({ basicPassword: event.target.value })}
+              className={inputCls}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {type === 'oauth_bearer' ? (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div>
+              <label className={labelCls}>Access Token</label>
+              <input
+                type="password"
+                value={authConfig?.accessToken ?? ''}
+                onChange={(event) => update({ accessToken: event.target.value })}
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Refresh Token</label>
+              <input
+                type="password"
+                value={authConfig?.refreshToken ?? ''}
+                onChange={(event) => update({ refreshToken: event.target.value })}
+                className={inputCls}
+              />
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>Expires At (ISO timestamp)</label>
+            <input
+              type="text"
+              value={authConfig?.expiresAt ?? ''}
+              onChange={(event) => update({ expiresAt: event.target.value })}
+              placeholder="2026-04-21T10:00:00Z"
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Refresh Endpoint</label>
+            <input
+              type="url"
+              value={authConfig?.refreshEndpoint ?? ''}
+              onChange={(event) => update({ refreshEndpoint: event.target.value })}
+              placeholder="https://auth.example.com/oauth/token"
+              className={inputCls}
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div>
+              <label className={labelCls}>Client ID</label>
+              <input
+                type="text"
+                value={authConfig?.refreshClientId ?? ''}
+                onChange={(event) => update({ refreshClientId: event.target.value })}
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Client Secret</label>
+              <input
+                type="password"
+                value={authConfig?.refreshClientSecret ?? ''}
+                onChange={(event) => update({ refreshClientSecret: event.target.value })}
+                className={inputCls}
+              />
+            </div>
+          </div>
+          <p className="text-xs text-slate-500">
+            The access token is auto-refreshed within 5 minutes of expiry, and on <code>401</code> responses the request is retried once with a fresh token.
+          </p>
+        </div>
+      ) : null}
     </div>
   )
 }

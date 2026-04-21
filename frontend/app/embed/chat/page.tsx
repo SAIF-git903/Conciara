@@ -58,6 +58,8 @@ function EmbedChatContent() {
   const agentId = searchParams.get('agentId') ?? ''
   const apiUrl = (searchParams.get('apiUrl') ?? '').replace(/\/+$/, '')
   const sessionIdRef = useRef<string | null>(null)
+  /** Session data passed by the host via embed.js ChatbotWidget.init({ sessionData }). */
+  const sessionDataRef = useRef<Record<string, string>>({})
   const [config, setConfig] = useState<MergedSkinConfig | null>(null)
   const [configError, setConfigError] = useState<string | null>(null)
   const [authError, setAuthError] = useState(false)
@@ -106,6 +108,35 @@ function EmbedChatContent() {
       })
   }, [apiUrl, workspaceId, agentId])
 
+  // Receive sessionData from host (set via ChatbotWidget.init in embed.js). Also announce
+  // widget readiness so the host can (re)send the latest values after iframe mount.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data
+      if (!data || typeof data !== 'object') return
+      if ((data as { type?: unknown }).type !== 'conciara-session-data') return
+      const payload = (data as { sessionData?: unknown }).sessionData
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return
+      const normalized: Record<string, string> = {}
+      for (const [key, raw] of Object.entries(payload as Record<string, unknown>)) {
+        if (typeof key !== 'string' || !key.trim()) continue
+        if (typeof raw === 'string') normalized[key] = raw
+        else if (typeof raw === 'number' || typeof raw === 'boolean') normalized[key] = String(raw)
+      }
+      sessionDataRef.current = normalized
+    }
+    window.addEventListener('message', onMessage)
+    if (window.parent && window.parent !== window) {
+      try {
+        window.parent.postMessage({ type: 'conciara-embed-ready' }, '*')
+      } catch {
+        // no-op
+      }
+    }
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
+
   const handleMessage = useCallback(
     async (userMessage: string, ctx?: { onChunk: (chunk: string) => void; signal?: AbortSignal }): Promise<string> => {
       if (!apiUrl || !workspaceId || !agentId) return 'Missing configuration.'
@@ -120,6 +151,9 @@ function EmbedChatContent() {
             message: userMessage.trim(),
             history: [],
             ...(sessionIdRef.current ? { sessionId: sessionIdRef.current } : {}),
+            ...(Object.keys(sessionDataRef.current).length > 0
+              ? { sessionData: sessionDataRef.current }
+              : {}),
           }),
         })
         if (res.status === 401) {

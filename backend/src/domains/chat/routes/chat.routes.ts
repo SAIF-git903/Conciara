@@ -39,6 +39,21 @@ function toRecord(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+/** Coerce an arbitrary body value into a flat Record<string, string>, silently dropping non-string entries. */
+function toSessionData(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof key !== 'string' || !key.trim()) continue;
+    if (typeof raw === 'string') {
+      out[key] = raw;
+    } else if (typeof raw === 'number' || typeof raw === 'boolean') {
+      out[key] = String(raw);
+    }
+  }
+  return out;
+}
+
 function extractNumericCandidates(text: string): number[] {
   const matches = text.match(/-?\d+(\.\d+)?/g) ?? [];
   return matches
@@ -269,8 +284,9 @@ async function resolveReplyWithActions(params: {
   userMessage: string;
   agentId: number;
   sessionId?: string | null;
+  sessionData?: Record<string, string>;
 }): Promise<string> {
-  const { modelId, systemContent, historyList, userMessage, agentId, sessionId } = params;
+  const { modelId, systemContent, historyList, userMessage, agentId, sessionId, sessionData } = params;
   const firstReply = await chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
     maxTokens: 1024,
     temperature: 0.7,
@@ -284,13 +300,23 @@ async function resolveReplyWithActions(params: {
     }));
   if (!directive) return firstReply;
 
-  let executionResult: { success: boolean; statusCode: number; responseBody: unknown; durationMs: number };
+  let executionResult: {
+    success: boolean;
+    statusCode: number;
+    responseBody: unknown;
+    durationMs: number;
+    error?: string;
+    message?: string;
+  };
   try {
     executionResult = await executeServerSideActionProxyRuntime({
       chatbotId: agentId,
       actionId: directive.actionId,
       collectedInputs: directive.collectedInputs,
-      context: { sessionId: sessionId ?? undefined },
+      context: {
+        sessionId: sessionId ?? undefined,
+        sessionData: sessionData ?? {},
+      },
       isTest: false,
     });
   } catch (error: unknown) {
@@ -300,6 +326,14 @@ async function resolveReplyWithActions(params: {
       return firstReply;
     }
     throw error;
+  }
+
+  // Auth expired: surface a static user-facing message and log the real error for the business.
+  if (executionResult.error === 'auth_expired') {
+    console.warn(
+      `[chat-actions] ts=${new Date().toISOString()} agentId=${agentId} actionId=${directive.actionId} authExpired=true serverMessage="${executionResult.message ?? ''}"`,
+    );
+    return "I'm having trouble connecting to the store right now. Please try again shortly.";
   }
 
   const followUpSystemContent = `${systemContent}
@@ -407,11 +441,12 @@ async function buildActionsSystemBlock(agentId: number): Promise<string> {
 /** Run SSE stream for agent chat. Used by auth and public-embed routes. */
 export async function runAgentChatStream(
   agent: { id: number; workspaceId: number; prePrompt: string | null; model: string | null; role?: string | null },
-  body: { message?: string; history?: unknown; sessionId?: string },
+  body: { message?: string; history?: unknown; sessionId?: string; sessionData?: unknown },
   res: express.Response
 ): Promise<void> {
   const agentId = agent.id;
   const { message, history, sessionId: bodySessionId } = body;
+  const sessionData = toSessionData(body.sessionData);
   const userMessage = typeof message === 'string' ? message.trim() : '';
   if (!userMessage) {
     res.status(400).json({ error: 'message is required' });
@@ -496,6 +531,7 @@ export async function runAgentChatStream(
         userMessage,
         agentId,
         sessionId: bodySessionId ?? null,
+        sessionData,
       });
       res.write(`data: ${JSON.stringify({ content: fullReply })}\n\n`);
       if (typeof (res as any).flush === 'function') (res as any).flush();
@@ -530,7 +566,7 @@ export async function runAgentChatStream(
 export async function handlePublicAgentChatStream(
   workspaceId: number,
   agentId: number,
-  body: { message?: string; history?: unknown; sessionId?: string },
+  body: { message?: string; history?: unknown; sessionId?: string; sessionData?: unknown },
   res: express.Response
 ): Promise<void> {
   const agent = await prisma.agent.findFirst({
@@ -671,6 +707,7 @@ router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
     }
 
     const { message, history, sessionId: bodySessionId } = req.body;
+    const sessionData = toSessionData(req.body?.sessionData);
     const userMessage = typeof message === 'string' ? message.trim() : '';
     if (!userMessage) {
       return res.status(400).json({ error: 'message is required' });
@@ -731,6 +768,7 @@ router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
           userMessage,
           agentId,
           sessionId: bodySessionId ?? null,
+          sessionData,
         })
       : await chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
           maxTokens: 1024,
