@@ -15,6 +15,8 @@ import workspaceCreditsRoutes from './workspace.credits.routes.js';
 import workspaceBillingRoutes from './workspace.billing.routes.js';
 import crawlsRoutes from './crawls.routes.js';
 import agentsRoutes from '../../agents/routes/index.js';
+import notificationsRoutes from './notifications.routes.js';
+import auditRoutes from './audit.routes.js';
 
 const router = express.Router();
 
@@ -27,6 +29,8 @@ router.use(workspaceLimitsRoutes);
 router.use(workspaceCreditsRoutes);
 router.use(workspaceBillingRoutes);
 router.use(crawlsRoutes);
+router.use(notificationsRoutes);
+router.use(auditRoutes);
 router.use(agentsRoutes);
 
 export default router;

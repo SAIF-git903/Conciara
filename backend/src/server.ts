@@ -15,11 +15,14 @@ import publicRoutes from './routes/public.routes.js';
 import { setupSocketHandlers } from './socket/connectionHandler.js';
 import { setSocketIo } from './socket/index.js';
 import { authRateLimiter, generalApiRateLimiter } from './common/middleware/rateLimit.js';
+import { cleanupReadNotifications } from './domains/notifications/notification.service.js';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const NOTIFICATION_RETENTION_DAYS = parseInt(process.env.NOTIFICATION_RETENTION_DAYS || '30', 10);
+const NOTIFICATION_CLEANUP_INTERVAL_HOURS = parseInt(process.env.NOTIFICATION_CLEANUP_INTERVAL_HOURS || '24', 10);
 
 // Ensure correct client IPs behind reverse proxies (needed for rate limiting, logs, etc.)
 app.set('trust proxy', process.env.TRUST_PROXY === 'true' || process.env.NODE_ENV === 'production');
@@ -86,7 +89,23 @@ const io = new SocketServer(server, {
 setSocketIo(io);
 setupSocketHandlers(io);
 
+async function runNotificationCleanup(): Promise<void> {
+  try {
+    const deleted = await cleanupReadNotifications(NOTIFICATION_RETENTION_DAYS);
+    if (deleted > 0) {
+      console.log(
+        `[notifications] cleaned ${deleted} read records older than ${NOTIFICATION_RETENTION_DAYS} day(s)`
+      );
+    }
+  } catch (error) {
+    console.error('[notifications] cleanup failed:', error);
+  }
+}
+
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  runNotificationCleanup();
+  const intervalMs = Math.max(1, NOTIFICATION_CLEANUP_INTERVAL_HOURS) * 60 * 60 * 1000;
+  setInterval(runNotificationCleanup, intervalMs);
 });
 

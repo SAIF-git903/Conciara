@@ -28,6 +28,9 @@ model User {
   workspaceInvitesSent  WorkspaceInvite[]
   agentMembers          AgentMember[]
   createdWorkspaceApiKeys WorkspaceApiKey[]
+  notifications         Notification[]
+  notificationPreferences NotificationPreference[]
+  auditLogs             AuditLog[]           @relation("AuditActor")
 
   @@map("users")
 }
@@ -51,6 +54,9 @@ model Workspace {
   credits       WorkspaceCredits?
   workspaceApiKeys WorkspaceApiKey[]
   billingTransactions WorkspaceBillingTransaction[]
+  notifications       Notification[]
+  notificationPreferences NotificationPreference[]
+  auditLogs          AuditLog[]
 
   @@map("workspaces")
 }
@@ -399,4 +405,64 @@ model CheckoutContext {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("checkout_context")
+}
+
+model Notification {
+  id          String    @id @default(cuid())
+  workspaceId Int       @map("workspace_id")
+  userId      Int       @map("user_id")
+  eventType   String    @map("event_type")
+  title       String
+  message     String
+  data        Json?
+  isRead      Boolean   @default(false) @map("is_read")
+  readAt      DateTime? @map("read_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, userId, createdAt(sort: Desc)])
+  @@index([workspaceId, userId, isRead])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id           String   @id @default(cuid())
+  workspaceId  Int      @map("workspace_id")
+  userId       Int      @map("user_id")
+  eventType    String   @map("event_type")
+  inAppEnabled Boolean  @default(true) @map("in_app_enabled")
+  emailEnabled Boolean  @default(false) @map("email_enabled")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId, eventType])
+  @@index([workspaceId, userId])
+  @@map("notification_preferences")
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  workspaceId Int?      @map("workspace_id")
+  actorUserId Int?      @map("actor_user_id")
+  action      String
+  entityType  String    @map("entity_type")
+  entityId    String?   @map("entity_id")
+  metadata    Json?
+  outcome     String    @default("success")
+  ipAddress   String?   @map("ip_address")
+  userAgent   String?   @map("user_agent")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  actor     User?      @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([actorUserId, createdAt(sort: Desc)])
+  @@index([action])
+  @@map("audit_logs")
 }
