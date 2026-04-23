@@ -14,6 +14,8 @@ import { canManageAgentsInWorkspace } from '../../agents/agent.service.js';
 import { getLatestCrawlForWorkspace } from '../../websites/crawl.service.js';
 import { generatePrePromptFromWebsiteContent } from '../../../shared/llm.service.js';
 import { prisma } from '../../../db/prisma.js';
+import { logAuditEvent } from '../../audit/audit.service.js';
+import { dispatchWorkspaceNotification } from '../../notifications/notification.service.js';
 
 const router = express.Router();
 
@@ -46,6 +48,16 @@ router.post('/', async (req, res) => {
     }
 
     const workspace = await createWorkspace(userId, name.trim(), slug);
+    await logAuditEvent({
+      workspaceId: workspace.id,
+      actorUserId: userId,
+      action: 'workspace.created',
+      entityType: 'workspace',
+      entityId: String(workspace.id),
+      metadata: { name: workspace.name },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] || null,
+    });
     return res.status(201).json({ workspace });
   } catch (error: any) {
     console.error('Create workspace error:', error);
@@ -82,6 +94,26 @@ router.patch('/:workspaceId', async (req, res) => {
 
     const { name } = req.body;
     const workspace = await updateWorkspace(workspaceId, userId, { name: typeof name === 'string' ? name : undefined });
+    await logAuditEvent({
+      workspaceId,
+      actorUserId: userId,
+      action: 'workspace.updated',
+      entityType: 'workspace',
+      entityId: String(workspaceId),
+      metadata: { name: workspace.name },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] || null,
+    });
+    await dispatchWorkspaceNotification({
+      workspaceId,
+      actorUserId: userId,
+      eventType: 'workspace.updated',
+      title: 'Workspace settings updated',
+      message: `${req.user?.fullName || req.user?.email || 'A user'} updated workspace settings.`,
+      data: { workspaceId, name: workspace.name },
+      audience: 'all',
+      defaultEmailEnabled: false,
+    });
     return res.json({ workspace });
   } catch (error: any) {
     if (error?.message === 'Only the workspace owner can update workspace settings') {
@@ -117,6 +149,15 @@ router.delete('/:workspaceId', async (req, res) => {
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     await deleteWorkspace(workspaceId, userId);
+    await logAuditEvent({
+      workspaceId,
+      actorUserId: userId,
+      action: 'workspace.deleted',
+      entityType: 'workspace',
+      entityId: String(workspaceId),
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] || null,
+    });
     return res.status(200).json({ message: 'Workspace deleted' });
   } catch (error: any) {
     if (error?.message === 'Only the workspace owner can delete the workspace') {
@@ -152,6 +193,26 @@ router.post('/:workspaceId/leave', async (req, res) => {
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     await leaveWorkspace(workspaceId, userId);
+    await logAuditEvent({
+      workspaceId,
+      actorUserId: userId,
+      action: 'workspace.left',
+      entityType: 'workspace_member',
+      entityId: String(userId),
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] || null,
+    });
+    await dispatchWorkspaceNotification({
+      workspaceId,
+      actorUserId: userId,
+      eventType: 'workspace.member.left',
+      title: 'Member left workspace',
+      message: `${req.user?.fullName || req.user?.email || 'A member'} left the workspace.`,
+      data: { workspaceId, userId },
+      audience: 'owners',
+      defaultEmailEnabled: true,
+      emailSubject: 'A member left your workspace',
+    });
     return res.status(200).json({ message: 'Left workspace' });
   } catch (error: any) {
     if (error?.message === 'You are not a member of this workspace') {

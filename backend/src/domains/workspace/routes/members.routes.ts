@@ -14,6 +14,8 @@ import {
 } from '../workspace.service.js';
 import { PlanLimitError, sendPlanLimitError } from '../../../common/errors/planLimit.js';
 import { requirePermission } from '../../../middleware/permissions.js';
+import { logAuditEvent } from '../../audit/audit.service.js';
+import { dispatchWorkspaceNotification } from '../../notifications/notification.service.js';
 
 const router = express.Router();
 
@@ -78,6 +80,27 @@ router.post('/:workspaceId/invites/resend', async (req, res) => {
     if (!email) return res.status(400).json({ error: 'Email is required' });
 
     const result = await resendWorkspaceInvite(workspaceId, email, userId);
+    await logAuditEvent({
+      workspaceId,
+      actorUserId: userId,
+      action: 'workspace.invite.resent',
+      entityType: 'workspace_invite',
+      entityId: email.toLowerCase(),
+      metadata: { email: email.toLowerCase() },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] || null,
+    });
+    await dispatchWorkspaceNotification({
+      workspaceId,
+      actorUserId: userId,
+      eventType: 'workspace.invite.resent',
+      title: 'Invite resent',
+      message: `${req.user?.fullName || req.user?.email || 'A user'} resent an invite to ${email.toLowerCase()}.`,
+      data: { workspaceId, email: email.toLowerCase() },
+      audience: 'owners',
+      excludeActor: false,
+      defaultEmailEnabled: false,
+    });
     return res.status(200).json(result);
   } catch (error: any) {
     if (error?.message === 'Only the workspace owner can resend invites') {
@@ -120,6 +143,28 @@ router.post('/:workspaceId/members', requirePermission({ feature: 'inviteMembers
     if (!email) return res.status(400).json({ error: 'Email is required' });
 
     const result = await inviteWorkspaceMember(workspaceId, email, userId);
+    await logAuditEvent({
+      workspaceId,
+      actorUserId: userId,
+      action: 'workspace.member.invited',
+      entityType: result.kind === 'member' ? 'workspace_member' : 'workspace_invite',
+      entityId: result.kind === 'member' ? String(result.member.userId) : email.toLowerCase(),
+      metadata: { email: email.toLowerCase(), kind: result.kind },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] || null,
+    });
+    await dispatchWorkspaceNotification({
+      workspaceId,
+      actorUserId: userId,
+      eventType: 'workspace.member.invited',
+      title: 'Member invited',
+      message: `${req.user?.fullName || req.user?.email || 'A user'} invited ${email.toLowerCase()} to the workspace.`,
+      data: { workspaceId, email: email.toLowerCase(), kind: result.kind },
+      audience: 'owners',
+      excludeActor: false,
+      defaultEmailEnabled: true,
+      emailSubject: 'New member invited to your workspace',
+    });
     if (result.kind === 'member') {
       return res.status(201).json({ member: result.member });
     }
@@ -174,6 +219,28 @@ router.delete('/:workspaceId/members/:userId', async (req, res) => {
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     await removeWorkspaceMember(workspaceId, userIdToRemove, userId);
+    await logAuditEvent({
+      workspaceId,
+      actorUserId: userId,
+      action: 'workspace.member.removed',
+      entityType: 'workspace_member',
+      entityId: String(userIdToRemove),
+      metadata: { removedUserId: userIdToRemove },
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] || null,
+    });
+    await dispatchWorkspaceNotification({
+      workspaceId,
+      actorUserId: userId,
+      eventType: 'workspace.member.removed',
+      title: 'Member removed',
+      message: `${req.user?.fullName || req.user?.email || 'A user'} removed a member from the workspace.`,
+      data: { workspaceId, removedUserId: userIdToRemove },
+      audience: 'owners',
+      excludeActor: false,
+      defaultEmailEnabled: true,
+      emailSubject: 'Member removed from workspace',
+    });
     return res.status(200).json({ message: 'Member removed' });
   } catch (error: any) {
     if (error?.message === 'Only the workspace owner can remove members') {

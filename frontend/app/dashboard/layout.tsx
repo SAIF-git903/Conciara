@@ -42,6 +42,7 @@ import { parseDashboardPath, buildDashboardUrl } from '@/lib/dashboard-url'
 import { ConciaraMark } from '@/components/branding/ConciaraMark'
 import CreditUsageWidget from '@/components/CreditUsageWidget'
 import PermissionButton from '@/components/PermissionButton'
+import NotificationBell from '@/components/NotificationBell'
 import {
   Accordion,
   AccordionContent,
@@ -53,7 +54,7 @@ import {
 const dashboardNavItemsOwner = [
   { href: '/dashboard', label: 'Agents', Icon: Bot },
   { href: '#', label: 'Usage', Icon: Clock },
-  { href: '#', label: 'Workspace settings', Icon: Settings, children: ['General', 'Members', 'Plans', 'Billing', 'API keys'] },
+  { href: '#', label: 'Workspace settings', Icon: Settings, children: ['General', 'Members', 'Notifications', 'Audit logs', 'Plans', 'Billing', 'API keys'] },
 ]
 const dashboardNavItemsMember = [
   { href: '/dashboard', label: 'Agents', Icon: Bot },
@@ -72,6 +73,8 @@ const childPathMap: Record<string, Record<string, string>> = {
   'Workspace settings': {
     General: 'settings/general',
     Members: 'members',
+    Notifications: 'settings/notifications',
+    'Audit logs': 'settings/audit-logs',
     Plans: 'settings/plans',
     Billing: 'settings/billing',
     'API keys': 'settings/api-keys',
@@ -993,6 +996,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1">
+          <NotificationBell workspaceId={currentWorkspace?.id} />
           <Link
             href="/docs"
             className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-slate-600 transition-colors duration-200 hover:bg-slate-100 hover:text-slate-900"
