@@ -74,6 +74,12 @@ const SUPPORT_PATTERNS = [
   /\b(track|tracking|delivery|shipping)\b/i,
   /\b(order status|where is my)\b/i,
   /\b(complaint|unhappy|disappointed)\b/i,
+  /\bcontact\b/i,
+  /\b(reach|get in touch)\b/i,
+  /\b(opening|business)\s*hours?\b/i,
+  /\byour\s*(address|location|email|phone|number)\b/i,
+  /\bhow\s*(do\s*i|can\s*i|to)\s*(contact|reach|call)\b/i,
+  /\b(phone|call|email|chat)\s*(you|us|support|team|someone)\b/i,
 ];
 
 function matchAny(text: string, patterns: RegExp[]): boolean {
