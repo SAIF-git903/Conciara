@@ -17,7 +17,7 @@ interface CustomButtonsDrawerProps {
     isEnabled: boolean
     config: CustomButtonsConfig
     lastKnownUpdatedAt?: string
-  }) => Promise<void>
+  }) => Promise<ChatbotAction>
   onDelete: (actionId: string) => Promise<void>
   onToggle: (actionId: string, next: boolean) => Promise<void>
 }
@@ -64,6 +64,7 @@ export default function CustomButtonsDrawer({
   const [form, setForm] = useState(emptyForm)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -125,6 +126,7 @@ export default function CustomButtonsDrawer({
   const handleSave = async () => {
     if (!validate()) return
     setSaving(true)
+    setSaveError(null)
     try {
       await onSave({
         ...(editing ? { id: editing.id, lastKnownUpdatedAt: editing.updatedAt } : {}),
@@ -140,6 +142,13 @@ export default function CustomButtonsDrawer({
         },
       })
       setMode(canShowList ? 'list' : 'form')
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } }).response?.status
+      if (status === 409) {
+        setSaveError('This action was updated by someone else. Close and reopen to get the latest version.')
+      } else {
+        setSaveError('Failed to save — please try again.')
+      }
     } finally {
       setSaving(false)
     }
@@ -154,6 +163,9 @@ export default function CustomButtonsDrawer({
       setMode(actions.length > 1 ? 'list' : 'form')
       setEditing(null)
       setForm(emptyForm)
+    } catch {
+      setConfirmDeleteOpen(false)
+      setSaveError('Failed to delete — please try again.')
     } finally {
       setDeleting(false)
     }
@@ -188,6 +200,11 @@ export default function CustomButtonsDrawer({
             ) : (
               <>
                 <div className="flex-1 overflow-y-auto p-5">
+                  {saveError && (
+                    <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                      {saveError}
+                    </div>
+                  )}
                   <CustomButtonsForm value={form} errors={errors} onChange={setForm} />
                 </div>
                 <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3">

@@ -105,5 +105,6 @@ export interface ActionTypeMeta {
   type: ActionType
   title: string
   description: string
+  example?: string
   comingSoon: boolean
 }

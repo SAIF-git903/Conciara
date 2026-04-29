@@ -132,13 +132,13 @@ export default function CustomButtonsForm({ value, errors, onChange }: CustomBut
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-slate-700">Trigger Instructions</label>
+        <label className="block text-sm font-medium text-slate-700">When should the chatbot show these buttons?</label>
         <textarea
           value={value.config.triggerInstructions}
           onChange={(event) => onChange({ ...value, config: { ...value.config, triggerInstructions: event.target.value } })}
           rows={3}
           className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[var(--v2-primary)] focus:outline-none"
-          placeholder="Show these buttons when the user asks about pricing or wants to explore the product"
+          placeholder='e.g. "Show these buttons when the user asks about pricing or wants to explore the product"'
         />
       </div>
 
