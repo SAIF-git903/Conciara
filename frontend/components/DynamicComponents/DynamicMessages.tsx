@@ -100,13 +100,13 @@ export default function DynamicMessages({
   const backgroundColor = config.theme?.backgroundColor || '#ffffff'
   const textColor = config.theme?.textColor || '#1f2937'
   
-  const layout = messagesConfig.layout || 'bubbles'
+  const layout = messagesConfig.layout || 'list'
   const userAlignment = messagesConfig.userAlignment || 'right'
   const botAlignment = messagesConfig.botAlignment || 'left'
   const showAvatars = messagesConfig.showAvatars !== false
   const showBotAvatar = messagesConfig.showBotAvatar ?? showAvatars
   const showUserAvatar = messagesConfig.showUserAvatar ?? showAvatars
-  const bubbleStyle = messagesConfig.bubbleStyle || 'rounded'
+  const bubbleStyle = messagesConfig.bubbleStyle || 'minimal'
 
   const borderRadiusMap = {
     rounded: 'rounded-2xl',
@@ -247,10 +247,10 @@ export default function DynamicMessages({
         </div>
       )}
 
-      {messages.map((message) => (
+      {messages.map((message, index) => (
         <div
           key={message.id}
-          className={messageRowClass(message.type === 'user')}
+          className={`${messageRowClass(message.type === 'user')} ct-message-enter`}
         >
           {message.type === 'bot' && showBotAvatar && messagesConfig.botAvatar && (
             <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden bg-slate-200">
@@ -260,6 +260,7 @@ export default function DynamicMessages({
           {(() => {
             const parsedProduct = message.type === 'bot' ? extractProductPayload(message.content) : null
             const displayContent = parsedProduct ? parsedProduct.cleanedContent : message.content
+            const isStreamingThis = isLoading && index === messages.length - 1 && message.type === 'bot'
             const product = parsedProduct?.product
             const formattedPrice =
               typeof product?.price === 'number'
@@ -279,7 +280,7 @@ export default function DynamicMessages({
                 : { backgroundColor: '#f1f5f9', color: textColor }
             }
           >
-            <div className="text-sm ct-message-body" style={{ color: message.type === 'user' ? 'white' : textColor }}>
+            <div className={`text-sm ct-message-body${isStreamingThis ? ' ct-streaming' : ''}`} style={{ color: message.type === 'user' ? 'white' : textColor }}>
               {message.type === 'bot' ? (
                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                   {displayContent || ''}
@@ -403,7 +404,7 @@ export default function DynamicMessages({
       ))}
 
       {isLoading && !hasLatestBotMessage && (
-        <div className="flex gap-2 justify-start">
+        <div className="flex gap-2 justify-start ct-message-enter">
           {showBotAvatar && messagesConfig.botAvatar && (
             <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden bg-slate-200">
               <img src={messagesConfig.botAvatar} alt="" className="w-full h-full object-cover" />
@@ -507,41 +508,23 @@ export default function DynamicMessages({
 }
 
 function LoadingIndicator({ config }: { config: MergedSkinConfig }) {
-  const loadingConfig = config.states?.loading || {}
-  const type = loadingConfig.type || 'dots'
   const primaryColor = config.theme?.primaryColor || '#6366f1'
-  const message = typeof loadingConfig.message === 'string' && loadingConfig.message.trim()
-    ? loadingConfig.message.trim()
-    : 'Calling API...'
 
-  if (type === 'dots') {
-    return (
-      <div className="flex min-w-[190px] items-center gap-3">
-        <div className="relative h-6 w-6">
-          <span
-            className="absolute inset-0 rounded-full border-2 border-transparent border-t-current animate-spin"
-            style={{ color: primaryColor }}
-          />
-          <span
-            className="absolute inset-[6px] rounded-full animate-pulse"
-            style={{ backgroundColor: loadingConfig.color === 'primary' ? primaryColor : '#9ca3af' }}
-          />
-        </div>
-
-        <div className="min-w-0 flex-1 space-y-1">
-          <p className="text-xs font-medium text-slate-700">{message}</p>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
-            <div
-              className="h-full w-1/2 animate-pulse rounded-full"
-              style={{ backgroundColor: loadingConfig.color === 'primary' ? primaryColor : '#9ca3af' }}
-            />
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  return <div>Loading...</div>
+  return (
+    <div className="flex items-center gap-1 px-1 py-2">
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="block h-2 w-2 rounded-full animate-bounce"
+          style={{
+            backgroundColor: primaryColor,
+            animationDelay: `${i * 0.15}s`,
+            animationDuration: '0.9s',
+          }}
+        />
+      ))}
+    </div>
+  )
 }
 
 function getRelativeTime(date: Date): string {

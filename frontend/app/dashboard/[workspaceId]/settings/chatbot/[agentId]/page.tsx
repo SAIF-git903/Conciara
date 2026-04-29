@@ -46,8 +46,8 @@ function defaultConfig(): SkinConfig {
         showClose: true,
       },
       messages: {
-        layout: 'bubbles',
-        bubbleStyle: 'rounded',
+        layout: 'list',
+        bubbleStyle: 'minimal',
         showAvatars: true,
         showTimestamps: false,
         timestampFormat: 'relative',
@@ -645,14 +645,14 @@ export default function ChatbotCustomizationsPage() {
                     <div className="grid grid-cols-2 gap-3">
                       <Select
                         label="Layout"
-                        value={(comp.messages?.layout as string) || 'bubbles'}
+                        value={(comp.messages?.layout as string) || 'list'}
                         options={selectOptions(['bubbles', 'list', 'cards'])}
                         onChange={(v) => updateComponents('messages', { layout: v })}
                         compact
                       />
                       <Select
                         label="Bubble style"
-                        value={(comp.messages?.bubbleStyle as string) || 'rounded'}
+                        value={(comp.messages?.bubbleStyle as string) || 'minimal'}
                         options={selectOptions(['rounded', 'square', 'minimal'])}
                         onChange={(v) => updateComponents('messages', { bubbleStyle: v })}
                         compact

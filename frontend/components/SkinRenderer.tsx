@@ -211,6 +211,7 @@ export default function SkinRenderer({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const atBottomRef = useRef(true)
+  const prevMessageCountRef = useRef(0)
   const activeRequestIdRef = useRef(0)
   const activeAbortRef = useRef<AbortController | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -248,10 +249,12 @@ export default function SkinRenderer({
     }
   }, [isOpen])
 
-  // Auto-scroll only when user is at bottom (ChatGPT-style: follow stream, but allow scrolling up)
+  // Auto-scroll: smooth when a new message is added, instant when streaming content updates
   useEffect(() => {
+    const isNewMessage = messages.length > prevMessageCountRef.current
+    prevMessageCountRef.current = messages.length
     if (atBottomRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' })
+      messagesEndRef.current?.scrollIntoView({ behavior: isNewMessage ? 'smooth' : 'auto', block: 'end' })
       setShowJumpToBottom(false)
     } else if (messages.length > 0) {
       setShowJumpToBottom(true)
