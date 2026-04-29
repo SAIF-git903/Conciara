@@ -338,7 +338,12 @@ export default function DynamicInput({
             type="submit"
             disabled={!value.trim() || isLoading}
             tabIndex={hidden ? -1 : 0}
-            className="p-2 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-gray-100"
+            className={`p-2 rounded-full transition-all duration-150 active:scale-95 disabled:cursor-not-allowed ${
+              value.trim() && !isLoading
+                ? 'text-white shadow-sm hover:opacity-90'
+                : 'bg-gray-100 text-gray-400 hover:bg-gray-200 disabled:opacity-50 disabled:hover:bg-gray-100'
+            }`}
+            style={value.trim() && !isLoading ? { backgroundColor: primaryColor } : undefined}
           >
             <ArrowUp className="w-4 h-4" />
           </button>
@@ -348,7 +353,7 @@ export default function DynamicInput({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="p-4 border-t" style={{ borderColor }}>
+    <form onSubmit={handleSubmit} className="p-4 pt-2">
       <div
         className={`relative flex flex-col border bg-white shadow-sm focus-within:ring-2 focus-within:ring-offset-0 transition-[padding,border-radius] duration-200 ease-out ${
           isExpanded ? 'rounded-3xl p-3' : 'rounded-full p-2'
