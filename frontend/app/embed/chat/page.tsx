@@ -20,8 +20,8 @@ const EMBED_DEFAULT_CONFIG: MergedSkinConfig = {
       showClose: true,
     },
     messages: {
-      layout: 'bubbles',
-      bubbleStyle: 'rounded',
+      layout: 'list',
+      bubbleStyle: 'minimal',
       showAvatars: true,
       showTimestamps: false,
       timestampFormat: 'relative',

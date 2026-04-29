@@ -29,8 +29,8 @@ function buildPlaygroundConfig(agentName: string, agentLogoUrl?: string | null):
         showClose: false,
       },
       messages: {
-        layout: 'bubbles',
-        bubbleStyle: 'rounded',
+        layout: 'list',
+        bubbleStyle: 'minimal',
         showAvatars: true,
         showTimestamps: false,
         timestampFormat: 'relative',

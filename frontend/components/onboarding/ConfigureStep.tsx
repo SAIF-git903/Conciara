@@ -127,8 +127,8 @@ export default function ConfigureStep({ nextPath, router, onForbidden }: Configu
         showClose: false,
       },
       messages: {
-        layout: 'bubbles',
-        bubbleStyle: 'rounded',
+        layout: 'list',
+        bubbleStyle: 'minimal',
         showAvatars: true,
         showBotAvatar: false, // no bot picture next to messages in this preview
         showUserAvatar: false,
