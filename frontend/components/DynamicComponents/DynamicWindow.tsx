@@ -31,7 +31,7 @@ export default function DynamicWindow({ config, children, isMinimized, fillConta
   return (
     <div
       className={`bg-white border ${shadow} flex flex-col transition-all overflow-hidden ${
-        isMinimized ? 'w-80 h-12' : fillContainer ? 'w-full h-full min-h-0' : ''
+        isMinimized ? 'w-80 h-12' : fillContainer ? 'w-full h-full min-h-0' : 'animate-scale-in'
       }`}
       style={{
         backgroundColor,
