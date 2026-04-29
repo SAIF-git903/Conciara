@@ -38,7 +38,7 @@ export default function DynamicQuickReplies({
   }
 
   return (
-    <div className={`px-4 pb-2 ${layoutClasses[layout]} gap-2`}>
+    <div className={`px-4 pb-2 ${layoutClasses[layout]} gap-2 animate-fade-in`}>
       {visibleReplies.map((reply, index) => (
         <button
           key={index}
