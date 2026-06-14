@@ -2,18 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { CheckCheck, Loader2, Mail, BellRing } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
 import api from '@/lib/api'
 
-type NotificationItem = {
-  id: string
-  eventType: string
-  title: string
-  message: string
-  isRead: boolean
-  createdAt: string
-}
-
+/* ─── Types ─────────────────────────────────────── */
 type Preference = {
   id: string
   eventType: string
@@ -21,56 +13,215 @@ type Preference = {
   emailEnabled: boolean
 }
 
-const DEFAULT_EVENTS = [
-  'workspace.updated',
-  'workspace.member.invited',
-  'workspace.invite.resent',
-  'workspace.member.removed',
-  'workspace.member.left',
+/* ─── Static notification catalogue ─────────────── */
+type NotifItem = {
+  id: string
+  label: string
+  desc: string
+  emailDefault: boolean
+  inAppDefault: boolean
+}
+
+type NotifGroup = {
+  title: string
+  items: NotifItem[]
+}
+
+const GROUPS: NotifGroup[] = [
+  {
+    title: 'Workspace activity',
+    items: [
+      {
+        id: 'workspace.agent.error',
+        label: 'An agent fails or stops responding',
+        desc: 'Critical failures only.',
+        emailDefault: true,
+        inAppDefault: true,
+      },
+      {
+        id: 'workspace.credits.50',
+        label: 'Reach 50% of credit limit',
+        desc: "Heads-up before you run out.",
+        emailDefault: true,
+        inAppDefault: false,
+      },
+      {
+        id: 'workspace.credits.90',
+        label: 'Reach 90% of credit limit',
+        desc: 'Final warning.',
+        emailDefault: true,
+        inAppDefault: true,
+      },
+    ],
+  },
+  {
+    title: 'Team',
+    items: [
+      {
+        id: 'workspace.member.invited',
+        label: 'New member joins',
+        desc: 'When an invitation is accepted.',
+        emailDefault: true,
+        inAppDefault: false,
+      },
+      {
+        id: 'workspace.member.role-changed',
+        label: 'Role changed',
+        desc: 'Someone promoted or demoted.',
+        emailDefault: false,
+        inAppDefault: false,
+      },
+      {
+        id: 'workspace.member.removed',
+        label: 'Member removed',
+        desc: 'When someone leaves or is removed.',
+        emailDefault: false,
+        inAppDefault: true,
+      },
+    ],
+  },
+  {
+    title: 'Product',
+    items: [
+      {
+        id: 'product.release',
+        label: 'Product updates',
+        desc: 'Major releases (about once a month).',
+        emailDefault: true,
+        inAppDefault: false,
+      },
+      {
+        id: 'product.tips',
+        label: 'Tips & best practices',
+        desc: "We send these sparingly.",
+        emailDefault: false,
+        inAppDefault: false,
+      },
+    ],
+  },
 ]
 
+/* ─── Toggle component ───────────────────────────── */
+function Toggle({
+  checked,
+  onChange,
+  disabled,
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      style={{
+        width: 32,
+        height: 18,
+        borderRadius: 999,
+        background: checked ? 'var(--accent)' : 'var(--ink-5)',
+        position: 'relative',
+        border: 'none',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        flexShrink: 0,
+        transition: 'background .15s ease',
+        opacity: disabled ? 0.5 : 1,
+        padding: 0,
+        justifySelf: 'center',
+      }}
+    >
+      <span
+        style={{
+          position: 'absolute',
+          top: 2,
+          left: 2,
+          width: 14,
+          height: 14,
+          borderRadius: '50%',
+          background: '#fff',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+          transition: 'transform .15s ease',
+          transform: checked ? 'translateX(14px)' : 'translateX(0)',
+          display: 'block',
+        }}
+      />
+    </button>
+  )
+}
+
+/* ─── Page ───────────────────────────────────────── */
 export default function WorkspaceNotificationsPage() {
   const params = useParams()
-  const workspaceId = typeof params?.workspaceId === 'string' ? Number.parseInt(params.workspaceId, 10) : null
-  const [loading, setLoading] = useState(true)
-  const [items, setItems] = useState<NotificationItem[]>([])
-  const [unreadCount, setUnreadCount] = useState(0)
+  const workspaceId =
+    typeof params?.workspaceId === 'string' ? Number.parseInt(params.workspaceId, 10) : null
+  const { user } = useAuth()
+
   const [preferences, setPreferences] = useState<Preference[]>([])
   const [saving, setSaving] = useState<string | null>(null)
-  const [markingAll, setMarkingAll] = useState(false)
 
-  const fetchAll = async () => {
-    if (!workspaceId) return
-    setLoading(true)
-    try {
-      const [notificationsRes, prefsRes] = await Promise.all([
-        api.get<{ items: NotificationItem[]; unreadCount: number }>(`/workspaces/${workspaceId}/notifications`, {
-          params: { limit: 100, offset: 0 },
-        }),
-        api.get<{ preferences: Preference[] }>(`/workspaces/${workspaceId}/notifications/preferences`),
-      ])
-      setItems(Array.isArray(notificationsRes.data.items) ? notificationsRes.data.items : [])
-      setUnreadCount(typeof notificationsRes.data.unreadCount === 'number' ? notificationsRes.data.unreadCount : 0)
-      setPreferences(Array.isArray(prefsRes.data.preferences) ? prefsRes.data.preferences : [])
-    } finally {
-      setLoading(false)
-    }
-  }
-
+  /* Fetch saved preferences from API */
   useEffect(() => {
-    fetchAll()
+    if (!workspaceId) return
+    api
+      .get<{ preferences: Preference[] }>(
+        `/workspaces/${workspaceId}/notifications/preferences`
+      )
+      .then(({ data }) => {
+        if (Array.isArray(data.preferences)) setPreferences(data.preferences)
+      })
+      .catch(() => {})
   }, [workspaceId])
 
-  const preferenceMap = useMemo(
+  /* Build a lookup map for quick access */
+  const prefMap = useMemo(
     () => new Map(preferences.map((p) => [p.eventType, p])),
     [preferences]
   )
 
-  const updatePreference = async (eventType: string, field: 'inAppEnabled' | 'emailEnabled', value: boolean) => {
-    if (!workspaceId) return
-    const current = preferenceMap.get(eventType)
-    const nextInApp = field === 'inAppEnabled' ? value : (current?.inAppEnabled ?? true)
-    const nextEmail = field === 'emailEnabled' ? value : (current?.emailEnabled ?? false)
+  /* Resolve a value — fall back to catalogue default when no pref saved yet */
+  function getVal(
+    eventType: string,
+    field: 'emailEnabled' | 'inAppEnabled',
+    defaultVal: boolean
+  ): boolean {
+    const pref = prefMap.get(eventType)
+    if (!pref) return defaultVal
+    return pref[field]
+  }
+
+  /* Toggle handler — optimistically updates local state, persists to API */
+  async function handleToggle(
+    eventType: string,
+    field: 'emailEnabled' | 'inAppEnabled',
+    currentVal: boolean,
+    defaultEmail: boolean,
+    defaultInApp: boolean
+  ) {
+    if (!workspaceId || saving) return
+    const pref = prefMap.get(eventType)
+    const nextEmail =
+      field === 'emailEnabled' ? !currentVal : (pref?.emailEnabled ?? defaultEmail)
+    const nextInApp =
+      field === 'inAppEnabled' ? !currentVal : (pref?.inAppEnabled ?? defaultInApp)
+
+    /* Optimistic update */
+    setPreferences((prev) => {
+      const idx = prev.findIndex((p) => p.eventType === eventType)
+      const next: Preference = {
+        id: pref?.id ?? eventType,
+        eventType,
+        emailEnabled: nextEmail,
+        inAppEnabled: nextInApp,
+      }
+      if (idx === -1) return [...prev, next]
+      const copy = [...prev]
+      copy[idx] = next
+      return copy
+    })
+
     setSaving(`${eventType}:${field}`)
     try {
       const { data } = await api.put<{ preference: Preference }>(
@@ -84,146 +235,209 @@ export default function WorkspaceNotificationsPage() {
         copy[idx] = data.preference
         return copy
       })
+    } catch {
+      /* Revert on error */
+      setPreferences((prev) => {
+        const idx = prev.findIndex((p) => p.eventType === eventType)
+        if (idx === -1) return prev
+        const copy = [...prev]
+        copy[idx] = { ...copy[idx], emailEnabled: !nextEmail, inAppEnabled: !nextInApp }
+        return copy
+      })
     } finally {
       setSaving(null)
     }
   }
 
-  const markOneRead = async (id: string) => {
-    if (!workspaceId) return
-    await api.post(`/workspaces/${workspaceId}/notifications/${id}/read`)
-    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, isRead: true } : item)))
-    setUnreadCount((prev) => Math.max(0, prev - 1))
-  }
-
-  const markAllRead = async () => {
-    if (!workspaceId) return
-    setMarkingAll(true)
-    try {
-      await api.post(`/workspaces/${workspaceId}/notifications/read-all`)
-      setItems((prev) => prev.map((item) => ({ ...item, isRead: true })))
-      setUnreadCount(0)
-    } finally {
-      setMarkingAll(false)
-    }
-  }
-
   if (!workspaceId) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-sm text-slate-500">
-        Invalid workspace.
+      <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+        <p className="text-sm" style={{ color: 'var(--ink-3)' }}>Invalid workspace.</p>
       </div>
     )
   }
 
+  const userEmail =
+    user?.email ?? '—'
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
-      <div className="shrink-0 border-b border-slate-200 px-6 py-5">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Notifications</h1>
-        <p className="mt-1 text-sm text-slate-500">In-app notifications and email alert preferences.</p>
-      </div>
+    <div
+      className="flex min-h-0 flex-1 flex-col overflow-auto"
+      style={{ background: 'var(--bg)' }}
+    >
+      <div
+        className="mx-auto w-full max-w-[1080px] px-8 py-7 pb-20"
+      >
 
-      <div className="flex-1 overflow-auto p-6">
-        <div className="mx-auto max-w-4xl space-y-6">
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold text-slate-900">Notification rules</h2>
-                <p className="text-xs text-slate-500">Control where each event type notifies you.</p>
-              </div>
-            </div>
+        {/* Page header */}
+        <div
+          className="mb-[22px] pb-[18px]"
+          style={{ borderBottom: '1px solid var(--line)' }}
+        >
+          <span
+            className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.1em]"
+            style={{ color: 'var(--ink-4)', fontFamily: 'var(--font-mono)' }}
+          >
+            Settings
+          </span>
+          <h1
+            className="text-[22px] font-semibold leading-tight tracking-[-0.015em]"
+            style={{ color: 'var(--ink)', marginBottom: 4 }}
+          >
+            Notifications
+          </h1>
+          <p
+            className="text-[13.5px] leading-relaxed"
+            style={{ color: 'var(--ink-3)', maxWidth: '60ch' }}
+          >
+            Choose what we email you about. You&apos;ll always get critical security alerts.
+          </p>
+        </div>
 
-            <div className="space-y-2">
-              {DEFAULT_EVENTS.map((eventType) => {
-                const pref = preferenceMap.get(eventType)
-                const inAppEnabled = pref?.inAppEnabled ?? true
-                const emailEnabled = pref?.emailEnabled ?? false
-                return (
-                  <div key={eventType} className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2.5">
-                    <p className="text-sm text-slate-700">{eventType}</p>
-                    <div className="flex items-center gap-2">
-                      <label className="inline-flex items-center gap-2 text-xs text-slate-600">
-                        <input
-                          type="checkbox"
-                          checked={inAppEnabled}
-                          onChange={(e) => updatePreference(eventType, 'inAppEnabled', e.target.checked)}
-                          disabled={saving === `${eventType}:inAppEnabled`}
-                        />
-                        In-app
-                      </label>
-                      <label className="inline-flex items-center gap-2 text-xs text-slate-600">
-                        <input
-                          type="checkbox"
-                          checked={emailEnabled}
-                          onChange={(e) => updatePreference(eventType, 'emailEnabled', e.target.checked)}
-                          disabled={saving === `${eventType}:emailEnabled`}
-                        />
-                        Email
-                      </label>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+        {/* Settings split */}
+        <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 56, alignItems: 'start' }}>
+
+          {/* Sidebar */}
+          <div style={{ position: 'sticky', top: 80 }}>
+            <p
+              className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em]"
+              style={{ color: 'var(--ink-4)' }}
+            >
+              Heads-up
+            </p>
+            <p className="text-[12.5px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
+              We&apos;ll email{' '}
+              <strong style={{ color: 'var(--ink)', fontWeight: 500 }}>{userEmail}</strong>.{' '}
+              <a
+                href="/dashboard/settings/account"
+                style={{
+                  color: 'var(--ink)',
+                  borderBottom: '1px solid var(--line-strong)',
+                  paddingBottom: 1,
+                  textDecoration: 'none',
+                }}
+              >
+                Change
+              </a>
+            </p>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-              <div className="flex items-center gap-2">
-                <BellRing className="h-4 w-4 text-slate-500" />
-                <p className="text-sm font-semibold text-slate-900">Recent notifications</p>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{unreadCount} unread</span>
-              </div>
-              <button
-                type="button"
-                onClick={markAllRead}
-                disabled={markingAll || items.length === 0}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          {/* Cards */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {GROUPS.map((group) => (
+              <div
+                key={group.title}
+                className="overflow-hidden rounded-xl border"
+                style={{ background: 'var(--surface)', borderColor: 'var(--line)' }}
               >
-                {markingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCheck className="h-3.5 w-3.5" />}
-                Mark all read
-              </button>
-            </div>
-
-            {loading ? (
-              <div className="flex items-center justify-center gap-2 px-4 py-10 text-sm text-slate-500">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading...
-              </div>
-            ) : items.length === 0 ? (
-              <div className="px-4 py-10 text-center text-sm text-slate-500">No notifications yet.</div>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {items.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => !item.isRead && markOneRead(item.id)}
-                    className={`w-full px-4 py-3 text-left hover:bg-slate-50 ${
-                      item.isRead ? 'bg-white' : 'bg-blue-50/40'
-                    }`}
+                {/* Card header */}
+                <div
+                  className="flex items-center justify-between px-[18px] py-[14px]"
+                  style={{ borderBottom: '1px solid var(--line)' }}
+                >
+                  <span
+                    className="text-[13.5px] font-semibold"
+                    style={{ color: 'var(--ink)', letterSpacing: '-0.01em' }}
                   >
-                    <div className="flex items-start justify-between gap-3">
+                    {group.title}
+                  </span>
+                  {/* Column labels */}
+                  <div style={{ display: 'flex', gap: 0 }}>
+                    {['Email', 'In-app'].map((col) => (
+                      <span
+                        key={col}
+                        style={{
+                          width: 56,
+                          textAlign: 'center',
+                          fontSize: 11,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.08em',
+                          color: 'var(--ink-4)',
+                          fontFamily: 'var(--font-mono)',
+                          fontWeight: 500,
+                        }}
+                      >
+                        {col}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Rows */}
+                {group.items.map((item) => {
+                  const emailVal = getVal(item.id, 'emailEnabled', item.emailDefault)
+                  const inAppVal = getVal(item.id, 'inAppEnabled', item.inAppDefault)
+                  const isSaving = saving?.startsWith(item.id)
+
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 56px 56px',
+                        alignItems: 'center',
+                        gap: 16,
+                        padding: '14px 18px',
+                        borderTop: '1px solid var(--line)',
+                      }}
+                    >
+                      {/* Label + desc */}
                       <div>
-                        <p className="text-sm font-medium text-slate-900">{item.title}</p>
-                        <p className="mt-1 text-sm text-slate-600">{item.message}</p>
-                        <div className="mt-2 flex items-center gap-2 text-xs text-slate-400">
-                          <Mail className="h-3.5 w-3.5" />
-                          <span>{item.eventType}</span>
-                          <span>•</span>
-                          <span>{new Date(item.createdAt).toLocaleString()}</span>
+                        <div
+                          className="text-[13.5px]"
+                          style={{ fontWeight: 500, color: 'var(--ink)' }}
+                        >
+                          {item.label}
+                        </div>
+                        <div
+                          className="mt-0.5 text-[12.5px] leading-snug"
+                          style={{ color: 'var(--ink-3)' }}
+                        >
+                          {item.desc}
                         </div>
                       </div>
-                      {!item.isRead && <span className="mt-1 h-2 w-2 rounded-full bg-blue-600" />}
+
+                      {/* Email toggle */}
+                      <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        <Toggle
+                          checked={emailVal}
+                          disabled={isSaving}
+                          onChange={() =>
+                            handleToggle(
+                              item.id,
+                              'emailEnabled',
+                              emailVal,
+                              item.emailDefault,
+                              item.inAppDefault
+                            )
+                          }
+                        />
+                      </div>
+
+                      {/* In-app toggle */}
+                      <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        <Toggle
+                          checked={inAppVal}
+                          disabled={isSaving}
+                          onChange={() =>
+                            handleToggle(
+                              item.id,
+                              'inAppEnabled',
+                              inAppVal,
+                              item.emailDefault,
+                              item.inAppDefault
+                            )
+                          }
+                        />
+                      </div>
                     </div>
-                  </button>
-                ))}
+                  )
+                })}
               </div>
-            )}
+            ))}
           </div>
         </div>
       </div>
     </div>
   )
 }
-

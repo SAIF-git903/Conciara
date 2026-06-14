@@ -10,13 +10,11 @@ import {
   Search,
   ShoppingBag,
   UserPlus,
-  Zap,
 } from 'lucide-react'
 import type { ActionTypeMeta, ActionsByType } from './types'
 import ActionCard from './ActionCard'
 
 const iconMap = {
-  custom_action: Zap,
   custom_buttons: MousePointerClick,
   web_search: Search,
   collect_leads: UserPlus,
@@ -41,7 +39,7 @@ export default function ActionsGrid({ actionMeta, actionsByType, onOpenType }: A
   const renderCard = (item: ActionTypeMeta) => {
     const actions = actionsByType[item.type] ?? []
     const activeCount = actions.filter((a) => a.isEnabled).length
-    const Icon = iconMap[item.type]
+    const Icon = iconMap[item.type as keyof typeof iconMap]
     return (
       <ActionCard
         key={item.type}
@@ -58,18 +56,26 @@ export default function ActionsGrid({ actionMeta, actionsByType, onOpenType }: A
   }
 
   return (
-    <div className="space-y-8">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {available.map(renderCard)}
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {available.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+          {available.map(renderCard)}
+        </div>
+      )}
 
       {comingSoon.length > 0 && (
         <div>
-          <div className="mb-4 flex items-center gap-3">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Coming Soon</span>
-            <div className="h-px flex-1 bg-slate-200" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <span style={{
+              fontSize: 10.5, fontWeight: 600, textTransform: 'uppercase',
+              letterSpacing: '0.1em', color: 'var(--ink-4)',
+              fontFamily: 'var(--font-mono)',
+            }}>
+              Coming soon
+            </span>
+            <div style={{ flex: 1, height: 1, background: 'var(--line)' }} />
           </div>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
             {comingSoon.map(renderCard)}
           </div>
         </div>

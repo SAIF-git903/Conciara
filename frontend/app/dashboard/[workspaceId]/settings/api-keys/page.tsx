@@ -5,8 +5,7 @@ import { useParams } from 'next/navigation'
 import { useDashboard } from '@/contexts/DashboardContext'
 import PermissionGate from '@/components/PermissionGate'
 import api from '@/lib/api'
-import { Key, Plus, Trash2, Loader2 } from 'lucide-react'
-import Link from 'next/link'
+import { Key, Plus, Trash2, Loader2, Copy, Check } from 'lucide-react'
 
 type ApiKeyRow = {
   id: string
@@ -16,18 +15,12 @@ type ApiKeyRow = {
   createdAt: string
 }
 
-const PLANS_WITH_API_ACCESS = ['standard', 'pro', 'enterprise']
-
 export default function SettingsApiKeysPage() {
   const params = useParams()
   const workspaceId =
     typeof params?.workspaceId === 'string' ? parseInt(params.workspaceId, 10) : null
   const { currentWorkspace } = useDashboard()
   const effectiveWorkspaceId = workspaceId ?? currentWorkspace?.id
-  const plan = currentWorkspace?.id === effectiveWorkspaceId
-    ? (currentWorkspace?.plan ?? 'free')
-    : 'free'
-  const hasApiAccess = PLANS_WITH_API_ACCESS.includes(plan)
 
   const [keys, setKeys] = useState<ApiKeyRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -36,14 +29,13 @@ export default function SettingsApiKeysPage() {
   const [newKey, setNewKey] = useState<{ key: string; name: string } | null>(null)
   const [revokingId, setRevokingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const fetchKeys = useCallback(async () => {
     if (!effectiveWorkspaceId) return
     setLoading(true)
     try {
-      const { data } = await api.get<ApiKeyRow[]>(
-        `/workspaces/${effectiveWorkspaceId}/api-keys`
-      )
+      const { data } = await api.get<ApiKeyRow[]>(`/workspaces/${effectiveWorkspaceId}/api-keys`)
       setKeys(Array.isArray(data) ? data : [])
     } catch {
       setKeys([])
@@ -52,25 +44,17 @@ export default function SettingsApiKeysPage() {
     }
   }, [effectiveWorkspaceId])
 
-  useEffect(() => {
-    fetchKeys()
-  }, [fetchKeys])
+  useEffect(() => { fetchKeys() }, [fetchKeys])
 
   const handleCreate = async () => {
     if (!effectiveWorkspaceId) return
     setError(null)
     setCreateLoading(true)
     try {
-      const { data } = await api.post<{
-        id: string
-        key: string
-        keyPrefix: string
-        name: string
-        createdAt: string
-        message?: string
-      }>(`/workspaces/${effectiveWorkspaceId}/api-keys`, {
-        name: createName.trim() || 'API Key',
-      })
+      const { data } = await api.post<{ id: string; key: string; keyPrefix: string; name: string; createdAt: string }>(
+        `/workspaces/${effectiveWorkspaceId}/api-keys`,
+        { name: createName.trim() || 'API Key' }
+      )
       setNewKey({ key: data.key, name: data.name })
       setCreateName('')
       await fetchKeys()
@@ -100,163 +84,252 @@ export default function SettingsApiKeysPage() {
   }
 
   const copyKey = (key: string) => {
-    navigator.clipboard.writeText(key)
+    navigator.clipboard.writeText(key).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
   }
 
   if (effectiveWorkspaceId == null) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
+      <div className="flex min-h-0 flex-1 flex-col" style={{ background: 'var(--bg)' }}>
         <div className="flex flex-1 items-center justify-center p-6">
-          <p className="text-sm text-slate-500">Select a workspace to manage API keys.</p>
+          <p className="text-sm" style={{ color: 'var(--ink-3)' }}>Select a workspace to manage API keys.</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
-      <div className="shrink-0 border-b border-slate-200 px-6 py-5">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">API keys</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Create and manage workspace API keys. Use <code className="rounded bg-slate-100 px-1 text-xs">Authorization: Bearer &lt;key&gt;</code> to authenticate requests.
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto" style={{ background: 'var(--bg)' }}>
+      <div className="mx-auto w-full max-w-[1080px] px-8 py-7 pb-20">
+
+        {/* Page header */}
+        <div
+          className="mb-7 pb-5"
+          style={{ borderBottom: '1px solid var(--line)' }}
+        >
+          <h1
+            className="text-[22px] font-semibold leading-tight tracking-[-0.015em]"
+            style={{ color: 'var(--ink)', marginBottom: 4 }}
+          >
+            API keys
+          </h1>
+          <p className="text-[13.5px] leading-relaxed" style={{ color: 'var(--ink-3)', maxWidth: '60ch' }}>
+            Create keys to authenticate requests. Use{' '}
+            <code
+              className="rounded px-1.5 py-0.5 text-[12px]"
+              style={{ background: 'var(--bg-2)', color: 'var(--ink-2)', fontFamily: 'var(--font-mono)' }}
+            >
+              Authorization: Bearer &lt;key&gt;
+            </code>
           </p>
         </div>
-      </div>
 
-      <div className="flex-1 overflow-auto p-6">
-        <div className="mx-auto max-w-2xl space-y-4">
-          {!hasApiAccess && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <p className="text-sm font-medium text-amber-800">API access is not included in your plan</p>
-              <p className="mt-1 text-xs text-amber-700">
-                Upgrade to Standard or above to create API keys for programmatic access.
-              </p>
-              <Link
-                href="/pricing"
-                className="mt-3 inline-flex rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700"
+        {/* Settings split layout */}
+        <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 56 }}>
+          {/* Side label */}
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em]" style={{ color: 'var(--ink-4)' }}>
+              Authentication
+            </p>
+            <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: 'var(--ink-4)' }}>
+              API keys grant programmatic access to your workspace. Keep them secret.
+            </p>
+          </div>
+
+          {/* Content */}
+          <div className="space-y-4">
+            {/* New key reveal */}
+            {newKey ? (
+              <div
+                className="overflow-hidden rounded-xl border"
+                style={{ background: 'var(--surface)', borderColor: 'var(--line)' }}
               >
-                View plans
-              </Link>
-            </div>
-          )}
-
-          {newKey ? (
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-900">Key created</h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Store this key now. It will not be shown again.
-              </p>
-              <div className="mt-3 flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 font-mono text-sm">
-                <span className="flex-1 break-all text-slate-800">{newKey.key}</span>
-                <button
-                  type="button"
-                  onClick={() => copyKey(newKey.key)}
-                  className="shrink-0 rounded p-1.5 text-slate-500 hover:bg-slate-200"
-                  title="Copy"
+                <div
+                  className="px-5 py-3.5"
+                  style={{ borderBottom: '1px solid var(--line)' }}
                 >
-                  Copy
-                </button>
-              </div>
-              <button
-                type="button"
-                onClick={() => setNewKey(null)}
-                className="mt-4 text-sm font-medium text-slate-600 hover:text-slate-900"
-              >
-                Done
-              </button>
-            </div>
-          ) : (
-            <PermissionGate 
-              feature="apiAccess" 
-              showUpgradeButton 
-              upgradeButtonText="Upgrade for API Access"
-              upgradeButtonClassName="w-full px-4 py-3 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors font-medium"
-              fallback={
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-8 text-center">
-                  <Key className="mx-auto h-12 w-12 text-slate-300 mb-4" />
-                  <h3 className="text-lg font-semibold text-slate-700 mb-2">API Access Required</h3>
-                  <p className="text-sm text-slate-500 mb-4">
-                    API access is available on Standard and Pro plans. Upgrade to create and manage API keys.
+                  <p className="text-sm font-medium" style={{ color: 'var(--ink)' }}>Key created — copy it now</p>
+                  <p className="mt-0.5 text-[12px]" style={{ color: 'var(--ink-4)' }}>
+                    This key will not be shown again. Store it somewhere safe.
                   </p>
                 </div>
-              }
-            >
-              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h2 className="text-sm font-semibold text-slate-900">Create API key</h2>
-              <input
-                type="text"
-                value={createName}
-                onChange={(e) => setCreateName(e.target.value)}
-                placeholder="Key name (e.g. Production)"
-                className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              />
-              {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-              <button
-                type="button"
-                onClick={handleCreate}
-                disabled={createLoading}
-                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[var(--v2-primary)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-              >
-                {createLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                Create key
-              </button>
-            </div>
-            </PermissionGate>
-          )}
-
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="divide-y divide-slate-100">
-              {loading ? (
-                <div className="flex items-center justify-center gap-2 px-4 py-8 text-slate-500">
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Loading…
-                </div>
-              ) : (
-                keys.map((key) => (
+                <div className="p-5">
                   <div
-                    key={key.id}
-                    className="flex items-center gap-4 px-4 py-3 first:rounded-t-xl last:rounded-b-xl hover:bg-slate-50/80"
+                    className="flex items-center gap-3 rounded-lg px-4 py-3"
+                    style={{ background: 'var(--bg-2)' }}
                   >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-                      <Key className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-slate-900">{key.name}</p>
-                      <p className="font-mono text-sm text-slate-500">{key.keyPrefix}…</p>
-                      <p className="mt-0.5 text-xs text-slate-400">
-                        Created {new Date(key.createdAt).toLocaleDateString()}
-                        {key.lastUsedAt
-                          ? ` · Last used ${new Date(key.lastUsedAt).toLocaleString()}`
-                          : ' · Never used'}
-                      </p>
-                    </div>
+                    <span
+                      className="flex-1 break-all text-[13px]"
+                      style={{ fontFamily: 'var(--font-mono)', color: 'var(--ink-2)' }}
+                    >
+                      {newKey.key}
+                    </span>
                     <button
                       type="button"
-                      onClick={() => handleRevoke(key.id)}
-                      disabled={revokingId === key.id}
-                      className="rounded p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                      aria-label="Revoke"
+                      onClick={() => copyKey(newKey.key)}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors"
+                      style={{ border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink-2)' }}
                     >
-                      {revokingId === key.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
+                      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                      {copied ? 'Copied' : 'Copy'}
                     </button>
                   </div>
-                ))
+                  <button
+                    type="button"
+                    onClick={() => setNewKey(null)}
+                    className="mt-4 text-[13px] font-medium"
+                    style={{ color: 'var(--accent)' }}
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <PermissionGate
+                feature="apiAccess"
+                showUpgradeButton
+                upgradeButtonText="Upgrade for API Access"
+                upgradeButtonClassName="w-full px-4 py-3 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90"
+                fallback={
+                  <div
+                    className="rounded-xl border p-8 text-center"
+                    style={{ background: 'var(--surface)', borderColor: 'var(--line)' }}
+                  >
+                    <div
+                      className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full"
+                      style={{ background: 'var(--bg-2)' }}
+                    >
+                      <Key className="h-5 w-5" style={{ color: 'var(--ink-4)' }} />
+                    </div>
+                    <p className="text-sm font-medium" style={{ color: 'var(--ink-2)' }}>API access not included</p>
+                    <p className="mt-1 text-[12.5px]" style={{ color: 'var(--ink-4)' }}>
+                      Upgrade to Standard or above to use the API.
+                    </p>
+                  </div>
+                }
+              >
+                <div
+                  className="overflow-hidden rounded-xl border"
+                  style={{ background: 'var(--surface)', borderColor: 'var(--line)' }}
+                >
+                  <div className="px-5 py-3.5" style={{ borderBottom: '1px solid var(--line)' }}>
+                    <p className="text-sm font-medium" style={{ color: 'var(--ink)' }}>Create a new key</p>
+                  </div>
+                  <div className="p-5">
+                    <input
+                      type="text"
+                      value={createName}
+                      onChange={(e) => setCreateName(e.target.value)}
+                      placeholder="Key name (e.g. Production)"
+                      className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+                      style={{ border: '1px solid var(--line)', background: 'var(--bg)', color: 'var(--ink)' }}
+                      onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.boxShadow = '0 0 0 3px var(--accent-ring)' }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--line)'; e.currentTarget.style.boxShadow = 'none' }}
+                    />
+                    {error && (
+                      <p className="mt-2 text-[12.5px]" style={{ color: 'var(--danger)' }}>{error}</p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleCreate}
+                      disabled={createLoading}
+                      className="mt-3.5 inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                      style={{ background: 'var(--accent)' }}
+                    >
+                      {createLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      Create key
+                    </button>
+                  </div>
+                </div>
+              </PermissionGate>
+            )}
+
+            {/* Keys list */}
+            <div
+              className="overflow-hidden rounded-xl border"
+              style={{ background: 'var(--surface)', borderColor: 'var(--line)' }}
+            >
+              <div className="px-5 py-3.5" style={{ borderBottom: '1px solid var(--line)' }}>
+                <span className="text-xs font-semibold uppercase tracking-[0.1em]" style={{ color: 'var(--ink-4)' }}>
+                  {keys.length > 0 ? `${keys.length} key${keys.length !== 1 ? 's' : ''}` : 'Keys'}
+                </span>
+              </div>
+
+              {loading ? (
+                <div className="flex items-center justify-center gap-2 py-10" style={{ color: 'var(--ink-4)' }}>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm">Loading…</span>
+                </div>
+              ) : keys.length === 0 ? (
+                <div className="py-12 text-center">
+                  <div
+                    className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full"
+                    style={{ background: 'var(--bg-2)' }}
+                  >
+                    <Key className="h-4 w-4" style={{ color: 'var(--ink-4)' }} />
+                  </div>
+                  <p className="text-sm" style={{ color: 'var(--ink-3)' }}>No API keys yet</p>
+                  <p className="mt-1 text-[12px]" style={{ color: 'var(--ink-4)' }}>
+                    Create a key above to get started.
+                  </p>
+                </div>
+              ) : (
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                  {keys.map((key, i) => (
+                    <li
+                      key={key.id}
+                      className="flex items-center gap-4 px-5"
+                      style={{
+                        paddingTop: 12,
+                        paddingBottom: 12,
+                        borderBottom: i < keys.length - 1 ? '1px solid var(--line)' : undefined,
+                      }}
+                    >
+                      <div
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                        style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
+                      >
+                        <Key className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium" style={{ color: 'var(--ink)' }}>{key.name}</p>
+                        <p
+                          className="text-[12px]"
+                          style={{ fontFamily: 'var(--font-mono)', color: 'var(--ink-4)' }}
+                        >
+                          {key.keyPrefix}…
+                        </p>
+                        <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-4)' }}>
+                          Created {new Date(key.createdAt).toLocaleDateString()}
+                          {key.lastUsedAt
+                            ? ` · Last used ${new Date(key.lastUsedAt).toLocaleString()}`
+                            : ' · Never used'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRevoke(key.id)}
+                        disabled={revokingId === key.id}
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50"
+                        style={{ color: 'var(--ink-4)' }}
+                        aria-label="Revoke key"
+                        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--danger-soft)'; e.currentTarget.style.color = 'var(--danger)' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-4)' }}
+                      >
+                        {revokingId === key.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
           </div>
-
-          {!loading && keys.length === 0 && hasApiAccess && !newKey && (
-            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 py-12 text-center">
-              <Key className="mx-auto h-10 w-10 text-slate-300" />
-              <p className="mt-3 text-sm font-medium text-slate-600">No API keys yet</p>
-              <p className="mt-1 text-xs text-slate-500">Create a key to authenticate API requests for this workspace.</p>
-            </div>
-          )}
         </div>
       </div>
     </div>

@@ -1,17 +1,27 @@
 'use client'
 
-import { Badge } from '@/components/ui/badge'
-
 export default function ComingSoonCard() {
   return (
-    <div className="mt-4 flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3 opacity-60">
-      <Badge variant="secondary">Coming Soon</Badge>
+    <div style={{
+      marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '8px 10px', borderRadius: 'var(--r-sm)',
+      border: '1px solid var(--line)', background: 'var(--bg)',
+      opacity: 0.6,
+    }}>
+      <span style={{
+        fontSize: 10.5, fontWeight: 600, textTransform: 'uppercase',
+        letterSpacing: '0.08em', color: 'var(--ink-4)',
+        fontFamily: 'var(--font-mono)',
+      }}>
+        Coming soon
+      </span>
       <button
         type="button"
-        className="cursor-not-allowed rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-500"
         disabled
+        className="btn btn--secondary btn--sm"
+        style={{ cursor: 'not-allowed', opacity: 0.5 }}
       >
-        Coming Soon
+        Coming soon
       </button>
     </div>
   )

@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Space+Grotesk:wght@600;700&display=swap');
 
 @tailwind base;
@@ -9,6 +10,37 @@
   --foreground-rgb: 15, 23, 42;
   --background-start-rgb: 248, 250, 252;
   --background-end-rgb: 255, 255, 255;
+
+  /* Warm editorial design system */
+  --bg: #faf9f7;
+  --bg-2: #f4f2ee;
+  --surface: #ffffff;
+  --surface-2: #fbfaf8;
+  --ink: #1a1a1d;
+  --ink-2: #4a4a52;
+  --ink-3: #74747e;
+  --ink-4: #a3a3ad;
+  --ink-5: #d6d6dc;
+  --line: #ececea;
+  --line-2: #e3e2df;
+  --line-strong: #cfcec9;
+  --success: #0e9b6b;
+  --success-soft: #e6f6ef;
+  --warn: #b86a17;
+  --warn-soft: #fbeed8;
+  --danger: #c33665;
+  --danger-soft: #fbe6ee;
+  --accent: #5b6cff;
+  --accent-soft: #eef0ff;
+  --accent-ring: rgba(91,108,255,0.18);
+  --font-sans: 'Inter Tight', 'Inter', -apple-system, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  --row-h: 38px;
+  --pad: 14px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
 }
 
 /* v2 theme: colors, font, and typography scale */
@@ -38,10 +70,10 @@
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%);
+  color: var(--ink);
+  background: var(--bg);
   min-height: 100vh;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
 }
 
 /* Ensure inputs are always visible */
@@ -58,9 +90,9 @@ input:disabled, textarea:disabled {
   background-color: #f9fafb !important; /* bg-gray-50 */
 }
 
-/* react-date-range - use app primary for range highlight (theme uses currentColor) */
+/* react-date-range - use app ink color for text/arrows */
 .analytics-date-range-picker {
-  color: var(--v2-primary, #0f172a);
+  color: var(--ink, #1a1a1d);
 }
 
 @layer utilities {
@@ -194,6 +226,25 @@ input:disabled, textarea:disabled {
 }
 
 /* Website crawl row: subtle left-edge shimmer */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes revFade {
+  from { opacity: 0 }
+  to   { opacity: 1 }
+}
+
+@keyframes revSlide {
+  from { transform: translateX(24px); opacity: 0 }
+  to   { transform: translateX(0);    opacity: 1 }
+}
+
+@keyframes revSpin {
+  to { transform: rotate(360deg) }
+}
+
 @keyframes crawl-shimmer {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 1; }
@@ -215,6 +266,42 @@ input:disabled, textarea:disabled {
   animation: crawl-shimmer 1.5s ease-in-out infinite;
 }
 
+/* Playground temperature slider */
+.pg-slider {
+  width: 100%;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--bg-2);
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  display: block;
+  outline: none;
+  border: none;
+  padding: 0;
+}
+.pg-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ink);
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+.pg-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ink);
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 0 0 1px var(--line-strong);
+  border: none;
+}
+
 /* TipTap Q&A answer editor — placeholder (extension adds data-placeholder on empty nodes) */
 .qa-answer-editor .ProseMirror p.is-empty::before {
   content: attr(data-placeholder);
@@ -223,6 +310,61 @@ input:disabled, textarea:disabled {
   color: rgb(148 163 184);
   pointer-events: none;
 }
+
+/* ── Design-system buttons ─────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--r-md);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .12s ease, border-color .12s ease, color .12s ease, opacity .12s ease;
+  text-decoration: none;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn--sm { height: 28px; padding: 0 10px; font-size: 12.5px; }
+.btn--lg { height: 38px; padding: 0 16px; font-size: 13.5px; }
+
+/* primary = ink/black (page-level actions) */
+.btn--primary { background: var(--ink); color: #fff; }
+.btn--primary:hover:not(:disabled) { background: #2a2a30; }
+
+/* accent = indigo (save, confirm, brand actions) */
+.btn--accent { background: var(--accent); color: #fff; }
+.btn--accent:hover:not(:disabled) { opacity: .88; }
+
+/* secondary = outlined */
+.btn--secondary {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line-2);
+  box-shadow: 0 1px 0 rgba(0,0,0,.02);
+}
+.btn--secondary:hover:not(:disabled) { background: var(--surface-2); border-color: var(--line-strong); }
+
+/* ghost = no border/bg */
+.btn--ghost { color: var(--ink-2); }
+.btn--ghost:hover:not(:disabled) { background: var(--bg-2); color: var(--ink); }
+
+/* danger */
+.btn--danger { background: var(--danger); color: #fff; }
+.btn--danger:hover:not(:disabled) { background: #a82a55; }
+
+.btn--danger-outline {
+  background: var(--surface);
+  color: var(--danger);
+  border-color: var(--danger-soft);
+}
+.btn--danger-outline:hover:not(:disabled) { background: var(--danger-soft); }
 
 /* Chat message entrance animation */
 @keyframes message-in {

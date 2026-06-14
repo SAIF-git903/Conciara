@@ -32,9 +32,21 @@ module.exports = {
           800: '#86198f',
           900: '#701a75',
         },
+        ink: {
+          DEFAULT: '#1a1a1d',
+          2: '#4a4a52',
+          3: '#74747e',
+          4: '#a3a3ad',
+          5: '#d6d6dc',
+        },
+        indigo: {
+          DEFAULT: '#5b6cff',
+          soft: '#eef0ff',
+        },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['Inter Tight', 'Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
         display: ['Space Grotesk', 'Inter', 'system-ui', 'sans-serif'],
       },
       boxShadow: {

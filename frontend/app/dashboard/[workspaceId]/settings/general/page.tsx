@@ -7,33 +7,40 @@ import { useAuth } from '@/contexts/AuthContext'
 import api from '@/lib/api'
 import { AlertTriangle, LogOut, Trash2 } from 'lucide-react'
 
+const MODELS = [
+  { id: 'haiku', name: 'Claude Haiku 4.5', desc: 'Fast, cheap, great for high-volume agents', tag: 'Recommended' },
+  { id: 'sonnet', name: 'Claude Sonnet 4', desc: 'Balanced reasoning and speed', tag: null },
+  { id: 'gpt', name: 'GPT-4.1', desc: 'External provider — uses your own key', tag: 'Bring your own key' },
+]
+
 export default function WorkspaceSettingsGeneralPage() {
   const params = useParams()
   const router = useRouter()
   const workspaceId = typeof params?.workspaceId === 'string' ? parseInt(params.workspaceId, 10) : null
   const { currentWorkspace } = useDashboard()
   const { user, refreshUser } = useAuth()
+
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+  const [selectedModel, setSelectedModel] = useState('haiku')
+
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false)
   const [leaveLoading, setLeaveLoading] = useState(false)
   const [leaveError, setLeaveError] = useState<string | null>(null)
 
-  const isOwner = Boolean(
-    workspaceId && user?.workspaces?.find((w) => w.id === workspaceId)?.role === 'owner'
-  )
-  const isMember = Boolean(
-    workspaceId && user?.workspaces?.find((w) => w.id === workspaceId)
-  )
-  const workspaceName = currentWorkspace?.id === workspaceId
-    ? currentWorkspace.name
-    : (user?.workspaces?.find((w) => w.id === workspaceId)?.name ?? name) || ''
+  const isOwner = Boolean(workspaceId && user?.workspaces?.find((w) => w.id === workspaceId)?.role === 'owner')
+  const isMember = Boolean(workspaceId && user?.workspaces?.find((w) => w.id === workspaceId))
+  const workspaceName =
+    currentWorkspace?.id === workspaceId
+      ? currentWorkspace.name
+      : (user?.workspaces?.find((w) => w.id === workspaceId)?.name ?? name) || ''
 
   useEffect(() => {
     if (currentWorkspace?.id === workspaceId && currentWorkspace?.name) {
@@ -47,33 +54,31 @@ export default function WorkspaceSettingsGeneralPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (workspaceId == null || !isOwner) return
-    setError(null)
-    setSuccess(false)
+    setSaveError(null)
+    setSaveSuccess(false)
     setSaving(true)
     try {
       await api.patch(`/workspaces/${workspaceId}`, { name: name.trim() })
       await refreshUser()
-      setSuccess(true)
+      setSaveSuccess(true)
     } catch (err: unknown) {
-      const message = err && typeof err === 'object' && 'response' in err
+      const msg = err && typeof err === 'object' && 'response' in err
         ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
         : null
-      setError(message || 'Failed to save workspace settings')
+      setSaveError(msg || 'Failed to save settings')
     } finally {
       setSaving(false)
     }
   }
 
   const handleDeleteWorkspace = async () => {
-    if (workspaceId == null || !isOwner) return
-    if (deleteConfirmText.trim() !== workspaceName.trim()) return
+    if (workspaceId == null || !isOwner || deleteConfirmText.trim() !== workspaceName.trim()) return
     setDeleteError(null)
     setDeleteLoading(true)
     try {
       await api.delete(`/workspaces/${workspaceId}`)
       await refreshUser()
       setDeleteConfirmOpen(false)
-      setDeleteConfirmText('')
       router.replace('/dashboard')
     } catch (err: unknown) {
       const msg = err && typeof err === 'object' && 'response' in err
@@ -106,137 +111,311 @@ export default function WorkspaceSettingsGeneralPage() {
 
   if (workspaceId == null) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
-        <div className="flex flex-1 items-center justify-center p-6">
-          <p className="text-sm text-slate-500">Invalid workspace</p>
-        </div>
+      <div className="flex min-h-0 flex-1 items-center justify-center" style={{ background: 'var(--bg)' }}>
+        <p className="text-sm" style={{ color: 'var(--ink-3)' }}>Invalid workspace.</p>
       </div>
     )
   }
 
+  const slugPreview = workspaceName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'my-workspace'
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
-      <div className="shrink-0 border-b border-slate-200 px-6 py-5">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">General</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Workspace name and basic settings. Only the owner can change these.
-        </p>
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto" style={{ background: 'var(--bg)' }}>
+      <div className="mx-auto w-full max-w-[1080px] px-8 py-7 pb-20">
 
-      <div className="flex-1 overflow-auto p-6">
-        <div className="mx-auto max-w-2xl space-y-8">
-          <form onSubmit={handleSubmit} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <label htmlFor="workspace-name" className="block text-sm font-medium text-slate-700">
-              Workspace name
-            </label>
-            <input
-              id="workspace-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={!isOwner}
-              className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-[var(--v2-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--v2-primary)] disabled:bg-slate-50 disabled:text-slate-500"
-            />
-            {!isOwner && (
-              <p className="mt-1.5 text-xs text-slate-500">Only the workspace owner can edit the name.</p>
-            )}
-
-            {error && (
-              <p className="mt-3 text-sm text-red-600">{error}</p>
-            )}
-            {success && (
-              <p className="mt-3 text-sm text-green-600">Settings saved.</p>
-            )}
-
-            {isOwner && (
-              <div className="mt-5 flex justify-end">
-                <button
-                  type="submit"
-                  disabled={saving || !name.trim()}
-                  className="rounded-lg bg-[var(--v2-primary)] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:opacity-90 disabled:opacity-50 disabled:pointer-events-none"
-                >
-                  {saving ? 'Saving…' : 'Save changes'}
-                </button>
-              </div>
-            )}
-          </form>
-
-          {/* Danger zone */}
-          <div className="rounded-xl border border-red-200 bg-red-50/50 p-5 shadow-sm">
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-red-800">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-              Danger zone
-            </h2>
-            <p className="mt-1 text-xs text-red-700/90">
-              Irreversible actions. Delete the workspace or leave it if you are a member.
-            </p>
-
-            <div className="mt-4 flex flex-wrap items-center gap-4">
-              {isOwner && (
-                <button
-                  type="button"
-                  onClick={() => { setDeleteConfirmOpen(true); setDeleteError(null); setDeleteConfirmText(''); }}
-                  className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-3 py-2 text-sm font-medium text-red-700 shadow-sm transition hover:bg-red-50"
-                >
-                  <Trash2 className="h-4 w-4 shrink-0" />
-                  Delete workspace
-                </button>
-              )}
-              {isMember && !isOwner && (
-                <button
-                  type="button"
-                  onClick={() => { setLeaveConfirmOpen(true); setLeaveError(null); }}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
-                >
-                  <LogOut className="h-4 w-4 shrink-0" />
-                  Leave workspace
-                </button>
-              )}
-              {isOwner && (
-                <p className="text-xs text-slate-600">
-                  As owner, you can delete this workspace and all its agents and data. You cannot leave; delete the workspace instead.
-                </p>
-              )}
-            </div>
-          </div>
+        {/* page-header */}
+        <div className="mb-5 pb-5" style={{ borderBottom: '1px solid var(--line)' }}>
+          <span
+            className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.1em]"
+            style={{ color: 'var(--ink-4)', fontFamily: 'var(--font-mono)' }}
+          >
+            Settings
+          </span>
+          <h1 className="text-[22px] font-semibold leading-tight tracking-[-0.015em]" style={{ color: 'var(--ink)', marginBottom: 4 }}>
+            General
+          </h1>
+          <p className="text-[13.5px] leading-relaxed" style={{ color: 'var(--ink-3)', maxWidth: '60ch' }}>
+            Workspace name, slug, and basic settings. Only the owner can change these.
+          </p>
         </div>
+
+        {/* settings-split: 220px side + 1fr */}
+        <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 56, alignItems: 'start' }}>
+
+          {/* settings-side */}
+          <div className="sticky top-6">
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em]" style={{ color: 'var(--ink-4)' }}>
+              About this workspace
+            </p>
+            <p className="text-[12.5px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
+              Your workspace is the container for agents, members, and billing. Renaming it doesn&apos;t break links.
+            </p>
+          </div>
+
+          {/* main col */}
+          <div className="flex flex-col gap-3">
+
+            {/* Workspace name card */}
+            <form
+              onSubmit={handleSubmit}
+              className="overflow-hidden rounded-xl border"
+              style={{ background: 'var(--surface)', borderColor: 'var(--line)' }}
+            >
+              {/* card-header */}
+              <div className="flex items-center justify-between gap-3 border-b px-[18px] py-[14px]" style={{ borderColor: 'var(--line)' }}>
+                <div>
+                  <p className="text-[13.5px] font-semibold tracking-[-0.01em]" style={{ color: 'var(--ink)' }}>Workspace name</p>
+                  <p className="mt-0.5 text-[12.5px]" style={{ color: 'var(--ink-3)' }}>Used in invitations, invoices, and the workspace switcher.</p>
+                </div>
+              </div>
+
+              {/* card-body */}
+              <div className="px-[18px] py-[18px] space-y-3">
+                <label className="block">
+                  <span className="mb-1.5 block text-[12.5px] font-medium" style={{ color: 'var(--ink-2)' }}>Name</span>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => { setName(e.target.value); setSaveSuccess(false) }}
+                    disabled={!isOwner}
+                    className="w-full rounded-md px-3 py-2 text-sm outline-none transition disabled:opacity-60"
+                    style={{
+                      border: '1px solid var(--line-2)',
+                      background: isOwner ? 'var(--surface)' : 'var(--bg-2)',
+                      color: 'var(--ink)',
+                    }}
+                    onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                    onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--line-2)')}
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-1.5 block text-[12.5px] font-medium" style={{ color: 'var(--ink-2)' }}>Workspace URL</span>
+                  <div className="flex items-stretch">
+                    <span
+                      className="flex items-center px-2.5 text-[12.5px]"
+                      style={{
+                        background: 'var(--bg-2)',
+                        border: '1px solid var(--line-2)',
+                        borderRight: 0,
+                        borderRadius: 'var(--r-sm) 0 0 var(--r-sm)',
+                        color: 'var(--ink-3)',
+                        fontFamily: 'var(--font-mono)',
+                      }}
+                    >
+                      conciara.app/
+                    </span>
+                    <input
+                      type="text"
+                      value={slugPreview}
+                      disabled
+                      className="flex-1 px-3 py-2 text-sm outline-none opacity-60"
+                      style={{
+                        border: '1px solid var(--line-2)',
+                        borderLeft: 0,
+                        borderRadius: '0 var(--r-sm) var(--r-sm) 0',
+                        background: 'var(--bg-2)',
+                        color: 'var(--ink)',
+                        fontFamily: 'var(--font-mono)',
+                      }}
+                    />
+                  </div>
+                  <span className="mt-1 block text-[12px]" style={{ color: 'var(--ink-4)' }}>Lowercase letters, numbers and hyphens.</span>
+                </label>
+
+                {!isOwner && (
+                  <p className="text-[12px]" style={{ color: 'var(--ink-4)' }}>Only the workspace owner can edit the name.</p>
+                )}
+                {saveError && <p className="text-[12.5px]" style={{ color: 'var(--danger)' }}>{saveError}</p>}
+                {saveSuccess && <p className="text-[12.5px]" style={{ color: 'var(--success)' }}>Settings saved.</p>}
+              </div>
+
+              {/* card-footer */}
+              {isOwner && (
+                <div
+                  className="flex items-center justify-end gap-2 px-[18px] py-3"
+                  style={{ borderTop: '1px solid var(--line)', background: 'var(--surface-2)' }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => { setName(workspaceName); setSaveError(null); setSaveSuccess(false) }}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition-colors hover:bg-[var(--bg-2)]"
+                    style={{ color: 'var(--ink-2)' }}
+                  >
+                    Discard
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving || !name.trim()}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50 disabled:pointer-events-none"
+                    style={{ background: 'var(--ink)' }}
+                  >
+                    {saving ? 'Saving…' : 'Save changes'}
+                  </button>
+                </div>
+              )}
+            </form>
+
+            {/* Default agent model card */}
+            <div className="overflow-hidden rounded-xl border" style={{ background: 'var(--surface)', borderColor: 'var(--line)' }}>
+              <div className="flex items-center justify-between gap-3 border-b px-[18px] py-[14px]" style={{ borderColor: 'var(--line)' }}>
+                <div>
+                  <p className="text-[13.5px] font-semibold tracking-[-0.01em]" style={{ color: 'var(--ink)' }}>Default agent model</p>
+                  <p className="mt-0.5 text-[12.5px]" style={{ color: 'var(--ink-3)' }}>New agents will use this model by default.</p>
+                </div>
+              </div>
+              <div className="px-[18px] py-[18px]">
+                <div className="flex flex-col">
+                  {MODELS.map((m, i) => {
+                    const active = selectedModel === m.id
+                    return (
+                      <label
+                        key={m.id}
+                        className="flex cursor-pointer items-start gap-3 rounded-md px-3.5 py-3 transition-colors"
+                        style={{
+                          marginTop: i > 0 ? 8 : 0,
+                          border: '1px solid',
+                          borderColor: active ? 'var(--accent)' : 'var(--line-2)',
+                          background: active ? 'var(--accent-soft)' : 'transparent',
+                          borderRadius: 'var(--r-sm)',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="defaultModel"
+                          value={m.id}
+                          checked={active}
+                          onChange={() => setSelectedModel(m.id)}
+                          className="mt-0.5 shrink-0"
+                          style={{ accentColor: 'var(--accent)' }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[13.5px] font-medium" style={{ color: 'var(--ink)' }}>{m.name}</span>
+                            {m.tag && (
+                              <span
+                                className="rounded px-1.5 py-0.5 text-[10.5px] font-medium"
+                                style={{ background: 'var(--bg-2)', color: 'var(--ink-3)', border: '1px solid var(--line)' }}
+                              >
+                                {m.tag}
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-0.5 text-[12.5px]" style={{ color: 'var(--ink-3)' }}>{m.desc}</p>
+                        </div>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Danger zone card */}
+            <div
+              className="overflow-hidden rounded-xl border"
+              style={{
+                borderColor: 'rgba(195,54,101,0.18)',
+                background: 'linear-gradient(180deg, var(--surface), var(--danger-soft))',
+              }}
+            >
+              <div className="flex items-center gap-3 border-b px-[18px] py-[14px]" style={{ borderColor: 'rgba(195,54,101,0.18)' }}>
+                <div>
+                  <p className="inline-flex items-center gap-1.5 text-[13.5px] font-semibold" style={{ color: 'var(--danger)' }}>
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Danger zone
+                  </p>
+                  <p className="mt-0.5 text-[12.5px]" style={{ color: 'var(--ink-3)' }}>
+                    Irreversible actions. Delete the workspace, or leave it if you&apos;re a member.
+                  </p>
+                </div>
+              </div>
+              <div className="px-[18px] py-[18px]">
+                {isOwner && (
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[13px] font-medium" style={{ color: 'var(--ink)' }}>Delete workspace</p>
+                      <p className="mt-0.5 text-[12.5px]" style={{ color: 'var(--ink-3)' }}>
+                        Permanently removes &quot;{workspaceName}&quot;, all agents, and all data.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setDeleteConfirmOpen(true); setDeleteError(null); setDeleteConfirmText('') }}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-colors hover:bg-[var(--danger-soft)]"
+                      style={{ borderColor: 'rgba(195,54,101,0.3)', color: 'var(--danger)', background: 'var(--surface)' }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete workspace
+                    </button>
+                  </div>
+                )}
+                {isMember && !isOwner && (
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[13px] font-medium" style={{ color: 'var(--ink)' }}>Leave workspace</p>
+                      <p className="mt-0.5 text-[12.5px]" style={{ color: 'var(--ink-3)' }}>
+                        You&apos;ll lose access and can only rejoin via a new invitation.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setLeaveConfirmOpen(true); setLeaveError(null) }}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-colors hover:bg-[var(--bg-2)]"
+                      style={{ borderColor: 'var(--line-2)', color: 'var(--ink-2)', background: 'var(--surface)' }}
+                    >
+                      <LogOut className="h-3.5 w-3.5" />
+                      Leave workspace
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+          </div>{/* end main col */}
+        </div>{/* end settings-split */}
       </div>
 
-      {/* Delete workspace confirmation modal */}
+      {/* Delete confirmation modal */}
       {deleteConfirmOpen && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          style={{ background: 'rgba(26,26,29,0.5)' }}
           onClick={() => !deleteLoading && (setDeleteConfirmOpen(false), setDeleteError(null))}
         >
           <div
-            className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl"
+            className="w-full max-w-md rounded-xl border p-6 shadow-xl"
+            style={{ background: 'var(--surface)', borderColor: 'var(--line)' }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full" style={{ background: 'var(--danger-soft)', color: 'var(--danger)' }}>
                 <AlertTriangle className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="text-lg font-semibold text-slate-900">Delete workspace &quot;{workspaceName}&quot;?</h3>
-                <p className="mt-2 text-sm text-slate-600">
+                <h3 className="text-base font-semibold" style={{ color: 'var(--ink)' }}>Delete &quot;{workspaceName}&quot;?</h3>
+                <p className="mt-2 text-sm" style={{ color: 'var(--ink-2)' }}>
                   This cannot be undone. All agents, data sources, chat logs, and workspace data will be permanently deleted.
                 </p>
-                <p className="mt-3 text-sm font-medium text-slate-700">Type the workspace name to confirm:</p>
+                <p className="mt-3 text-sm font-medium" style={{ color: 'var(--ink-2)' }}>Type the workspace name to confirm:</p>
                 <input
                   type="text"
                   value={deleteConfirmText}
                   onChange={(e) => setDeleteConfirmText(e.target.value)}
                   placeholder={workspaceName}
-                  className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/20"
                   autoFocus
+                  className="mt-1.5 w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                  style={{ borderColor: 'var(--line)', color: 'var(--ink)', background: 'var(--surface)' }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--danger)')}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--line)')}
                 />
-                {deleteError && <p className="mt-2 text-sm text-red-600">{deleteError}</p>}
-                <div className="mt-6 flex justify-end gap-2">
+                {deleteError && <p className="mt-2 text-sm" style={{ color: 'var(--danger)' }}>{deleteError}</p>}
+                <div className="mt-5 flex justify-end gap-2">
                   <button
                     type="button"
-                    onClick={() => { setDeleteConfirmOpen(false); setDeleteError(null); setDeleteConfirmText(''); }}
+                    onClick={() => { setDeleteConfirmOpen(false); setDeleteError(null); setDeleteConfirmText('') }}
                     disabled={deleteLoading}
-                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    className="inline-flex h-8 items-center rounded-lg border px-3 text-sm font-medium transition-colors hover:bg-[var(--bg-2)] disabled:opacity-50"
+                    style={{ borderColor: 'var(--line)', color: 'var(--ink-2)' }}
                   >
                     Cancel
                   </button>
@@ -244,7 +423,8 @@ export default function WorkspaceSettingsGeneralPage() {
                     type="button"
                     onClick={handleDeleteWorkspace}
                     disabled={deleteLoading || deleteConfirmText.trim() !== workspaceName.trim()}
-                    className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:pointer-events-none"
+                    className="inline-flex h-8 items-center rounded-lg px-3 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50 disabled:pointer-events-none"
+                    style={{ background: 'var(--danger)' }}
                   >
                     {deleteLoading ? 'Deleting…' : 'Delete permanently'}
                   </button>
@@ -255,32 +435,35 @@ export default function WorkspaceSettingsGeneralPage() {
         </div>
       )}
 
-      {/* Leave workspace confirmation modal */}
+      {/* Leave confirmation modal */}
       {leaveConfirmOpen && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          style={{ background: 'rgba(26,26,29,0.5)' }}
           onClick={() => !leaveLoading && (setLeaveConfirmOpen(false), setLeaveError(null))}
         >
           <div
-            className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl"
+            className="w-full max-w-md rounded-xl border p-6 shadow-xl"
+            style={{ background: 'var(--surface)', borderColor: 'var(--line)' }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full" style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}>
                 <LogOut className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="text-lg font-semibold text-slate-900">Leave &quot;{workspaceName}&quot;?</h3>
-                <p className="mt-2 text-sm text-slate-600">
+                <h3 className="text-base font-semibold" style={{ color: 'var(--ink)' }}>Leave &quot;{workspaceName}&quot;?</h3>
+                <p className="mt-2 text-sm" style={{ color: 'var(--ink-2)' }}>
                   You will lose access to this workspace and its agents. You can rejoin only if invited again.
                 </p>
-                {leaveError && <p className="mt-2 text-sm text-red-600">{leaveError}</p>}
-                <div className="mt-6 flex justify-end gap-2">
+                {leaveError && <p className="mt-2 text-sm" style={{ color: 'var(--danger)' }}>{leaveError}</p>}
+                <div className="mt-5 flex justify-end gap-2">
                   <button
                     type="button"
-                    onClick={() => { setLeaveConfirmOpen(false); setLeaveError(null); }}
+                    onClick={() => { setLeaveConfirmOpen(false); setLeaveError(null) }}
                     disabled={leaveLoading}
-                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    className="inline-flex h-8 items-center rounded-lg border px-3 text-sm font-medium transition-colors hover:bg-[var(--bg-2)] disabled:opacity-50"
+                    style={{ borderColor: 'var(--line)', color: 'var(--ink-2)' }}
                   >
                     Cancel
                   </button>
@@ -288,7 +471,8 @@ export default function WorkspaceSettingsGeneralPage() {
                     type="button"
                     onClick={handleLeaveWorkspace}
                     disabled={leaveLoading}
-                    className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 disabled:pointer-events-none"
+                    className="inline-flex h-8 items-center rounded-lg px-3 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50 disabled:pointer-events-none"
+                    style={{ background: 'var(--warn)' }}
                   >
                     {leaveLoading ? 'Leaving…' : 'Leave workspace'}
                   </button>
