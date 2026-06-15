@@ -6,7 +6,7 @@ import { useDashboard } from '@/contexts/DashboardContext'
 import ActionsGrid from '@/components/actions/ActionsGrid'
 import { ACTION_TYPE_META } from '@/components/actions/action-meta'
 import CustomButtonsDrawer from '@/components/actions/custom-buttons/CustomButtonsDrawer'
-import CustomActionsDrawer from '@/components/actions/custom-actions/CustomActionsDrawer'
+import NewActionBuilder from '@/components/actions/custom-actions/NewActionBuilder'
 import { useActions } from '@/hooks/useActions'
 import { useActionTest } from '@/hooks/useActionTest'
 import type { ActionType, ChatbotAction, CustomActionConfig, CustomButtonsConfig } from '@/components/actions/types'
@@ -115,6 +115,8 @@ export default function ActionsPage({ chatbotIdParam }: ActionsPageProps) {
   const workspaceId = currentWorkspace?.id
   const chatbotId = chatbotIdParam ?? currentAgent?.id
   const [openType, setOpenType] = useState<ActionType | null>(null)
+  const [builderOpen, setBuilderOpen] = useState(false)
+  const [builderEditing, setBuilderEditing] = useState<ChatbotAction | null>(null)
   const [toasts, setToasts] = useState<ToastMessage[]>([])
 
   const {
@@ -145,6 +147,53 @@ export default function ActionsPage({ chatbotIdParam }: ActionsPageProps) {
   const customActionActions = useMemo(() => actionsByType.custom_action ?? [], [actionsByType])
   const customButtonsActions = useMemo(() => actionsByType.custom_buttons ?? [], [actionsByType])
 
+  const openBuilder = (action?: ChatbotAction) => {
+    setBuilderEditing(action ?? null)
+    setBuilderOpen(true)
+  }
+
+  const closeBuilder = () => {
+    setBuilderOpen(false)
+    setBuilderEditing(null)
+  }
+
+  if (builderOpen) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ background: 'var(--bg)' }}>
+        <NewActionBuilder
+          editing={builderEditing}
+          onCancel={closeBuilder}
+          onSave={async (payload) => {
+            const action = await saveAction({ ...payload, type: 'custom_action', config: payload.config as CustomActionConfig })
+            addToast('Action saved')
+            closeBuilder()
+            return action
+          }}
+          onRunTest={runTest}
+        />
+        {/* Toasts */}
+        <div className="pointer-events-none fixed bottom-4 right-4 z-[300] flex flex-col gap-2">
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className="pointer-events-auto animate-fade-in"
+              style={{
+                padding: '8px 12px', borderRadius: 'var(--r-md)',
+                fontSize: 13, fontWeight: 500,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
+                border: toast.variant === 'error' ? '1px solid var(--danger-soft)' : '1px solid var(--line-2)',
+                background: toast.variant === 'error' ? 'var(--danger-soft)' : 'var(--surface)',
+                color: toast.variant === 'error' ? 'var(--danger)' : 'var(--ink)',
+              }}
+            >
+              {toast.text}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ background: 'var(--bg)' }}>
 
@@ -156,16 +205,16 @@ export default function ActionsPage({ chatbotIdParam }: ActionsPageProps) {
         background: 'var(--bg)', flexShrink: 0,
       }}>
         <div>
-          <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink)', margin: '0 0 3px', letterSpacing: '-0.01em' }}>
+          <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--ink)', margin: '0 0 4px', letterSpacing: '-0.015em' }}>
             Actions
           </h1>
-          <p style={{ fontSize: 13, color: 'var(--ink-3)', margin: 0 }}>
-            Let the agent call your API or external tools. Define inputs, outputs, and auth.
+          <p style={{ fontSize: 13.5, color: 'var(--ink-3)', margin: 0 }}>
+            Let the agent call your API or external tools. Define inputs, outputs, and authentication.
           </p>
         </div>
         <button
           type="button"
-          onClick={() => setOpenType('custom_action')}
+          onClick={() => openBuilder()}
           className="btn btn--primary btn--sm"
         >
           <Plus className="h-[12px] w-[12px]" />
@@ -219,7 +268,7 @@ export default function ActionsPage({ chatbotIdParam }: ActionsPageProps) {
             </div>
             <button
               type="button"
-              onClick={() => setOpenType('custom_action')}
+              onClick={() => openBuilder()}
               className="btn btn--ghost btn--sm"
             >
               <Plus className="h-[11px] w-[11px]" />
@@ -250,7 +299,7 @@ export default function ActionsPage({ chatbotIdParam }: ActionsPageProps) {
                 </p>
                 <button
                   type="button"
-                  onClick={() => setOpenType('custom_action')}
+                  onClick={() => openBuilder()}
                   className="btn btn--secondary btn--sm"
                 >
                   <Plus className="h-[11px] w-[11px]" />
@@ -263,7 +312,7 @@ export default function ActionsPage({ chatbotIdParam }: ActionsPageProps) {
               <CustomActionCard
                 key={action.id}
                 action={action}
-                onManage={() => setOpenType('custom_action')}
+                onManage={() => openBuilder(action)}
               />
             ))
           )}
@@ -305,28 +354,8 @@ export default function ActionsPage({ chatbotIdParam }: ActionsPageProps) {
         }}
       />
 
-      <CustomActionsDrawer
-        open={openType === 'custom_action'}
-        actions={customActionActions}
-        onOpenChange={(open) => { if (!open) setOpenType(null) }}
-        onSave={async (payload) => {
-          const action = await saveAction({ ...payload, type: 'custom_action', config: payload.config as CustomActionConfig })
-          addToast('Action saved')
-          return action
-        }}
-        onDelete={async (actionId) => {
-          try { await deleteAction(actionId); addToast('Action deleted') }
-          catch { addToast('Failed to delete — please try again', 'error') }
-        }}
-        onToggle={async (actionId, next) => {
-          try { await toggleAction(actionId, next); addToast(next ? 'Action enabled' : 'Action disabled') }
-          catch { addToast('Failed to update — please try again', 'error') }
-        }}
-        onValidateFunctionName={validateFunctionName}
-        onRunTest={runTest}
-      />
 
-      {/* Toasts */}
+{/* Toasts */}
       <div className="pointer-events-none fixed bottom-4 right-4 z-[300] flex flex-col gap-2">
         {toasts.map((toast) => (
           <div

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Palette, Layout, ChevronDown, ChevronRight, Monitor, Save, Copy, Check, Loader2 } from 'lucide-react'
+import { Palette, Layout, ChevronDown, ChevronRight, Copy, Check, Loader2 } from 'lucide-react'
 import ChatWidgetPreviewSkeleton from '@/components/ChatWidgetPreviewSkeleton'
 import type { SkinConfig, ThemeColors, ComponentsConfig, StatesConfig } from '@/types/skinConfig'
 import SkinRenderer from '@/components/SkinRenderer'
@@ -77,7 +77,7 @@ const PREVIEW_INITIAL_MESSAGES = PREVIEW_SAMPLE_MESSAGES.map((msg) => ({
 }))
 
 
-// ----- Helpers (v2 styled) -----
+// ----- Helpers (design-system styled) -----
 function ColorInput({
   label,
   value,
@@ -88,24 +88,33 @@ function ColorInput({
   onChange: (v: string) => void
 }) {
   return (
-    <div className="min-w-0">
-      <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
-      <div className="flex gap-2 items-center min-w-0">
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+      <span style={{ width: 88, fontSize: 12.5, color: 'var(--ink-2)', flexShrink: 0 }}>{label}</span>
+      <label style={{
+        width: 28, height: 28, borderRadius: 'var(--r-sm)',
+        border: '1px solid var(--line-strong)',
+        position: 'relative', cursor: 'pointer', flexShrink: 0,
+        background: value || '#0f172a', overflow: 'hidden',
+      }}>
         <input
           type="color"
           value={value || '#0f172a'}
           onChange={(e) => onChange(e.target.value)}
-          className="h-9 w-9 shrink-0 rounded-md border border-slate-200 cursor-pointer"
-          style={{ backgroundColor: value || '#0f172a' }}
+          style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }}
         />
-        <input
-          type="text"
-          value={value || ''}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="#0f172a"
-          className="min-w-0 flex-1 h-9 rounded-md border border-slate-200 px-2.5 text-sm font-mono focus:border-[var(--v2-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--v2-primary)]"
-        />
-      </div>
+      </label>
+      <input
+        type="text"
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="#0f172a"
+        style={{
+          flex: 1, height: 34, padding: '0 10px',
+          border: '1px solid var(--line-2)', borderRadius: 'var(--r-sm)',
+          background: 'var(--surface)', fontSize: 12.5,
+          fontFamily: 'var(--font-mono)', color: 'var(--ink)',
+        }}
+      />
     </div>
   )
 }
@@ -122,14 +131,18 @@ function TextInput({
   placeholder?: string
 }) {
   return (
-    <div>
-      <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
+    <div style={{ marginBottom: 10 }}>
+      <label style={{ display: 'block', fontSize: 12.5, fontWeight: 500, color: 'var(--ink-2)', marginBottom: 6 }}>{label}</label>
       <input
         type="text"
         value={value || ''}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full h-9 rounded-md border border-slate-200 px-2.5 text-sm focus:border-[var(--v2-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--v2-primary)]"
+        style={{
+          display: 'block', width: '100%', height: 34, padding: '0 10px',
+          border: '1px solid var(--line-2)', borderRadius: 'var(--r-sm)',
+          background: 'var(--surface)', fontSize: 13, color: 'var(--ink)',
+        }}
       />
     </div>
   )
@@ -156,15 +169,19 @@ function NumberInput({
     onChange(next)
   }
   return (
-    <div>
-      <label className="block text-sm font-medium text-slate-700 mb-2">{label}</label>
+    <div style={{ marginBottom: 10 }}>
+      <label style={{ display: 'block', fontSize: 12.5, fontWeight: 500, color: 'var(--ink-2)', marginBottom: 6 }}>{label}</label>
       <input
         type="number"
         value={clamped ?? 0}
         onChange={(e) => handleChange(parseInt(e.target.value, 10) || 0)}
         min={min}
         max={max}
-        className="w-full h-9 rounded-md border border-slate-200 px-2.5 text-sm focus:border-[var(--v2-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--v2-primary)]"
+        style={{
+          display: 'block', width: '100%', height: 34, padding: '0 10px',
+          border: '1px solid var(--line-2)', borderRadius: 'var(--r-sm)',
+          background: 'var(--surface)', fontSize: 13, color: 'var(--ink)',
+        }}
       />
     </div>
   )
@@ -185,14 +202,24 @@ function CheckboxInput({
   onChange: (v: boolean) => void
 }) {
   return (
-    <label className="flex items-center gap-2 cursor-pointer">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="h-3.5 w-3.5 rounded border-slate-300 text-[var(--v2-primary)] focus:ring-[var(--v2-primary)]"
-      />
-      <span className="text-sm font-medium text-slate-700">{label}</span>
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 12.5, cursor: 'pointer' }}>
+      <span
+        onClick={() => onChange(!checked)}
+        style={{
+          width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+          border: `1px solid ${checked ? 'var(--accent)' : 'var(--line-strong)'}`,
+          background: checked ? 'var(--accent)' : 'var(--bg)',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          color: 'white', cursor: 'pointer',
+        }}
+      >
+        {checked && (
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M2 5L4 7L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        )}
+      </span>
+      <span style={{ color: 'var(--ink-2)' }}>{label}</span>
     </label>
   )
 }
@@ -211,19 +238,37 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white overflow-hidden shadow-sm">
+    <div style={{
+      background: 'var(--surface)',
+      border: '1px solid var(--line)',
+      borderRadius: 'var(--r-md)',
+      marginBottom: 10,
+      overflow: 'hidden',
+    }}>
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex items-center justify-between px-3 py-2.5 bg-slate-50/80 hover:bg-slate-100 transition-colors text-left"
+        className="hover:bg-[var(--bg-2)]"
+        style={{
+          display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between',
+          padding: '12px 14px', fontSize: 12.5, fontWeight: 600, color: 'var(--ink)',
+          background: 'transparent', border: 0, cursor: 'pointer', textAlign: 'left',
+        }}
       >
-        <div className="flex items-center gap-2 text-slate-700 text-sm font-medium">
-          <span className="text-slate-400 [&_svg]:h-3.5 [&_svg]:w-3.5">{icon}</span>
-          <span>{title}</span>
-        </div>
-        {expanded ? <ChevronDown className="h-3.5 w-3.5 text-slate-400" /> : <ChevronRight className="h-3.5 w-3.5 text-slate-400" />}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ color: 'var(--ink-3)', display: 'inline-flex' }}>{icon}</span>
+          {title}
+        </span>
+        {expanded
+          ? <ChevronDown style={{ width: 13, height: 13, color: 'var(--ink-3)' }} />
+          : <ChevronRight style={{ width: 13, height: 13, color: 'var(--ink-3)' }} />
+        }
       </button>
-      {expanded && <div className="px-3 py-3 border-t border-slate-100 bg-white text-sm">{children}</div>}
+      {expanded && (
+        <div style={{ padding: '12px 14px 14px', borderTop: '1px dashed var(--line)', fontSize: 13 }}>
+          {children}
+        </div>
+      )}
     </div>
   )
 }
@@ -422,33 +467,47 @@ export default function ChatbotCustomizationsPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-white">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden" style={{ background: 'var(--bg)' }}>
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Left: Customization form – same width as Playground left column (400px) */}
-        <div className="flex w-full flex-col border-r border-slate-200 lg:w-[400px] lg:shrink-0">
+        {/* Left: Customization form */}
+        <div className="flex w-full flex-col lg:w-[400px] lg:shrink-0" style={{ borderRight: '1px solid var(--line)' }}>
           {/* Sticky header */}
-          <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-4 sm:px-5">
+          <div className="shrink-0 px-4 py-4 sm:px-5" style={{ borderBottom: '1px solid var(--line)', background: 'var(--surface)' }}>
             {error && (
-              <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              <div style={{
+                marginBottom: 12, padding: '8px 12px', borderRadius: 'var(--r-md)',
+                background: 'var(--danger-soft)', color: 'var(--danger)',
+                fontSize: 13, border: '1px solid rgba(195,54,101,0.2)',
+              }}>
                 {error}
               </div>
             )}
-            <div className="flex flex-wrap items-start justify-between gap-3">
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
               <div>
-                <h1 className="text-lg font-semibold text-slate-900">Chat widget</h1>
-                <p className="mt-0.5 text-sm text-slate-500">
-                  Customize how your widget looks and add it to your site. Changes appear in the live preview and in Playground.
+                <h1 style={{ fontSize: 17, fontWeight: 600, color: 'var(--ink)', margin: '0 0 4px' }}>Chat widget</h1>
+                <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: 0 }}>
+                  Customize how your widget looks and add it to your site.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saveLoading || loading}
-                className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-[var(--v2-primary)] px-3 py-2 text-sm font-medium text-white shadow-sm hover:opacity-90 disabled:opacity-50"
-              >
-                {saveLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                Save changes
-              </button>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saveLoading || loading}
+                  className="btn btn--primary btn--sm"
+                >
+                  {saveLoading ? <Loader2 className="h-[11px] w-[11px] animate-spin" /> : <Check className="h-[11px] w-[11px]" />}
+                  Save changes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfig(defaultConfig())}
+                  disabled={saveLoading || loading}
+                  className="btn btn--ghost btn--sm"
+                >
+                  Reset
+                </button>
+              </div>
             </div>
           </div>
           {/* Scrollable form */}
@@ -460,39 +519,93 @@ export default function ChatbotCustomizationsPage() {
             ) : (
             <div className="space-y-4">
               {/* Tabs */}
-              <div className="flex gap-6 border-b border-slate-200">
-                {[
-                  { id: 'theme' as TabType, label: 'Theme' },
-                  { id: 'components' as TabType, label: 'Components' },
-                  { id: 'embed' as TabType, label: 'Embed' },
-                ].map(({ id, label }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setActiveTab(id)}
-                    className={`flex items-center justify-center gap-1.5 px-1 py-2.5 text-sm font-medium transition border-b-2 -mb-px whitespace-nowrap ${activeTab === id
-                        ? 'border-[var(--v2-primary)] text-[var(--v2-primary)]'
-                        : 'border-transparent text-slate-600 hover:text-slate-900 hover:border-slate-300'
-                      }`}
-                  >
-                    {label}
-                  </button>
-                ))}
+              <div style={{ display: 'flex', marginTop: 16, borderBottom: '1px solid var(--line)' }}>
+                {(['theme', 'components', 'embed'] as TabType[]).map((id) => {
+                  const labels: Record<TabType, string> = { theme: 'Theme', components: 'Components', embed: 'Embed' }
+                  const isActive = activeTab === id
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setActiveTab(id)}
+                      style={{
+                        flex: 1, padding: '10px 0', background: 'transparent', cursor: 'pointer',
+                        fontSize: 12.5, fontWeight: 500,
+                        color: isActive ? 'var(--ink)' : 'var(--ink-3)',
+                        borderBottom: `2px solid ${isActive ? 'var(--ink)' : 'transparent'}`,
+                        marginBottom: -1,
+                        border: 0,
+                        borderBottomStyle: 'solid' as const,
+                        borderBottomWidth: 2,
+                        borderBottomColor: isActive ? 'var(--ink)' : 'transparent',
+                      }}
+                    >
+                      {labels[id]}
+                    </button>
+                  )
+                })}
               </div>
 
               {activeTab === 'theme' && (
-                <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-                  <h2 className="text-sm font-semibold text-slate-800 mb-0.5 flex items-center gap-2">
-                    <Palette className="h-3.5 w-3.5 text-slate-400" />
-                    Color palette
-                  </h2>
-                  <p className="text-sm text-slate-500 mb-3">Set colors used across the widget.</p>
-                  <div className="flex flex-col gap-3">
+                <>
+                  <div style={{
+                    background: 'var(--surface)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 'var(--r-md)',
+                    padding: 14,
+                    marginBottom: 10,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 600, marginBottom: 6, color: 'var(--ink)' }}>
+                      <Palette style={{ width: 13, height: 13, color: 'var(--ink-3)' }} />
+                      Color palette
+                    </div>
+                    <p style={{ fontSize: 12, color: 'var(--ink-3)', margin: '0 0 10px' }}>Set colors used across the widget.</p>
                     <ColorInput label="Primary" value={theme.primaryColor || ''} onChange={(v) => updateTheme({ primaryColor: v })} />
                     <ColorInput label="Background" value={theme.backgroundColor || ''} onChange={(v) => updateTheme({ backgroundColor: v })} />
                     <ColorInput label="Text" value={theme.textColor || ''} onChange={(v) => updateTheme({ textColor: v })} />
                   </div>
-                </div>
+
+                  <div style={{
+                    background: 'var(--surface)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 'var(--r-md)',
+                    padding: 14,
+                    marginBottom: 12,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 600, marginBottom: 6, color: 'var(--ink)' }}>
+                      <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ color: 'var(--ink-3)' }}>
+                        <path d="M2 3h9M6.5 3v8M4 11h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                      </svg>
+                      Typography
+                    </div>
+                    <p style={{ fontSize: 12, color: 'var(--ink-3)', margin: '0 0 12px' }}>Controls the typeface and base text size.</p>
+                    <label className="field" style={{ marginBottom: 10 }}>
+                      <span className="field-label">Font family</span>
+                      <select
+                        className="select"
+                        value={theme.fontFamily || 'Inter, system-ui, sans-serif'}
+                        onChange={(e) => updateTheme({ fontFamily: e.target.value })}
+                      >
+                        <option value="Inter, system-ui, sans-serif">Inter</option>
+                        <option value="system-ui, sans-serif">System UI</option>
+                        <option value='"Geist", sans-serif'>Geist</option>
+                      </select>
+                    </label>
+                    <label className="field" style={{ marginBottom: 0 }}>
+                      <span className="field-label">Base size</span>
+                      <select
+                        className="select"
+                        value={String(theme.fontSize ?? 14)}
+                        onChange={(e) => updateTheme({ fontSize: parseInt(e.target.value, 10) })}
+                      >
+                        <option value="13">13 px</option>
+                        <option value="14">14 px</option>
+                        <option value="15">15 px</option>
+                        <option value="16">16 px</option>
+                      </select>
+                    </label>
+                  </div>
+                </>
               )}
 
               {activeTab === 'components' && (
@@ -534,7 +647,7 @@ export default function ChatbotCustomizationsPage() {
                         onChange={(v) => updateComponents('header', { show: v })}
                       />
                       {comp.header?.show !== false && (
-                        <div className="grid grid-cols-2 gap-3 pl-3 border-l-2 border-slate-200">
+                        <div className="grid grid-cols-2 gap-3 pl-3" style={{ borderLeft: '2px solid var(--line)' }}>
                           <div className="col-span-2">
                             <CheckboxInput
                               label="Show title"
@@ -665,7 +778,7 @@ export default function ChatbotCustomizationsPage() {
                         />
                       </div>
                       {comp.messages?.showAvatars !== false && (
-                        <div className="col-span-2 pl-3 border-l-2 border-slate-100 space-y-2">
+                        <div className="col-span-2 pl-3 space-y-2" style={{ borderLeft: '2px solid var(--line)' }}>
                           <CheckboxInput
                             label="Show chatbot icon"
                             checked={comp.messages?.showBotAvatar !== false}
@@ -721,7 +834,7 @@ export default function ChatbotCustomizationsPage() {
                         checked={comp.input?.enableDictation !== false}
                         onChange={(v) => updateComponents('input', { enableDictation: v })}
                       />
-                      <p className="text-xs text-slate-500 pl-6 -mt-1">
+                      <p style={{ fontSize: 11.5, color: 'var(--ink-3)', paddingLeft: 24, marginTop: -4 }}>
                         Allow users to speak into the chat using the microphone. Not supported in all browsers.
                       </p>
                     </div>
@@ -757,8 +870,15 @@ export default function ChatbotCustomizationsPage() {
                       <code>{embedSnippet || 'Select an agent to see embed code.'}</code>
                     </pre>
                   </div>
-                  <p className="text-xs text-slate-500">
-                    Insert before <code className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600 font-mono">&lt;/body&gt;</code>. The widget will use the same look you saved here and in Playground.
+                  <p style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+                    Insert before{' '}
+                    <code style={{
+                      fontFamily: 'var(--font-mono)', fontSize: 11, padding: '1px 5px',
+                      borderRadius: 4, background: 'var(--bg-2)', color: 'var(--ink-2)',
+                    }}>
+                      &lt;/body&gt;
+                    </code>
+                    . The widget will use the look you saved here.
                   </p>
                 </div>
               )}
@@ -767,16 +887,19 @@ export default function ChatbotCustomizationsPage() {
           </div>
         </div>
 
-        {/* Right: Live preview – SkinRenderer with static messages (UI customizations only) */}
-        <div className="hidden lg:flex flex-1 min-w-0 min-h-0 flex-col overflow-hidden border-l border-slate-200 bg-slate-50">
+        {/* Right: Live preview */}
+        <div className="hidden lg:flex flex-1 min-w-0 min-h-0 flex-col overflow-hidden" style={{ borderLeft: '1px solid var(--line)' }}>
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg)' }}>
+            <span style={{ fontSize: 10.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--ink-4)', fontFamily: 'var(--font-mono)' }}>
+              Live preview
+            </span>
+          </div>
           <div
-            className="flex-1 min-h-0 overflow-hidden flex flex-col p-6 bg-slate-100/80"
+            className="flex-1 min-h-0 overflow-hidden flex flex-col p-6"
             style={{
-              backgroundImage: `
-                linear-gradient(to right, rgb(148 163 184 / 0.4) 1px, transparent 1px),
-                linear-gradient(to bottom, rgb(148 163 184 / 0.4) 1px, transparent 1px)
-              `,
-              backgroundSize: '64px 64px',
+              backgroundImage: `linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px)`,
+              backgroundSize: '24px 24px',
+              backgroundColor: 'var(--bg)',
             }}
           >
             {loading ? (

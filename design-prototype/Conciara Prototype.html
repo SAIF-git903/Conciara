@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Conciara — Interactive Prototype</title>
+
+<!-- Inter + Space Grotesk to match real codebase -->
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet"/>
+
+<!-- Tailwind via CDN with same theme as tailwind.config.js in repo -->
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          primary: { 50:'#eff6ff',100:'#dbeafe',200:'#bfdbfe',300:'#93c5fd',400:'#60a5fa',500:'#3b82f6',600:'#2563eb',700:'#1d4ed8',800:'#1e40af',900:'#1e3a8a' },
+          accent:  { 50:'#fdf4ff',100:'#fae8ff',200:'#f5d0fe',300:'#f0abfc',400:'#e879f9',500:'#d946ef',600:'#c026d3',700:'#a21caf',800:'#86198f',900:'#701a75' },
+        },
+        fontFamily: {
+          sans: ['Inter', 'system-ui', 'sans-serif'],
+          display: ['Space Grotesk', 'Inter', 'system-ui', 'sans-serif'],
+        },
+        boxShadow: {
+          soft:   '0 2px 15px -3px rgba(0,0,0,0.07), 0 10px 20px -2px rgba(0,0,0,0.04)',
+          medium: '0 4px 25px -5px rgba(0,0,0,0.10), 0 10px 10px -5px rgba(0,0,0,0.04)',
+          large:  '0 10px 40px -10px rgba(0,0,0,0.15)',
+          card:   '0 1px 2px rgba(15,23,42,0.04)',
+          cardHover: '0 8px 28px -6px rgba(15,23,42,0.10)',
+        },
+      },
+    },
+  };
+</script>
+
+<style>
+  :root {
+    --v2-primary: #0f172a;
+    --v2-primary-hover: #1e293b;
+    --v2-primary-soft: #f1f5f9;
+    --v2-primary-foreground: #ffffff;
+  }
+  html, body, #root { height: 100%; }
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    color: #0f172a;
+    background: #ffffff;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+
+  /* Subtle bg used in real product for dashboard pages */
+  .bg-app { background: rgb(250, 251, 253); }
+
+  /* Crawl-row shimmer (matches globals.css) */
+  @keyframes crawl-shimmer { 0%,100% { opacity:.4 } 50% { opacity:1 } }
+  .crawl-row-active { position: relative; }
+  .crawl-row-active::before {
+    content:''; position:absolute; left:0; top:0; bottom:0; width:3px;
+    border-radius:3px 0 0 3px;
+    background: linear-gradient(180deg,#f59e0b,#fbbf24);
+    animation: crawl-shimmer 1.5s ease-in-out infinite;
+  }
+
+  /* Streaming cursor */
+  @keyframes ct-blink { 0%,100% {opacity:1} 50% {opacity:0} }
+  .ct-streaming::after {
+    content:''; display:inline-block; width:2px; height:0.82em;
+    background-color: currentColor; margin-left:3px; vertical-align:-.05em;
+    border-radius:1px; opacity:.65;
+    animation: ct-blink .85s step-end infinite;
+  }
+
+  /* Hide spinner on number inputs */
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<template id="__bundler_thumbnail">
+  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" fill="#0f172a"/>
+    <rect x="35" y="35" width="30" height="22" rx="5" fill="none" stroke="#fff" stroke-width="2.5"/>
+    <circle cx="44" cy="46" r="2" fill="#fff"/>
+    <circle cx="56" cy="46" r="2" fill="#fff"/>
+    <path d="M50 35 V28" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="50" cy="26" r="2.5" fill="#fff"/>
+    <path d="M44 57 v4 M56 57 v4" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+    <text x="50" y="78" text-anchor="middle" fill="#fff" font-family="Inter,sans-serif" font-size="9" font-weight="600">Conciara</text>
+  </svg>
+</template>
+
+<!-- React + Babel -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<!-- Framer Motion (UMD) + Lucide (UMD) -->
+<script src="https://unpkg.com/framer-motion@11.2.10/dist/framer-motion.dev.js"></script>
+<script src="https://unpkg.com/lucide@0.294.0/dist/umd/lucide.js"></script>
+
+<!-- Tweaks panel scaffold from starter -->
+<script type="text/babel" src="prototype/tweaks-panel.jsx"></script>
+
+<!-- Prototype source files -->
+<script type="text/babel" src="prototype/lib.jsx"></script>
+<script type="text/babel" src="prototype/components.jsx"></script>
+<script type="text/babel" src="prototype/sidebar.jsx"></script>
+<script type="text/babel" src="prototype/topbar.jsx"></script>
+<script type="text/babel" src="prototype/screens-workspace.jsx"></script>
+<script type="text/babel" src="prototype/screens-agent.jsx"></script>
+<script type="text/babel" src="prototype/screens-onboarding.jsx"></script>
+<script type="text/babel" src="prototype/screens-misc.jsx"></script>
+<script type="text/babel" src="prototype/app.jsx"></script>
+
+<script type="text/babel">
+  const root = ReactDOM.createRoot(document.getElementById("root"));
+  root.render(<window.App/>);
+</script>
+</body>
+</html>
