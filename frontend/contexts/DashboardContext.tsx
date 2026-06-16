@@ -14,6 +14,9 @@ export interface DashboardAgent {
   id: string
   name: string
   workspaceId: number
+  model?: string | null
+  messageCount?: number
+  lastRunAt?: string | null
 }
 
 /** Workspace plan limits from API (in-memory, refreshed on login / create agent / invite). */

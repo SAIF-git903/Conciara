@@ -12,6 +12,9 @@ export interface AgentInfo {
   id: number;
   workspaceId: number;
   name: string;
+  model: string | null;
+  messageCount: number;
+  lastRunAt: Date | null;
 }
 
 export interface AgentDetails extends AgentInfo {
@@ -73,11 +76,22 @@ export async function getAgentsForWorkspace(workspaceId: number): Promise<AgentI
   const agents = await prisma.agent.findMany({
     where: { workspaceId },
     orderBy: { name: 'asc' },
+    include: {
+      _count: { select: { chatMessages: true } },
+      chatMessages: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: { createdAt: true },
+      },
+    },
   });
   return agents.map((a) => ({
     id: a.id,
     workspaceId: a.workspaceId,
     name: a.name,
+    model: a.model,
+    messageCount: a._count.chatMessages,
+    lastRunAt: a.chatMessages[0]?.createdAt ?? null,
   }));
 }
 

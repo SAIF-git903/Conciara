@@ -44,6 +44,27 @@ const DT: React.CSSProperties = {
 }
 const DD: React.CSSProperties = { fontSize: 12, color: 'var(--ink-2)', margin: 0 }
 
+function formatRelativeTime(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const diffMin = Math.floor(diffMs / 60000)
+  if (diffMin < 1) return 'Just now'
+  if (diffMin < 60) return `${diffMin}m ago`
+  const diffHr = Math.floor(diffMin / 60)
+  if (diffHr < 24) return `${diffHr}h ago`
+  const diffDay = Math.floor(diffHr / 24)
+  if (diffDay < 7) return `${diffDay}d ago`
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+function formatModel(model: string | null | undefined): string {
+  if (!model) return '—'
+  if (model.startsWith('gpt-4o')) return 'GPT-4o'
+  if (model.startsWith('gpt-4')) return 'GPT-4'
+  if (model.startsWith('gpt-3.5')) return 'GPT-3.5'
+  return model
+}
+
 function AgentCardSkeletonGrid() {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
@@ -414,15 +435,15 @@ export default function WorkspaceHomePage() {
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                           <dt style={DT}>Model</dt>
-                          <dd style={DD}>—</dd>
+                          <dd style={DD}>{formatModel(agent.model)}</dd>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                           <dt style={DT}>Messages</dt>
-                          <dd style={DD}>—</dd>
+                          <dd style={DD}>{agent.messageCount != null ? agent.messageCount.toLocaleString() : '—'}</dd>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                           <dt style={DT}>Last run</dt>
-                          <dd style={DD}>—</dd>
+                          <dd style={DD}>{formatRelativeTime(agent.lastRunAt)}</dd>
                         </div>
                       </dl>
 

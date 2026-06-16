@@ -228,7 +228,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     }
     setAgentsLoading(true)
     try {
-      const res = await api.get<{ agents: Array<{ id: number; workspaceId: number; name: string }> }>(
+      const res = await api.get<{ agents: Array<{ id: number; workspaceId: number; name: string; model: string | null; messageCount: number; lastRunAt: string | null }> }>(
         `/workspaces/${workspaceId}/agents`
       )
       if (currentWorkspaceIdRef.current !== workspaceId) return
@@ -236,6 +236,9 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         id: String(a.id),
         name: a.name,
         workspaceId: a.workspaceId,
+        model: a.model,
+        messageCount: a.messageCount,
+        lastRunAt: a.lastRunAt,
       }))
       setAgents(list)
     } catch {
@@ -522,13 +525,16 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     const found = inWorkspace.find((a) => a.id === aid)
     if (!found) {
       let cancelled = false
-      api.get<{ agents: Array<{ id: number; workspaceId: number; name: string }> }>(`/workspaces/${workspaceId}/agents`)
+      api.get<{ agents: Array<{ id: number; workspaceId: number; name: string; model: string | null; messageCount: number; lastRunAt: string | null }> }>(`/workspaces/${workspaceId}/agents`)
         .then((res) => {
           if (cancelled || currentWorkspaceIdRef.current !== workspaceId) return
           const list = (res.data.agents ?? []).map((a) => ({
             id: String(a.id),
             name: a.name,
             workspaceId: a.workspaceId,
+            model: a.model,
+            messageCount: a.messageCount,
+            lastRunAt: a.lastRunAt,
           }))
           setAgents(list)
         })
