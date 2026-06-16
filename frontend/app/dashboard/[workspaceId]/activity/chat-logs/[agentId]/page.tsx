@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 import {
   AlertTriangle,
   ArrowRight,
@@ -516,6 +517,7 @@ function RevisePanel({
 export default function ChatLogsPage() {
   const [activeIdx, setActiveIdx] = useState(0)
   const [reviseIdx, setReviseIdx] = useState<number | null>(null)
+  const [dateRange, setDateRange] = useState('week1')
 
   const questionFor = (i: number): Message | null => {
     for (let j = i - 1; j >= 0; j--) {
@@ -558,13 +560,14 @@ export default function ChatLogsPage() {
               style={{ border: 0, background: 'transparent', flex: 1, outline: 'none', fontSize: 12.5 }}
             />
           </div>
-          <select style={{
-            height: 30, fontSize: 12, padding: '0 8px',
-            border: '1px solid var(--line-2)', borderRadius: 'var(--r-sm)',
-            background: 'var(--bg)', color: 'var(--ink-3)', outline: 'none', cursor: 'pointer',
-          }}>
-            <option>Apr 28 – May 4</option>
-          </select>
+          <Select value={dateRange} onValueChange={setDateRange}>
+            <SelectTrigger compact style={{ height: 30, fontSize: 12 }}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="week1">Apr 28 – May 4</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Session list */}

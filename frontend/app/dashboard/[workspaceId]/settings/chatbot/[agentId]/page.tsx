@@ -6,6 +6,7 @@ import ChatWidgetPreviewSkeleton from '@/components/ChatWidgetPreviewSkeleton'
 import type { SkinConfig, ThemeColors, ComponentsConfig, StatesConfig } from '@/types/skinConfig'
 import SkinRenderer from '@/components/SkinRenderer'
 import Select from '@/components/Select'
+import { Select as UISelect, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 import { useDashboard } from '@/contexts/DashboardContext'
 import api from '@/lib/api'
 import { getApiBaseUrl } from '@/lib/api'
@@ -579,31 +580,29 @@ export default function ChatbotCustomizationsPage() {
                       Typography
                     </div>
                     <p style={{ fontSize: 12, color: 'var(--ink-3)', margin: '0 0 12px' }}>Controls the typeface and base text size.</p>
-                    <label className="field" style={{ marginBottom: 10 }}>
+                    <div className="field" style={{ marginBottom: 10 }}>
                       <span className="field-label">Font family</span>
-                      <select
-                        className="select"
-                        value={theme.fontFamily || 'Inter, system-ui, sans-serif'}
-                        onChange={(e) => updateTheme({ fontFamily: e.target.value })}
-                      >
-                        <option value="Inter, system-ui, sans-serif">Inter</option>
-                        <option value="system-ui, sans-serif">System UI</option>
-                        <option value='"Geist", sans-serif'>Geist</option>
-                      </select>
-                    </label>
-                    <label className="field" style={{ marginBottom: 0 }}>
+                      <UISelect value={theme.fontFamily || 'Inter, system-ui, sans-serif'} onValueChange={(v) => updateTheme({ fontFamily: v })}>
+                        <SelectTrigger compact><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Inter, system-ui, sans-serif">Inter</SelectItem>
+                          <SelectItem value="system-ui, sans-serif">System UI</SelectItem>
+                          <SelectItem value='"Geist", sans-serif'>Geist</SelectItem>
+                        </SelectContent>
+                      </UISelect>
+                    </div>
+                    <div className="field" style={{ marginBottom: 0 }}>
                       <span className="field-label">Base size</span>
-                      <select
-                        className="select"
-                        value={String(theme.fontSize ?? 14)}
-                        onChange={(e) => updateTheme({ fontSize: parseInt(e.target.value, 10) })}
-                      >
-                        <option value="13">13 px</option>
-                        <option value="14">14 px</option>
-                        <option value="15">15 px</option>
-                        <option value="16">16 px</option>
-                      </select>
-                    </label>
+                      <UISelect value={String(theme.fontSize ?? 14)} onValueChange={(v) => updateTheme({ fontSize: parseInt(v, 10) })}>
+                        <SelectTrigger compact><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="13">13 px</SelectItem>
+                          <SelectItem value="14">14 px</SelectItem>
+                          <SelectItem value="15">15 px</SelectItem>
+                          <SelectItem value="16">16 px</SelectItem>
+                        </SelectContent>
+                      </UISelect>
+                    </div>
                   </div>
                 </>
               )}

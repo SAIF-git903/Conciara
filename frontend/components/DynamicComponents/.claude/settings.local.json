@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:api.anthropic.com)",
+      "PowerShell(Get-ChildItem -Path \"D:\\\\Conciara\\\\frontend\\\\app\\\\dashboard\" -Recurse -Directory | Select-Object -ExpandProperty FullName | Where-Object { $_ -match '\\(files|qa|website\\)' })",
+      "PowerShell(Get-ChildItem -Path \"D:\\\\Conciara\\\\frontend\\\\app\\\\dashboard\" -Recurse | Where-Object { $_.FullName -match 'data-sources' } | Select-Object -ExpandProperty FullName)",
+      "PowerShell(Get-ChildItem \"D:\\\\Conciara\\\\frontend\" -Recurse -Depth 2 | Where-Object { -not $_.PSIsContainer } | Select-Object @{N='Path';E={$_.FullName.Replace\\('D:\\\\Conciara\\\\frontend\\\\',''\\)}} | Where-Object { $_.Path -notmatch 'node_modules|\\\\.git|\\\\.next' } | Select-Object -First 60 | Format-Table -AutoSize)",
+      "PowerShell(Get-ChildItem \"D:\\\\Conciara\\\\frontend\" -Recurse -Depth 3 | Where-Object { -not $_.PSIsContainer } | Select-Object @{N='Path';E={$_.FullName.Replace\\('D:\\\\Conciara\\\\frontend\\\\',''\\)}} | Where-Object { $_.Path -notmatch 'node_modules|\\\\.git|\\\\.next' } | Select-Object -Skip 60 -First 80 | Format-Table -AutoSize)",
+      "PowerShell(Get-ChildItem \"D:\\\\Conciara\\\\frontend\\\\app\\\\dashboard\" -Recurse | Select-Object @{N='Path';E={$_.FullName.Replace\\('D:\\\\Conciara\\\\frontend\\\\app\\\\dashboard\\\\',''\\)}} | Format-Table -AutoSize)",
+      "PowerShell(\\(Get-Content \"C:\\\\Users\\\\saif.ali\\\\.claude\\\\projects\\\\D--Conciara-frontend-components-DynamicComponents\\\\e63b769c-3875-4cf4-8627-ba77bd0a91d7\\\\tool-results\\\\design-bundle\\\\testing\\\\project\\\\screens.css\" | Measure-Object -Line\\).Lines)",
+      "PowerShell(& npx.cmd tsc --noEmit --project \"D:\\\\Conciara\\\\frontend\\\\tsconfig.json\" 2>&1 | Select-Object -First 30)",
+      "PowerShell(Start-Process powershell -ArgumentList '-NoExit', '-Command', 'Set-Location \"D:\\\\Conciara\\\\frontend\"; npm run dev' -WindowStyle Normal)",
+      "PowerShell(Start-Process powershell -ArgumentList '-NoExit', '-Command', 'Set-Location \"D:\\\\Conciara\\\\backend\"; npm run dev' -WindowStyle Normal)",
+      "PowerShell(Select-String -Path \"D:\\\\Conciara\\\\design-prototype\\\\agent-shell.jsx\" -Pattern \"function ActionsScreen|function ChatWidgetScreen|function AgentGeneralScreen\" | ForEach-Object { \"Line $\\($_.LineNumber\\): $\\($_.Line\\)\" })",
+      "PowerShell(Get-ChildItem -Recurse -Path \"D:\\\\Conciara\\\\frontend\\\\app\\\\dashboard\" -Filter \"page.tsx\" | Where-Object { $_.FullName -match \"actions|widget|general\" } | ForEach-Object { $_.FullName })",
+      "PowerShell(Get-ChildItem -Recurse -Path \"D:\\\\Conciara\\\\frontend\\\\app\\\\dashboard\" -Filter \"page.tsx\" | Where-Object { $_.FullName -match \"widget|chat-widget\" } | ForEach-Object { $_.FullName })",
+      "PowerShell(Get-ChildItem -Recurse -Path \"D:\\\\Conciara\\\\frontend\\\\app\\\\dashboard\" -Filter \"page.tsx\" | Where-Object { $_.FullName -match \"chat-widget|widget\" } | ForEach-Object { $_.FullName })",
+      "PowerShell(Get-ChildItem -Recurse -Path \"D:\\\\Conciara\\\\frontend\\\\app\\\\dashboard\" -Include \"page.tsx\",\"layout.tsx\" | ForEach-Object { $_.FullName } | Where-Object { $_ -notmatch \"node_modules\" } | Sort-Object)"
+    ]
+  }
+}

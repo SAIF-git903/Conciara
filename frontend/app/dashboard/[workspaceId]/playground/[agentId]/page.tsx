@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useCallback, useState, useEffect } from 'react'
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 import Link from 'next/link'
 import { Check, ExternalLink, Loader2, MessageCircle, Trash2, X } from 'lucide-react'
 import { useDashboard } from '@/contexts/DashboardContext'
@@ -88,6 +89,13 @@ const INPUT: React.CSSProperties = {
   border: '1px solid var(--line-2)', borderRadius: 6,
   background: 'var(--surface)', fontSize: 13, color: 'var(--ink)',
   outline: 'none', cursor: 'pointer',
+}
+const SELECT_TRIGGER: React.CSSProperties = {
+  ...INPUT,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  boxShadow: 'none',
 }
 const BTN_SM_PRIMARY: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -327,20 +335,25 @@ export default function PlaygroundAgentPage() {
               {agentDetailsLoading ? (
                 <div style={{ ...INPUT, display: 'flex', alignItems: 'center', color: 'var(--ink-4)' }}>Loading…</div>
               ) : (
-                <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)} style={INPUT}>
-                  {models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-                </select>
+                <Select value={selectedModel} onValueChange={setSelectedModel}>
+                  <SelectTrigger compact className="ring-0 shadow-none" style={SELECT_TRIGGER}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {models.map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               )}
             </div>
 
             {/* Temperature */}
             <div style={{ marginBottom: 14 }}>
-              <span style={FIELD_LABEL}>
-                Temperature{' '}
+              <div style={{ ...FIELD_LABEL, display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                <span>Temperature</span>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)', fontWeight: 400 }}>
                   {temperature.toFixed(1)}
                 </span>
-              </span>
+              </div>
               <input
                 type="range" min="0" max="1" step="0.1"
                 value={temperature}

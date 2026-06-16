@@ -24,6 +24,7 @@ import type {
   ActionKeyValuePair,
   AuthType,
 } from '@/components/actions/types'
+import { Select as UISelect, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 
 /* ------------------------------------------------------------------ */
 /* Constants                                                           */
@@ -144,16 +145,16 @@ function ABSelect({
   style?: React.CSSProperties
 }) {
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="select"
-      style={{ fontSize: 12.5, ...style }}
-    >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>{o.label}</option>
-      ))}
-    </select>
+    <UISelect value={value} onValueChange={onChange}>
+      <SelectTrigger compact style={{ fontSize: 12.5, ...style }}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent compact>
+        {options.map((o) => (
+          <SelectItem key={o.value} value={o.value} compact>{o.label}</SelectItem>
+        ))}
+      </SelectContent>
+    </UISelect>
   )
 }
 
@@ -209,6 +210,7 @@ function SetupTab({
   setTags: (v: string[]) => void
 }) {
   const [tagInput, setTagInput] = useState('')
+  const [rateUnit, setRateUnit] = useState('minute')
 
   const addTag = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) {
@@ -271,11 +273,16 @@ function SetupTab({
             <span className="field-label">Rate limit</span>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <input className="input" style={{ width: 80 }} type="number" defaultValue={30} />
-              <select className="select" style={{ width: 140 }}>
-                <option>calls / minute</option>
-                <option>calls / hour</option>
-                <option>calls / day</option>
-              </select>
+              <UISelect value={rateUnit} onValueChange={setRateUnit}>
+                <SelectTrigger compact style={{ width: 140 }}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="minute">calls / minute</SelectItem>
+                  <SelectItem value="hour">calls / hour</SelectItem>
+                  <SelectItem value="day">calls / day</SelectItem>
+                </SelectContent>
+              </UISelect>
               <span className="muted" style={{ fontSize: 12, marginLeft: 8 }}>per conversation</span>
             </div>
           </label>
@@ -1149,24 +1156,24 @@ export default function NewActionBuilder({
             background: 'var(--bg)', overflow: 'hidden',
             transition: 'border-color 0.15s',
           }}>
-            <select
-              value={method}
-              onChange={(e) => patchConfig({ method: e.target.value as CustomActionConfig['method'] })}
-              style={{
-                border: 'none',
-                background: (METHOD_COLORS[method] ?? METHOD_COLORS.POST).bg,
-                padding: '0 14px',
-                fontFamily: 'var(--font-mono)', fontSize: 12.5, fontWeight: 700,
-                letterSpacing: '0.04em',
-                color: (METHOD_COLORS[method] ?? METHOD_COLORS.POST).color,
-                borderRight: '1px solid var(--line)',
-                cursor: 'pointer', minWidth: 90,
-              }}
-            >
-              {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
+            <UISelect value={method} onValueChange={(v) => patchConfig({ method: v as CustomActionConfig['method'] })}>
+              <SelectTrigger
+                segment
+                style={{
+                  background: (METHOD_COLORS[method] ?? METHOD_COLORS.POST).bg,
+                  color: (METHOD_COLORS[method] ?? METHOD_COLORS.POST).color,
+                  fontFamily: 'var(--font-mono)', fontWeight: 700, letterSpacing: '0.04em', fontSize: 12.5,
+                  minWidth: 90,
+                }}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) => (
+                  <SelectItem key={m} value={m}>{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </UISelect>
             <input
               value={config.apiUrl ?? ''}
               onChange={(e) => patchConfig({ apiUrl: e.target.value })}
