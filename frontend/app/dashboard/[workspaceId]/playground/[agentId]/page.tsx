@@ -1,18 +1,14 @@
 'use client'
 
-import { useRef, useCallback, useState, useEffect } from 'react'
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
-import Link from 'next/link'
-import { Check, ExternalLink, Loader2, MessageCircle, Trash2, X } from 'lucide-react'
-import { useDashboard } from '@/contexts/DashboardContext'
-import { getApiBaseUrl } from '@/lib/api'
-import SkinRenderer from '@/components/SkinRenderer'
-import type { MergedSkinConfig } from '@/types/skinConfig'
-import type { SkinConfig } from '@/types/skinConfig'
-import api from '@/lib/api'
-import { DEFAULT_WINDOW, DEFAULT_THEME, CHAT_WIDGET_PREVIEW_MIN_WIDTH, CHAT_WIDGET_PREVIEW_MAX_WIDTH } from '@/lib/chat-widget-layout'
 import ChatWidgetPreviewSkeleton from '@/components/ChatWidgetPreviewSkeleton'
-import { buildDashboardUrl } from '@/lib/dashboard-url'
+import SkinRenderer from '@/components/SkinRenderer'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useDashboard } from '@/contexts/DashboardContext'
+import api, { getApiBaseUrl } from '@/lib/api'
+import { CHAT_WIDGET_PREVIEW_MAX_WIDTH, DEFAULT_THEME, DEFAULT_WINDOW } from '@/lib/chat-widget-layout'
+import type { MergedSkinConfig, SkinConfig } from '@/types/skinConfig'
+import { Check, Loader2, MessageCircle, Trash2, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 function formatRelative(date: Date): string {
   const s = Math.floor((Date.now() - date.getTime()) / 1000)
@@ -57,7 +53,7 @@ interface LLMModel { id: string; label: string }
 
 interface AgentDetails {
   id: number; name: string; workspaceId: number
-  model: string | null; prePrompt: string | null; logoUrl: string | null
+  model: string | null; prePrompt: string | null; logoUrl: string | null; temperature: number
 }
 
 interface PlaygroundAvailableActions {
@@ -102,13 +98,6 @@ const BTN_SM_PRIMARY: React.CSSProperties = {
   height: 28, padding: '0 10px', fontSize: 12.5, fontWeight: 500,
   background: 'var(--ink)', color: 'white',
   border: 'none', borderRadius: 6, cursor: 'pointer',
-}
-const BTN_SM_SECONDARY: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 6,
-  height: 28, padding: '0 10px', fontSize: 12.5, fontWeight: 500,
-  background: 'var(--surface)', color: 'var(--ink)',
-  border: '1px solid var(--line-2)', borderRadius: 6,
-  boxShadow: '0 1px 0 rgba(0,0,0,0.02)', textDecoration: 'none', cursor: 'pointer',
 }
 const BTN_SM_GHOST: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -156,6 +145,7 @@ export default function PlaygroundAgentPage() {
         if (cancelled) return
         setAgentDetails(data.agent)
         setSelectedModel(data.agent.model?.trim() || DEFAULT_LLM_MODEL)
+        setTemperature(data.agent.temperature ?? 0.7)
         setPrePrompt(data.agent.prePrompt ?? '')
       })
       .catch(() => { if (!cancelled) { setAgentDetails(null); setSelectedModel(DEFAULT_LLM_MODEL); setPrePrompt('') } })
@@ -200,7 +190,7 @@ export default function PlaygroundAgentPage() {
     try {
       const { data } = await api.patch<{ agent: AgentDetails }>(
         `/workspaces/${currentWorkspace.id}/agents/${currentAgent.id}`,
-        { model: selectedModel, prePrompt: prePrompt.trim() }
+        { model: selectedModel, prePrompt: prePrompt.trim(), temperature }
       )
       setAgentDetails(data.agent)
       setLastSaved(new Date())
@@ -211,7 +201,7 @@ export default function PlaygroundAgentPage() {
     } finally {
       setSaveLoading(false)
     }
-  }, [currentWorkspace?.id, currentAgent?.id, selectedModel, prePrompt])
+  }, [currentWorkspace?.id, currentAgent?.id, selectedModel, prePrompt, temperature])
 
   const handleMessagesChange = useCallback((messages: { id: string; type: 'user' | 'bot'; content: string; timestamp: Date }[]) => {
     messagesRef.current = messages
@@ -285,12 +275,6 @@ export default function PlaygroundAgentPage() {
   }
 
   const effectiveConfig = config ?? buildPlaygroundConfig(currentAgent.name, (currentAgent as { logoUrl?: string | null }).logoUrl)
-  const filesUrl = currentWorkspace?.id && currentAgent?.id
-    ? buildDashboardUrl(currentWorkspace.id, { agentId: currentAgent.id, subPath: 'data-sources/files' })
-    : '#'
-  const widgetUrl = currentWorkspace?.id && currentAgent?.id
-    ? buildDashboardUrl(currentWorkspace.id, { agentId: currentAgent.id, subPath: 'settings/chatbot' })
-    : '#'
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -306,19 +290,6 @@ export default function PlaygroundAgentPage() {
           <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: 0, lineHeight: 1.5 }}>
             Test changes before deploying. Updates apply to the live agent on save.
           </p>
-        </div>
-
-        {/* Training data card */}
-        <div style={{ ...CARD, marginBottom: 14 }}>
-          <div style={{ padding: 14 }}>
-            <div style={EYEBROW}>Training data</div>
-            <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 12px', lineHeight: 1.5 }}>
-              Upload files, Q&amp;A pairs, and websites the agent can reference.
-            </p>
-            <Link href={filesUrl} style={{ ...BTN_SM_SECONDARY, justifyContent: 'center', width: '100%' }}>
-              Manage data sources
-            </Link>
-          </div>
         </div>
 
         {/* AI model & system prompt card */}
@@ -425,9 +396,6 @@ export default function PlaygroundAgentPage() {
             <button type="button" onClick={() => { setClearKey((k) => k + 1); setChatOpen(true) }} style={BTN_SM_GHOST}>
               Clear <Trash2 style={{ width: 11, height: 11 }} />
             </button>
-            <Link href={widgetUrl} style={BTN_SM_SECONDARY}>
-              Open in widget <ExternalLink style={{ width: 11, height: 11 }} />
-            </Link>
           </div>
         </div>
 

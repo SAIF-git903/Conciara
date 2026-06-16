@@ -177,12 +177,13 @@ router.patch('/:workspaceId/agents/:agentId', async (req, res) => {
     const canManage = await canManageAgentsInWorkspace(userId, workspaceId);
     if (!canManage) return res.status(403).json({ error: 'Access denied to this workspace' });
 
-    const { name, model, prePrompt, logoUrl } = req.body;
-    const updates: { model?: string; prePrompt?: string; name?: string; logoUrl?: string } = {};
+    const { name, model, prePrompt, logoUrl, temperature } = req.body;
+    const updates: { model?: string; prePrompt?: string; name?: string; logoUrl?: string; temperature?: number } = {};
     if (typeof name === 'string') updates.name = name;
     if (typeof model === 'string') updates.model = model;
     if (typeof prePrompt === 'string') updates.prePrompt = prePrompt;
     if (typeof logoUrl === 'string') updates.logoUrl = logoUrl;
+    if (typeof temperature === 'number' && !isNaN(temperature)) updates.temperature = temperature;
 
     const agent = await updateAgent(agentId, workspaceId, updates);
     if (!agent) return res.status(404).json({ error: 'Agent not found' });

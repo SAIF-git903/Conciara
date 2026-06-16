@@ -1,80 +1,70 @@
 'use client'
 
-import { useState } from 'react'
+import { useDashboard } from '@/contexts/DashboardContext'
+import api from '@/lib/api'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 import {
   AlertTriangle,
   ArrowRight,
-  ArrowUpRight,
   BookOpen,
   Bot,
   Check,
   Copy,
   Play,
-  ScrollText,
   Search,
   Sparkles,
   X,
 } from 'lucide-react'
 
-/* ─── Static data ───────────────────────────────────────────── */
+/* ─── Types ─────────────────────────────────────────────────── */
 
-const SESSIONS = [
-  { id: '1', title: 'Hi there tell me about something that I…', time: '5d ago', count: 24 },
-  { id: '2', title: 'What type of wine do you sell?', time: '5d ago', count: 10 },
-  { id: '3', title: 'Who is the CEO for business', time: '5d ago', count: 6 },
-  { id: '4', title: 'Tell me about your business?', time: '5d ago', count: 8 },
-  { id: '5', title: 'What do you know about Domaine Carn…', time: '5d ago', count: 8 },
-]
-
-type Source = {
-  kind: 'file' | 'fallback'
-  title: string
-  page?: number
-  confidence: number
-}
-
-type Message = {
+interface ChatSession {
   id: string
-  from: 'user' | 'bot'
-  text: string
-  time: string
-  revisable?: boolean
-  source?: Source
+  sessionId: string
+  preview: string
+  startedAt: string
+  messageCount: number
 }
 
-const MESSAGES: Message[] = [
-  {
-    id: '1',
-    from: 'user',
-    text: 'Hi there\ntell me about something that I might not know already',
-    time: '07:53 PM',
-  },
-  {
-    id: '2',
-    from: 'bot',
-    text: "Did you know our commitment to sustainability has been a core value since 1987? We've received certifications including Napa Green Winery and integrate practices like natural pest management and solar power. If you have any specific questions, feel free to ask!",
-    time: '07:53 PM',
-    revisable: true,
-    source: { kind: 'file', title: 'About Domaine Carneros.pdf', page: 3, confidence: 0.78 },
-  },
-  {
-    id: '3',
-    from: 'user',
-    text: "no i didn't know that, thanks for telling me",
-    time: '07:54 PM',
-  },
-  {
-    id: '4',
-    from: 'bot',
-    text: 'I appreciate your feedback! If you have more questions or need assistance, feel free to ask.',
-    time: '07:54 PM',
-    revisable: true,
-    source: { kind: 'fallback', title: 'No source matched — used base prompt', confidence: 0.32 },
-  },
-]
+interface ChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  at: string
+}
 
-/* ─── Label style shared ────────────────────────────────────── */
+/* ─── Helpers ───────────────────────────────────────────────── */
+
+function formatRelative(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const min = Math.floor(diff / 60000)
+  if (min < 1) return 'just now'
+  if (min < 60) return `${min}m ago`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr}h ago`
+  const day = Math.floor(hr / 24)
+  if (day < 7) return `${day}d ago`
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+}
+
+function dateRangeDates(range: string): { from: Date; to: Date } {
+  const to = new Date()
+  const from = new Date()
+  if (range === '7d') from.setDate(from.getDate() - 6)
+  else if (range === '30d') from.setDate(from.getDate() - 29)
+  else if (range === '90d') from.setDate(from.getDate() - 89)
+  else from.setDate(from.getDate() - 6)
+  from.setHours(0, 0, 0, 0)
+  to.setHours(23, 59, 59, 999)
+  return { from, to }
+}
+
+/* ─── Shared styles ─────────────────────────────────────────── */
 const SectionLabel: React.CSSProperties = {
   fontSize: 10.5,
   textTransform: 'uppercase',
@@ -85,25 +75,35 @@ const SectionLabel: React.CSSProperties = {
   marginBottom: 8,
 }
 
-/* ─── Revise side panel ─────────────────────────────────────── */
+/* ─── Revise panel ──────────────────────────────────────────── */
 function RevisePanel({
   question,
   answer,
+  workspaceId,
+  agentId,
   onClose,
 }: {
-  question: Message | null
-  answer: Message
+  question: ChatMessage | null
+  answer: ChatMessage
+  workspaceId: number
+  agentId: string
   onClose: () => void
 }) {
-  const [draft, setDraft] = useState(answer.text)
-  const [mode, setMode] = useState<'qa' | 'source' | 'flag'>('qa')
-  const [tested, setTested] = useState(false)
+  const [draft, setDraft] = useState(answer.content)
+  const [mode, setMode] = useState<'qa' | 'flag'>('qa')
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
   const [testing, setTesting] = useState(false)
+  const [tested, setTested] = useState(false)
 
-  const dirty = draft.trim() !== answer.text.trim()
-  const src = answer.source
-  const conf = src ? Math.round(src.confidence * 100) : 0
-  const lowConf = src ? src.confidence < 0.5 : false
+  const dirty = draft.trim() !== answer.content.trim()
+
+  const runTest = () => {
+    setTesting(true)
+    setTested(false)
+    setTimeout(() => { setTesting(false); setTested(true) }, 1200)
+  }
 
   const applyTone = (t: string) => {
     if (t === 'shorter') {
@@ -115,16 +115,30 @@ function RevisePanel({
     }
   }
 
-  const runTest = () => {
-    setTesting(true)
-    setTested(false)
-    setTimeout(() => { setTesting(false); setTested(true) }, 1200)
+  const handleSave = async () => {
+    if (!dirty || saving) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      if (mode === 'qa') {
+        await api.post(`/workspaces/${workspaceId}/agents/${agentId}/qa`, {
+          question: question?.content ?? '',
+          answer: draft.trim(),
+        })
+      }
+      // 'flag' mode: no backend endpoint yet — treat as acknowledged
+      setSaved(true)
+      setTimeout(() => onClose(), 1200)
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'response' in e
+        ? (e as { response?: { data?: { error?: string } } }).response?.data?.error : null
+      setSaveError(msg || 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const saveLabel =
-    mode === 'qa' ? 'Save to Q&A' :
-    mode === 'source' ? 'Update source' :
-    'Flag for review'
+  const saveLabel = saved ? 'Saved!' : saving ? 'Saving…' : mode === 'qa' ? 'Save to Q&A' : 'Flag for review'
 
   const saveOptions = [
     {
@@ -132,27 +146,17 @@ function RevisePanel({
       icon: <BookOpen style={{ width: 12, height: 12 }} />,
       title: 'New Q&A pair',
       desc: 'Agent learns this answer for similar questions. Available immediately.',
-      disabled: false,
-    },
-    {
-      id: 'source' as const,
-      icon: <ScrollText style={{ width: 12, height: 12 }} />,
-      title: 'Patch source document',
-      desc: 'Edit the underlying file. Affects every answer drawn from it. Triggers re-index.',
-      disabled: src?.kind !== 'file',
     },
     {
       id: 'flag' as const,
       icon: <AlertTriangle style={{ width: 12, height: 12 }} />,
       title: 'Flag for review',
       desc: 'Log feedback without training. Shows up in Unanswered queue.',
-      disabled: false,
     },
   ]
 
   return (
     <>
-      {/* Scrim */}
       <div
         onClick={onClose}
         style={{
@@ -163,8 +167,6 @@ function RevisePanel({
           animation: 'revFade .15s ease',
         }}
       />
-
-      {/* Panel */}
       <aside
         role="dialog"
         aria-label="Revise answer"
@@ -178,7 +180,6 @@ function RevisePanel({
           animation: 'revSlide .22s cubic-bezier(.22,.61,.36,1)',
         }}
       >
-        {/* Header */}
         <header style={{
           display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
           padding: '18px 20px 16px',
@@ -213,10 +214,8 @@ function RevisePanel({
           </button>
         </header>
 
-        {/* Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '18px 20px 20px', display: 'flex', flexDirection: 'column', gap: 22 }}>
 
-          {/* User asked */}
           <section>
             <div style={SectionLabel}>User asked</div>
             <div style={{
@@ -225,15 +224,14 @@ function RevisePanel({
               background: 'var(--bg-2)', color: 'var(--ink-2)',
               whiteSpace: 'pre-wrap',
             }}>
-              {question?.text ?? '—'}
+              {question?.content ?? '—'}
             </div>
           </section>
 
-          {/* Agent replied */}
           <section>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <div style={{ ...SectionLabel, marginBottom: 0 }}>Agent replied</div>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>{answer.time}</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>{formatTime(answer.at)}</span>
             </div>
             <div style={{
               fontSize: 13, lineHeight: 1.55, padding: '10px 13px',
@@ -241,58 +239,10 @@ function RevisePanel({
               background: 'var(--surface)', color: 'var(--ink)',
               whiteSpace: 'pre-wrap',
             }}>
-              {answer.text}
+              {answer.content}
             </div>
-
-            {/* Source attribution */}
-            {src && (
-              <div style={{
-                display: 'flex', alignItems: 'flex-start', gap: 10,
-                marginTop: 8, padding: '9px 11px', borderRadius: 8,
-                background: lowConf ? 'var(--warn-soft)' : 'var(--surface-2)',
-                border: `1px solid ${lowConf ? 'rgba(184,106,23,0.2)' : 'var(--line)'}`,
-              }}>
-                <div style={{
-                  width: 22, height: 22, borderRadius: 6, flexShrink: 0,
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  background: 'var(--surface)', border: '1px solid var(--line-2)',
-                  color: lowConf ? 'var(--warn)' : 'var(--ink-2)',
-                }}>
-                  {src.kind === 'file'
-                    ? <ScrollText style={{ width: 12, height: 12 }} />
-                    : <AlertTriangle style={{ width: 12, height: 12 }} />}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.4 }}>
-                    {src.kind === 'file' ? 'Drawn from ' : 'Source '}
-                    <strong style={{ color: 'var(--ink)', fontWeight: 500 }}>{src.title}</strong>
-                    {src.page && <span style={{ color: 'var(--ink-4)' }}> · page {src.page}</span>}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5, fontSize: 11, color: 'var(--ink-3)' }}>
-                    <div style={{ width: 60, height: 4, borderRadius: 4, background: 'var(--line)', overflow: 'hidden', flexShrink: 0 }}>
-                      <div style={{ height: '100%', width: `${conf}%`, borderRadius: 4, background: lowConf ? 'var(--warn)' : 'var(--success)' }} />
-                    </div>
-                    <span style={{ fontFamily: 'var(--font-mono)' }}>{conf}% match</span>
-                    {src.kind === 'file' && (
-                      <button style={{
-                        marginLeft: 'auto', fontSize: 11, color: 'var(--ink-2)',
-                        display: 'inline-flex', alignItems: 'center', gap: 3,
-                        padding: '2px 6px', borderRadius: 4,
-                        border: '1px solid var(--line-2)', background: 'var(--surface)',
-                        cursor: 'pointer',
-                      }}
-                      className="hover:bg-[var(--bg-2)]"
-                      >
-                        Open source <ArrowUpRight style={{ width: 10, height: 10 }} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
           </section>
 
-          {/* Better answer */}
           <section>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <div style={{ ...SectionLabel, marginBottom: 0 }}>Better answer</div>
@@ -309,13 +259,11 @@ function RevisePanel({
                 background: 'var(--surface)', fontFamily: 'var(--font-sans)',
                 fontSize: 13, lineHeight: 1.55,
                 resize: 'vertical', minHeight: 120, boxSizing: 'border-box',
-                transition: 'border-color .12s ease, box-shadow .12s ease',
                 outline: 'none', display: 'block',
               }}
               onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.boxShadow = '0 0 0 3px var(--accent-ring)' }}
               onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--line-2)'; e.currentTarget.style.boxShadow = 'none' }}
             />
-            {/* Tone chips */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 9, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 11, color: 'var(--ink-4)', marginRight: 2 }}>Quick edits</span>
               {(['Shorter', 'Warmer', 'Remove filler'] as const).map((label) => (
@@ -328,7 +276,7 @@ function RevisePanel({
                     fontSize: 11.5, color: 'var(--ink-2)',
                     border: '1px solid var(--line-2)', borderRadius: 999,
                     background: 'var(--surface)', display: 'inline-flex', alignItems: 'center',
-                    cursor: 'pointer', transition: 'all .12s',
+                    cursor: 'pointer',
                   }}
                   className="hover:bg-[var(--bg-2)] hover:border-[var(--line-strong)] hover:!text-[var(--ink)]"
                 >
@@ -337,7 +285,7 @@ function RevisePanel({
               ))}
               <button
                 type="button"
-                onClick={() => setDraft(answer.text)}
+                onClick={() => setDraft(answer.content)}
                 disabled={!dirty}
                 style={{
                   height: 24, padding: '0 9px',
@@ -345,7 +293,7 @@ function RevisePanel({
                   border: '1px solid var(--line-2)', borderRadius: 999,
                   background: 'var(--surface)', display: 'inline-flex', alignItems: 'center',
                   cursor: dirty ? 'pointer' : 'not-allowed', opacity: dirty ? 1 : 0.4,
-                  marginLeft: 'auto', transition: 'all .12s',
+                  marginLeft: 'auto',
                 }}
               >
                 Reset
@@ -353,7 +301,6 @@ function RevisePanel({
             </div>
           </section>
 
-          {/* Test the fix */}
           <section>
             <div style={SectionLabel}>Test the fix</div>
             <div style={{ border: '1px solid var(--line)', borderRadius: 10, background: 'var(--surface)', padding: '11px 13px' }}>
@@ -363,10 +310,8 @@ function RevisePanel({
                   color: 'var(--ink-4)', fontFamily: 'var(--font-mono)',
                   padding: '2px 5px', borderRadius: 4, background: 'var(--bg-2)',
                   flexShrink: 0, marginTop: 1,
-                }}>
-                  Re-ask
-                </span>
-                <span style={{ color: 'var(--ink-2)' }}>{question?.text}</span>
+                }}>Re-ask</span>
+                <span style={{ color: 'var(--ink-2)' }}>{question?.content}</span>
               </div>
               <button
                 type="button"
@@ -379,7 +324,7 @@ function RevisePanel({
                   border: '1px solid var(--line-2)', background: 'var(--surface)',
                   fontSize: 12.5, color: testing || !dirty ? 'var(--ink-4)' : 'var(--ink)',
                   cursor: testing || !dirty ? 'not-allowed' : 'pointer',
-                  opacity: !dirty ? 0.6 : 1, transition: 'all .12s',
+                  opacity: !dirty ? 0.6 : 1,
                 }}
                 className={dirty && !testing ? 'hover:bg-[var(--bg-2)]' : ''}
               >
@@ -397,7 +342,6 @@ function RevisePanel({
                   <><Play style={{ width: 11, height: 11 }} /> Run with revised agent</>
                 )}
               </button>
-
               {tested && (
                 <div style={{ marginTop: 11, paddingTop: 11, borderTop: '1px dashed var(--line-2)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
@@ -409,9 +353,6 @@ function RevisePanel({
                       padding: '2px 7px', borderRadius: 4,
                     }}>
                       <Check style={{ width: 10, height: 10 }} /> Match
-                    </span>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>
-                      0.41s · 312 tokens
                     </span>
                   </div>
                   <div style={{
@@ -426,7 +367,6 @@ function RevisePanel({
             </div>
           </section>
 
-          {/* Save as */}
           <section>
             <div style={SectionLabel}>Save as</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -439,35 +379,21 @@ function RevisePanel({
                     border: `1px solid ${mode === opt.id ? 'var(--accent)' : 'var(--line-2)'}`,
                     borderRadius: 10,
                     background: mode === opt.id ? 'var(--accent-soft)' : 'var(--surface)',
-                    cursor: opt.disabled ? 'not-allowed' : 'pointer',
-                    opacity: opt.disabled ? 0.5 : 1,
+                    cursor: 'pointer',
                     boxShadow: mode === opt.id ? '0 0 0 2px var(--accent-ring) inset' : 'none',
-                    transition: 'border-color .12s, background .12s',
                   }}
-                  className={!opt.disabled && mode !== opt.id ? 'hover:border-[var(--line-strong)]' : ''}
+                  className={mode !== opt.id ? 'hover:border-[var(--line-strong)]' : ''}
                 >
                   <input
                     type="radio"
                     name="rev-mode"
                     checked={mode === opt.id}
-                    onChange={() => !opt.disabled && setMode(opt.id)}
-                    disabled={opt.disabled}
+                    onChange={() => setMode(opt.id)}
                     style={{ margin: '2px 0 0', accentColor: 'var(--accent)', flexShrink: 0 }}
                   />
                   <div>
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>
                       {opt.icon} {opt.title}
-                      {opt.disabled && (
-                        <span style={{
-                          fontSize: 9.5, textTransform: 'uppercase', letterSpacing: '0.06em',
-                          color: 'var(--ink-3)', fontFamily: 'var(--font-mono)',
-                          padding: '1px 5px', borderRadius: 3,
-                          background: 'var(--bg-2)', border: '1px solid var(--line-2)',
-                          marginLeft: 4,
-                        }}>
-                          no source
-                        </span>
-                      )}
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 3, lineHeight: 1.45 }}>{opt.desc}</div>
                   </div>
@@ -475,10 +401,8 @@ function RevisePanel({
               ))}
             </div>
           </section>
-
         </div>
 
-        {/* Footer */}
         <footer style={{
           padding: '12px 20px',
           borderTop: '1px solid var(--line)',
@@ -487,24 +411,22 @@ function RevisePanel({
           gap: 12, flexShrink: 0,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{
-              fontSize: 11, fontWeight: 500,
-              background: 'var(--bg-2)', color: 'var(--ink-3)',
-              border: '1px solid var(--line-2)', padding: '2px 7px', borderRadius: 4,
-            }}>
-              session <span style={{ fontFamily: 'var(--font-mono)' }}>#a4f1</span>
-            </span>
-            {dirty && <span style={{ fontSize: 12, color: 'var(--ink-4)' }}>Unsaved changes</span>}
+            {saveError && <span style={{ fontSize: 12, color: 'var(--danger)' }}>{saveError}</span>}
+            {!saveError && dirty && !saved && <span style={{ fontSize: 12, color: 'var(--ink-4)' }}>Unsaved changes</span>}
+            {saved && <span style={{ fontSize: 12, color: 'var(--success)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Check style={{ width: 12, height: 12 }} /> Saved</span>}
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button type="button" onClick={onClose} className="btn btn--ghost btn--sm">Cancel</button>
+            <button type="button" onClick={onClose} disabled={saving} className="btn btn--ghost btn--sm">Cancel</button>
             <button
               type="button"
-              disabled={!dirty}
+              onClick={handleSave}
+              disabled={!dirty || saving || saved}
               className="btn btn--primary btn--sm"
-              style={{ minWidth: 130 }}
+              style={{ minWidth: 130, opacity: (!dirty || saving || saved) ? 0.6 : 1 }}
             >
-              {saveLabel} <ArrowRight style={{ width: 11, height: 11 }} />
+              {saved
+                ? <><Check style={{ width: 11, height: 11 }} /> {saveLabel}</>
+                : <>{saveLabel} <ArrowRight style={{ width: 11, height: 11 }} /></>}
             </button>
           </div>
         </footer>
@@ -515,15 +437,100 @@ function RevisePanel({
 
 /* ─── Page ──────────────────────────────────────────────────── */
 export default function ChatLogsPage() {
-  const [activeIdx, setActiveIdx] = useState(0)
+  const { currentWorkspace, currentAgent } = useDashboard()
+  const [sessions, setSessions] = useState<ChatSession[]>([])
+  const [sessionsLoading, setSessionsLoading] = useState(false)
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [messagesLoading, setMessagesLoading] = useState(false)
+  const [search, setSearch] = useState('')
+  const [dateRange, setDateRange] = useState('7d')
   const [reviseIdx, setReviseIdx] = useState<number | null>(null)
-  const [dateRange, setDateRange] = useState('week1')
+  const [copied, setCopied] = useState(false)
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const questionFor = (i: number): Message | null => {
-    for (let j = i - 1; j >= 0; j--) {
-      if (MESSAGES[j].from === 'user') return MESSAGES[j]
+  const fetchSessions = useCallback(async (searchVal: string, range: string) => {
+    if (!currentWorkspace?.id || !currentAgent?.id) return
+    setSessionsLoading(true)
+    try {
+      const { from, to } = dateRangeDates(range)
+      const params = new URLSearchParams({
+        limit: '50',
+        from: from.toISOString(),
+        to: to.toISOString(),
+      })
+      if (searchVal.trim()) params.set('search', searchVal.trim())
+      const { data } = await api.get<{ sessions: ChatSession[] }>(
+        `/workspaces/${currentWorkspace.id}/agents/${currentAgent.id}/chat-logs?${params}`
+      )
+      setSessions(data.sessions ?? [])
+    } catch {
+      setSessions([])
+    } finally {
+      setSessionsLoading(false)
+    }
+  }, [currentWorkspace?.id, currentAgent?.id])
+
+  // Reset + fetch on agent change
+  useEffect(() => {
+    setSessions([])
+    setActiveSessionId(null)
+    setMessages([])
+    setSearch('')
+    fetchSessions('', dateRange)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentWorkspace?.id, currentAgent?.id])
+
+  // Debounced search + date range changes
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    searchTimerRef.current = setTimeout(() => fetchSessions(search, dateRange), 300)
+    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current) }
+  }, [search, dateRange, fetchSessions])
+
+  // Auto-select first session when list loads
+  useEffect(() => {
+    if (sessions.length > 0 && !activeSessionId) {
+      setActiveSessionId(sessions[0].id)
+    }
+  }, [sessions, activeSessionId])
+
+  // Fetch messages when session changes
+  useEffect(() => {
+    if (!currentWorkspace?.id || !currentAgent?.id || !activeSessionId) {
+      setMessages([])
+      return
+    }
+    let cancelled = false
+    setMessagesLoading(true)
+    setReviseIdx(null)
+    api.get<{ messages: ChatMessage[] }>(
+      `/workspaces/${currentWorkspace.id}/agents/${currentAgent.id}/chat-logs/${activeSessionId}`
+    )
+      .then(({ data }) => { if (!cancelled) setMessages(data.messages ?? []) })
+      .catch(() => { if (!cancelled) setMessages([]) })
+      .finally(() => { if (!cancelled) setMessagesLoading(false) })
+    return () => { cancelled = true }
+  }, [currentWorkspace?.id, currentAgent?.id, activeSessionId])
+
+  const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null
+
+  const questionFor = (idx: number): ChatMessage | null => {
+    for (let j = idx - 1; j >= 0; j--) {
+      if (messages[j].role === 'user') return messages[j]
     }
     return null
+  }
+
+  const handleCopyTranscript = () => {
+    if (!activeSession || messages.length === 0) return
+    const text = messages
+      .map((m) => `[${m.role === 'user' ? 'User' : 'Agent'} ${formatTime(m.at)}]\n${m.content}`)
+      .join('\n\n')
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
   }
 
   return (
@@ -539,14 +546,12 @@ export default function ChatLogsPage() {
       {/* ── Left: session list ───────────────────────────────── */}
       <div style={{ borderRight: '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--bg)', minHeight: 0 }}>
 
-        {/* Page header */}
         <div style={{ padding: '14px 14px 12px', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
           <h1 style={{ fontSize: 17, fontWeight: 600, color: 'var(--ink)', margin: 0, letterSpacing: '-0.01em' }}>
             Chat logs
           </h1>
         </div>
 
-        {/* Toolbar */}
         <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
@@ -556,6 +561,8 @@ export default function ChatLogsPage() {
           }}>
             <Search style={{ width: 13, height: 13, flexShrink: 0 }} />
             <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
               placeholder="Search sessions…"
               style={{ border: 0, background: 'transparent', flex: 1, outline: 'none', fontSize: 12.5 }}
             />
@@ -565,138 +572,176 @@ export default function ChatLogsPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="week1">Apr 28 – May 4</SelectItem>
+              <SelectItem value="7d">Last 7 days</SelectItem>
+              <SelectItem value="30d">Last 30 days</SelectItem>
+              <SelectItem value="90d">Last 90 days</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
-        {/* Session list */}
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, overflowY: 'auto', flex: 1 }}>
-          {SESSIONS.map((s, i) => (
-            <li
-              key={s.id}
-              onClick={() => setActiveIdx(i)}
-              style={{
-                padding: '10px 14px',
-                borderBottom: '1px solid var(--line)',
-                cursor: 'pointer',
-                background: activeIdx === i ? 'var(--surface)' : 'transparent',
-                boxShadow: activeIdx === i ? 'inset 2px 0 0 var(--accent)' : 'none',
-                transition: 'background .12s ease',
-              }}
-              className={activeIdx === i ? '' : 'hover:bg-[var(--bg-2)]'}
-            >
-              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {s.title}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 3, display: 'flex', gap: 6, alignItems: 'center' }}>
-                <span>{s.time}</span>
-                <span style={{ color: 'var(--ink-4)' }}>·</span>
-                <span>{s.count} msg</span>
-              </div>
+          {sessionsLoading ? (
+            [1, 2, 3, 4].map((i) => (
+              <li key={i} style={{ padding: '12px 14px', borderBottom: '1px solid var(--line)' }}>
+                <div style={{ height: 13, width: '80%', borderRadius: 4, background: 'var(--bg-2)', marginBottom: 7 }} />
+                <div style={{ height: 11, width: '40%', borderRadius: 4, background: 'var(--bg-2)' }} />
+              </li>
+            ))
+          ) : sessions.length === 0 ? (
+            <li style={{ padding: '40px 14px', textAlign: 'center' }}>
+              <p style={{ fontSize: 13, color: 'var(--ink-4)', margin: 0 }}>No sessions found</p>
             </li>
-          ))}
+          ) : (
+            sessions.map((s) => (
+              <li
+                key={s.id}
+                onClick={() => setActiveSessionId(s.id)}
+                style={{
+                  padding: '10px 14px',
+                  borderBottom: '1px solid var(--line)',
+                  cursor: 'pointer',
+                  background: activeSessionId === s.id ? 'var(--surface)' : 'transparent',
+                  boxShadow: activeSessionId === s.id ? 'inset 2px 0 0 var(--accent)' : 'none',
+                  transition: 'background .12s ease',
+                }}
+                className={activeSessionId === s.id ? '' : 'hover:bg-[var(--bg-2)]'}
+              >
+                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {s.preview}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 3, display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span>{formatRelative(s.startedAt)}</span>
+                  <span style={{ color: 'var(--ink-4)' }}>·</span>
+                  <span>{s.messageCount} msg</span>
+                </div>
+              </li>
+            ))
+          )}
         </ul>
       </div>
 
       {/* ── Right: thread ────────────────────────────────────── */}
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
 
-        {/* Thread header */}
-        <div style={{
-          padding: '14px 22px',
-          borderBottom: '1px solid var(--line)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: 16, flexShrink: 0, background: 'var(--bg)',
-        }}>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)' }}>
-              {SESSIONS[activeIdx].title}
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>
-              {SESSIONS[activeIdx].time} · {SESSIONS[activeIdx].count} messages · session{' '}
-              <span style={{ fontFamily: 'var(--font-mono)' }}>#a4f1</span>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-            <button type="button" className="btn btn--ghost btn--sm">
-              <Copy style={{ width: 11, height: 11 }} /> Copy transcript
-            </button>
-            <button type="button" className="btn btn--secondary btn--sm">
-              Open in playground <ArrowUpRight style={{ width: 11, height: 11 }} />
-            </button>
-          </div>
-        </div>
-
-        {/* Thread body */}
-        <div style={{ flex: 1, padding: 22, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {MESSAGES.map((m, i) => (
-            <div
-              key={m.id}
-              style={{
-                display: 'flex', gap: 10, maxWidth: '70%',
-                alignSelf: m.from === 'user' ? 'flex-end' : 'flex-start',
-                flexDirection: m.from === 'user' ? 'row-reverse' : 'row',
-              }}
-            >
-              {/* Avatar */}
-              <div style={{
-                width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 11, fontWeight: 600, color: 'white', marginTop: 2,
-                background: m.from === 'user' ? 'var(--ink)' : 'var(--accent)',
-              }}>
-                {m.from === 'user' ? 'U' : <Bot style={{ width: 12, height: 12 }} />}
-              </div>
-
-              {/* Bubble */}
-              <div style={{
-                background: m.from === 'user' ? 'var(--ink)' : 'var(--surface)',
-                border: `1px solid ${m.from === 'user' ? 'var(--ink)' : 'var(--line)'}`,
-                borderRadius: 12, padding: '10px 14px',
-                fontSize: 13, lineHeight: 1.5,
-                color: m.from === 'user' ? 'white' : 'var(--ink)',
-              }}>
-                <div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>
-                <div style={{
-                  display: 'flex', alignItems: 'center',
-                  justifyContent: m.revisable ? 'space-between' : 'flex-start',
-                  marginTop: 6, gap: 8,
-                }}>
-                  <span style={{
-                    fontFamily: 'var(--font-mono)', fontSize: 10.5,
-                    color: m.from === 'user' ? 'rgba(255,255,255,0.5)' : 'var(--ink-4)',
-                  }}>
-                    {m.time}
-                  </span>
-                  {m.revisable && (
-                    <button
-                      type="button"
-                      onClick={() => setReviseIdx(i)}
-                      style={{
-                        fontSize: 10.5, color: 'var(--ink-3)',
-                        display: 'inline-flex', alignItems: 'center', gap: 4,
-                        padding: '2px 6px', borderRadius: 4,
-                        border: '1px solid var(--line-2)', background: 'var(--bg)',
-                        cursor: 'pointer', transition: 'border-color .12s, color .12s',
-                      }}
-                      className="hover:border-[var(--accent)] hover:!text-[var(--accent)]"
-                    >
-                      <Sparkles style={{ width: 10, height: 10 }} /> Revise
-                    </button>
-                  )}
+        {activeSession ? (
+          <>
+            <div style={{
+              padding: '14px 22px',
+              borderBottom: '1px solid var(--line)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              gap: 16, flexShrink: 0, background: 'var(--bg)',
+            }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 400 }}>
+                  {activeSession.preview}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>
+                  {formatRelative(activeSession.startedAt)} · {activeSession.messageCount} messages ·{' '}
+                  <span style={{ fontFamily: 'var(--font-mono)' }}>#{activeSession.id.slice(0, 8)}</span>
                 </div>
               </div>
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={handleCopyTranscript}
+                  className="btn btn--ghost btn--sm"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                >
+                  {copied
+                    ? <><Check style={{ width: 11, height: 11 }} /> Copied</>
+                    : <><Copy style={{ width: 11, height: 11 }} /> Copy transcript</>}
+                </button>
+              </div>
             </div>
-          ))}
-        </div>
+
+            <div style={{ flex: 1, padding: 22, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {messagesLoading ? (
+                [1, 2, 3].map((i) => (
+                  <div key={i} style={{ display: 'flex', gap: 10, maxWidth: '70%', alignSelf: i % 2 === 0 ? 'flex-end' : 'flex-start' }}>
+                    <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--bg-2)', flexShrink: 0 }} />
+                    <div style={{ height: 60, width: 240, borderRadius: 12, background: 'var(--bg-2)' }} />
+                  </div>
+                ))
+              ) : messages.length === 0 ? (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <p style={{ fontSize: 13, color: 'var(--ink-4)' }}>No messages in this session</p>
+                </div>
+              ) : (
+                messages.map((m, i) => (
+                  <div
+                    key={m.id}
+                    style={{
+                      display: 'flex', gap: 10, maxWidth: '70%',
+                      alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+                      flexDirection: m.role === 'user' ? 'row-reverse' : 'row',
+                    }}
+                  >
+                    <div style={{
+                      width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 11, fontWeight: 600, color: 'white', marginTop: 2,
+                      background: m.role === 'user' ? 'var(--ink)' : 'var(--accent)',
+                    }}>
+                      {m.role === 'user' ? 'U' : <Bot style={{ width: 12, height: 12 }} />}
+                    </div>
+
+                    <div style={{
+                      background: m.role === 'user' ? 'var(--ink)' : 'var(--surface)',
+                      border: `1px solid ${m.role === 'user' ? 'var(--ink)' : 'var(--line)'}`,
+                      borderRadius: 12, padding: '10px 14px',
+                      fontSize: 13, lineHeight: 1.5,
+                      color: m.role === 'user' ? 'white' : 'var(--ink)',
+                    }}>
+                      <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
+                      <div style={{
+                        display: 'flex', alignItems: 'center',
+                        justifyContent: m.role === 'assistant' ? 'space-between' : 'flex-start',
+                        marginTop: 6, gap: 8,
+                      }}>
+                        <span style={{
+                          fontFamily: 'var(--font-mono)', fontSize: 10.5,
+                          color: m.role === 'user' ? 'rgba(255,255,255,0.5)' : 'var(--ink-4)',
+                        }}>
+                          {formatTime(m.at)}
+                        </span>
+                        {m.role === 'assistant' && (
+                          <button
+                            type="button"
+                            onClick={() => setReviseIdx(i)}
+                            style={{
+                              fontSize: 10.5, color: 'var(--ink-3)',
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              padding: '2px 6px', borderRadius: 4,
+                              border: '1px solid var(--line-2)', background: 'var(--bg)',
+                              cursor: 'pointer',
+                            }}
+                            className="hover:border-[var(--accent)] hover:!text-[var(--accent)]"
+                          >
+                            <Sparkles style={{ width: 10, height: 10 }} /> Revise
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </>
+        ) : (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <p style={{ fontSize: 13, color: 'var(--ink-4)' }}>
+              {sessionsLoading ? 'Loading…' : sessions.length === 0 ? 'No chat sessions yet' : 'Select a session'}
+            </p>
+          </div>
+        )}
       </div>
 
-      {/* Revise panel */}
-      {reviseIdx !== null && (
+      {reviseIdx !== null && messages[reviseIdx] && (
         <RevisePanel
           question={questionFor(reviseIdx)}
-          answer={MESSAGES[reviseIdx]}
+          answer={messages[reviseIdx]}
+          workspaceId={currentWorkspace.id}
+          agentId={currentAgent?.id ?? ''}
           onClose={() => setReviseIdx(null)}
         />
       )}

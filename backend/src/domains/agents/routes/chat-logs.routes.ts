@@ -69,8 +69,12 @@ router.get('/:workspaceId/agents/:agentId/chat-logs', async (req, res) => {
     const limit = Math.min(100, parseInt(String(req.query.limit || 50), 10) || 50);
     const offset = parseInt(String(req.query.offset || 0), 10) || 0;
     const search = typeof req.query.search === 'string' ? req.query.search : null;
+    const fromParam = typeof req.query.from === 'string' ? req.query.from : null;
+    const toParam = typeof req.query.to === 'string' ? req.query.to : null;
+    const fromDate = fromParam ? new Date(fromParam) : null;
+    const toDate = toParam ? new Date(toParam) : null;
 
-    const sessions = await listSessionsByAgent(agentId, limit, offset, search);
+    const sessions = await listSessionsByAgent(agentId, limit, offset, search, fromDate ?? undefined, toDate ?? undefined);
     return res.json({ sessions });
   } catch (error: any) {
     console.error('Chat logs list error:', error);

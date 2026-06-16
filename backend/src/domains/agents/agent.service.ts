@@ -21,6 +21,7 @@ export interface AgentDetails extends AgentInfo {
   model: string | null;
   prePrompt: string | null;
   logoUrl: string | null;
+  temperature: number;
 }
 
 /**
@@ -113,6 +114,7 @@ export async function getAgent(
     model: agent.model,
     prePrompt: agent.prePrompt,
     logoUrl: agent.logoUrl,
+    temperature: agent.temperature ?? 0.7,
   };
 }
 
@@ -122,13 +124,14 @@ export async function getAgent(
 export async function updateAgent(
   agentId: number,
   workspaceId: number,
-  updates: { model?: string; prePrompt?: string; name?: string; logoUrl?: string }
+  updates: { model?: string; prePrompt?: string; name?: string; logoUrl?: string; temperature?: number }
 ): Promise<AgentDetails | null> {
-  const data: { model?: string | null; prePrompt?: string | null; name?: string; logoUrl?: string | null } = {};
+  const data: { model?: string | null; prePrompt?: string | null; name?: string; logoUrl?: string | null; temperature?: number } = {};
   if (updates.model !== undefined) data.model = updates.model?.trim() || null;
   if (updates.prePrompt !== undefined) data.prePrompt = updates.prePrompt?.trim() || null;
   if (updates.name !== undefined) data.name = updates.name.trim() || undefined;
   if (updates.logoUrl !== undefined) data.logoUrl = updates.logoUrl?.trim() || null;
+  if (updates.temperature !== undefined) data.temperature = Math.min(1, Math.max(0, updates.temperature));
 
   const result = await prisma.agent.updateMany({
     where: { id: agentId, workspaceId },

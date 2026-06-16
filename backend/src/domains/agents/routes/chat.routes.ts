@@ -22,7 +22,7 @@ const router = express.Router();
 
 /** Run SSE stream for agent chat. Used by auth and public-embed routes. */
 export async function runAgentChatStream(
-  agent: { id: number; workspaceId: number; prePrompt: string | null; model: string | null; role?: string | null },
+  agent: { id: number; workspaceId: number; prePrompt: string | null; model: string | null; role?: string | null; temperature?: number | null },
   body: { message?: string; history?: unknown; sessionId?: string },
   res: express.Response
 ): Promise<void> {
@@ -78,6 +78,7 @@ export async function runAgentChatStream(
   });
 
   const modelId = agent.model || 'gpt-4o-mini';
+  const temperature = agent.temperature ?? 0.7;
 
   if (!isConversational && qaMatches.length > 0) {
     await recordQaUsage(qaMatches.map((q) => q.id)).catch((err) => console.error('Record Q&A usage:', err));
@@ -93,7 +94,7 @@ export async function runAgentChatStream(
   try {
     for await (const chunk of chatCompletionStream(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
       maxTokens: 1024,
-      temperature: 0.7,
+      temperature,
     })) {
       fullReply += chunk;
       res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
@@ -132,7 +133,7 @@ export async function handlePublicAgentChatStream(
 
 /** Single AI reply for an agent (used by Slack and other integrations). */
 export async function getAgentReply(
-  agent: { id: number; workspaceId: number; prePrompt: string | null; model: string | null; role?: string | null },
+  agent: { id: number; workspaceId: number; prePrompt: string | null; model: string | null; role?: string | null; temperature?: number | null },
   userMessage: string,
   bodySessionId?: string | null
 ): Promise<string> {
@@ -176,10 +177,11 @@ export async function getAgentReply(
   });
 
   const modelId = agent.model || 'gpt-4o-mini';
+  const agentTemperature = agent.temperature ?? 0.7;
 
   const reply = await chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
     maxTokens: 1024,
-    temperature: 0.7,
+    temperature: agentTemperature,
   });
 
   if (!isConversational && qaMatches.length > 0) {
@@ -264,7 +266,7 @@ router.post('/:workspaceId/agents/:agentId/chat', async (req, res) => {
 
     const reply = await chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
       maxTokens: 1024,
-      temperature: 0.7,
+      temperature: (agent as { temperature?: number | null }).temperature ?? 0.7,
     });
 
     if (!isConversational && qaMatches.length > 0) {
