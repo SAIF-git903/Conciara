@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
-import { Palette, Layout, ChevronDown, ChevronRight, Copy, Check, Loader2 } from 'lucide-react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { Palette, Layout, ChevronDown, ChevronRight, Copy, Check, Loader2, MessageCircle } from 'lucide-react'
 import ChatWidgetPreviewSkeleton from '@/components/ChatWidgetPreviewSkeleton'
-import type { SkinConfig, ThemeColors, ComponentsConfig, StatesConfig } from '@/types/skinConfig'
+import type { SkinConfig, ThemeColors, ComponentsConfig, StatesConfig, MergedSkinConfig } from '@/types/skinConfig'
 import SkinRenderer from '@/components/SkinRenderer'
 import Select from '@/components/Select'
 import { Select as UISelect, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
@@ -13,17 +13,178 @@ import { getApiBaseUrl } from '@/lib/api'
 import { DEFAULT_WINDOW, DEFAULT_THEME, CHAT_WIDGET_LEFT_WIDTH, CHAT_WIDGET_PREVIEW_MIN_WIDTH, CHAT_WIDGET_PREVIEW_MAX_WIDTH } from '@/lib/chat-widget-layout'
 
 type TabType = 'theme' | 'components' | 'embed'
+type EmbedFramework = 'html' | 'react' | 'nextjs' | 'vue' | 'nuxt' | 'angular' | 'svelte' | 'wordpress'
 
-function buildEmbedSnippet(apiUrl: string, workspaceId: number, agentId: number | string): string {
+const EMBED_FRAMEWORKS: { value: EmbedFramework; label: string; lang: string }[] = [
+  { value: 'html',      label: 'HTML',      lang: 'HTML' },
+  { value: 'react',     label: 'React',     lang: 'JSX' },
+  { value: 'nextjs',    label: 'Next.js',   lang: 'JSX' },
+  { value: 'vue',       label: 'Vue',       lang: 'Vue' },
+  { value: 'nuxt',      label: 'Nuxt',      lang: 'TypeScript' },
+  { value: 'angular',   label: 'Angular',   lang: 'TypeScript' },
+  { value: 'svelte',    label: 'Svelte',    lang: 'Svelte' },
+  { value: 'wordpress', label: 'WordPress', lang: 'PHP' },
+]
+
+const mono = { fontFamily: 'var(--font-mono)', fontSize: 11, padding: '1px 5px', borderRadius: 4, background: 'var(--bg-2)', color: 'var(--ink-2)' } as const
+
+const EMBED_FRAMEWORK_NOTE: Record<EmbedFramework, React.ReactNode> = {
+  html:      <>Insert before <code style={mono}>&lt;/body&gt;</code>. The widget will use the look you saved here.</>,
+  react:     <>Add the component to your root layout. The widget will use the look you saved here.</>,
+  nextjs:    <>Add the component to <code style={mono}>app/layout.tsx</code>. The widget will use the look you saved here.</>,
+  vue:       <>Add the component to your <code style={mono}>App.vue</code> or root layout. The widget will use the look you saved here.</>,
+  nuxt:      <>Save as <code style={mono}>plugins/conciara.client.ts</code> — Nuxt will load it only on the client. The widget will use the look you saved here.</>,
+  angular:   <>Register the component in your <code style={mono}>AppModule</code> and add it to your root template. The widget will use the look you saved here.</>,
+  svelte:    <>Add to your root <code style={mono}>+layout.svelte</code>. The widget will use the look you saved here.</>,
+  wordpress: <>Paste into your theme&apos;s <code style={mono}>functions.php</code>. The widget will appear on every page. The widget will use the look you saved here.</>,
+}
+
+function buildEmbedSnippet(
+  apiUrl: string,
+  workspaceId: number,
+  agentId: number | string,
+  position: string = 'bottom-right',
+  framework: EmbedFramework = 'html',
+): string {
   const baseUrl = apiUrl.replace(/\/+$/, '')
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://your-app.com'
+
+  if (framework === 'react') {
+    return `import { useEffect } from 'react'
+
+export function ConciaraWidget() {
+  useEffect(() => {
+    const s = document.createElement('script')
+    s.src = '${origin}/embed.js'
+    s.setAttribute('data-api-url', '${baseUrl}')
+    s.setAttribute('data-workspace-id', '${workspaceId}')
+    s.setAttribute('data-agent-id', '${agentId}')
+    s.setAttribute('data-position', '${position}')
+    s.async = true
+    document.body.appendChild(s)
+    return () => { document.body.removeChild(s) }
+  }, [])
+  return null
+}`
+  }
+
+  if (framework === 'nextjs') {
+    return `import Script from 'next/script'
+
+export function ConciaraWidget() {
+  return (
+    <Script
+      src="${origin}/embed.js"
+      data-api-url="${baseUrl}"
+      data-workspace-id="${workspaceId}"
+      data-agent-id="${agentId}"
+      data-position="${position}"
+      strategy="afterInteractive"
+    />
+  )
+}`
+  }
+
+  if (framework === 'vue') {
+    return `<script setup>
+import { onMounted, onUnmounted } from 'vue'
+
+let script
+onMounted(() => {
+  script = document.createElement('script')
+  script.src = '${origin}/embed.js'
+  script.setAttribute('data-api-url', '${baseUrl}')
+  script.setAttribute('data-workspace-id', '${workspaceId}')
+  script.setAttribute('data-agent-id', '${agentId}')
+  script.setAttribute('data-position', '${position}')
+  script.async = true
+  document.body.appendChild(script)
+})
+onUnmounted(() => { if (script) document.body.removeChild(script) })
+</script>`
+  }
+
+  if (framework === 'nuxt') {
+    return `// plugins/conciara.client.ts
+export default defineNuxtPlugin(() => {
+  const s = document.createElement('script')
+  s.src = '${origin}/embed.js'
+  s.setAttribute('data-api-url', '${baseUrl}')
+  s.setAttribute('data-workspace-id', '${workspaceId}')
+  s.setAttribute('data-agent-id', '${agentId}')
+  s.setAttribute('data-position', '${position}')
+  s.async = true
+  document.body.appendChild(s)
+})`
+  }
+
+  if (framework === 'angular') {
+    return `import { Component, OnInit, Renderer2, Inject } from '@angular/core'
+import { DOCUMENT } from '@angular/common'
+
+@Component({ selector: 'app-conciara-widget', template: '' })
+export class ConciaraWidgetComponent implements OnInit {
+  constructor(
+    private renderer: Renderer2,
+    @Inject(DOCUMENT) private document: Document
+  ) {}
+
+  ngOnInit(): void {
+    const s = this.renderer.createElement('script')
+    this.renderer.setAttribute(s, 'src', '${origin}/embed.js')
+    this.renderer.setAttribute(s, 'data-api-url', '${baseUrl}')
+    this.renderer.setAttribute(s, 'data-workspace-id', '${workspaceId}')
+    this.renderer.setAttribute(s, 'data-agent-id', '${agentId}')
+    this.renderer.setAttribute(s, 'data-position', '${position}')
+    this.renderer.appendChild(this.document.body, s)
+  }
+}`
+  }
+
+  if (framework === 'svelte') {
+    return `<script>
+  import { onMount, onDestroy } from 'svelte'
+
+  let script
+
+  onMount(() => {
+    script = document.createElement('script')
+    script.src = '${origin}/embed.js'
+    script.setAttribute('data-api-url', '${baseUrl}')
+    script.setAttribute('data-workspace-id', '${workspaceId}')
+    script.setAttribute('data-agent-id', '${agentId}')
+    script.setAttribute('data-position', '${position}')
+    script.async = true
+    document.body.appendChild(script)
+  })
+
+  onDestroy(() => { if (script) document.body.removeChild(script) })
+</script>`
+  }
+
+  if (framework === 'wordpress') {
+    return `<?php
+// Add to your theme's functions.php
+
+function conciara_chat_widget() {
+    echo '<script
+  src="${origin}/embed.js"
+  data-api-url="${baseUrl}"
+  data-workspace-id="${workspaceId}"
+  data-agent-id="${agentId}"
+  data-position="${position}"
+></script>';
+}
+add_action( 'wp_footer', 'conciara_chat_widget' );`
+  }
+
   return `<!-- Conciara chat widget -->
 <script
   src="${origin}/embed.js"
   data-api-url="${baseUrl}"
   data-workspace-id="${workspaceId}"
   data-agent-id="${agentId}"
-  data-position="bottom-right"
+  data-position="${position}"
 ></script>`
 }
 
@@ -34,6 +195,12 @@ function defaultConfig(): SkinConfig {
       ...DEFAULT_THEME,
     },
     components: {
+      button: {
+        type: 'circular',
+        size: 'large',
+        icon: 'chat',
+        position: 'bottom-right',
+      },
       window: {
         ...DEFAULT_WINDOW,
         shadow: 'large',
@@ -285,6 +452,8 @@ export default function ChatbotCustomizationsPage() {
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<TabType>('theme')
   const [embedCopied, setEmbedCopied] = useState(false)
+  const [embedFramework, setEmbedFramework] = useState<EmbedFramework>('html')
+  const [chatOpen, setChatOpen] = useState(false)
 
   const fetchConfig = useCallback(async () => {
     if (!workspaceId || !agentId) return
@@ -371,6 +540,40 @@ export default function ChatbotCustomizationsPage() {
         }
         setHeaderImageUploading(false)
       }
+      if (pendingButtonFile) {
+        setButtonImageUploading(true)
+        try {
+          const formData = new FormData()
+          formData.append('file', pendingButtonFile)
+          const { data } = await api.post<{ url: string; key: string; presignedUrl: string }>(
+            `/workspaces/${workspaceId}/agents/${agentId}/widget-button-image`,
+            formData
+          )
+          if (data?.presignedUrl && data?.key) {
+            revokeButtonPreviewUrl()
+            setPendingButtonFile(null)
+            configToSave = {
+              ...configToSave,
+              components: {
+                ...configToSave.components,
+                button: {
+                  ...configToSave.components?.button,
+                  icon: 'custom',
+                  customIconUrl: data.presignedUrl,
+                  customIconKey: data.key,
+                },
+              },
+            }
+          }
+        } catch (err: unknown) {
+          const msg = err && typeof err === 'object' && 'response' in err ? (err as { response?: { data?: { error?: string } } }).response?.data?.error : null
+          setError(msg || (err instanceof Error ? err.message : 'Failed to upload launcher icon'))
+          setButtonImageUploading(false)
+          setSaveLoading(false)
+          return
+        }
+        setButtonImageUploading(false)
+      }
       await api.patch(`/workspaces/${workspaceId}/agents/${agentId}/widget-config`, { config: configToSave })
       setConfig(configToSave)
     } catch (e: unknown) {
@@ -381,7 +584,7 @@ export default function ChatbotCustomizationsPage() {
     }
   }
 
-  const embedSnippet = workspaceId && agentId ? buildEmbedSnippet(getApiBaseUrl(), workspaceId, agentId) : ''
+  const embedSnippet = workspaceId && agentId ? buildEmbedSnippet(getApiBaseUrl(), workspaceId, agentId, config.components?.button?.position || 'bottom-right', embedFramework) : ''
   const handleCopyEmbed = async () => {
     if (embedSnippet) {
       await navigator.clipboard.writeText(embedSnippet)
@@ -390,6 +593,7 @@ export default function ChatbotCustomizationsPage() {
     }
   }
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
+    button: true,
     window: false,
     header: false,
     messages: false,
@@ -400,6 +604,11 @@ export default function ChatbotCustomizationsPage() {
   const headerPreviewObjectUrlRef = useRef<string | null>(null)
   const [pendingHeaderFile, setPendingHeaderFile] = useState<File | null>(null)
   const [headerImageUploading, setHeaderImageUploading] = useState(false)
+
+  const buttonImageInputRef = useRef<HTMLInputElement>(null)
+  const buttonPreviewObjectUrlRef = useRef<string | null>(null)
+  const [pendingButtonFile, setPendingButtonFile] = useState<File | null>(null)
+  const [buttonImageUploading, setButtonImageUploading] = useState(false)
   const toggle = (key: string) => setExpanded((p) => ({ ...p, [key]: !p[key] }))
 
   // Revoke blob URL when replacing or unmounting
@@ -441,10 +650,55 @@ export default function ChatbotCustomizationsPage() {
   const clearHeaderImage = useCallback(() => {
     revokeHeaderPreviewUrl()
     setPendingHeaderFile(null)
-    updateComponents('header', { avatarIcon: '', avatarIconKey: '' })
-  }, [revokeHeaderPreviewUrl, updateComponents])
+    setConfig((c) => ({
+      ...c,
+      components: {
+        ...c.components,
+        header: { ...c.components?.header, avatarIcon: '', avatarIconKey: '' },
+      },
+    }))
+  }, [revokeHeaderPreviewUrl])
 
-  useEffect(() => () => revokeHeaderPreviewUrl(), [revokeHeaderPreviewUrl])
+  const revokeButtonPreviewUrl = useCallback(() => {
+    if (buttonPreviewObjectUrlRef.current) {
+      URL.revokeObjectURL(buttonPreviewObjectUrlRef.current)
+      buttonPreviewObjectUrlRef.current = null
+    }
+  }, [])
+
+  const handleButtonImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !file.type.startsWith('image/')) return
+    setError(null)
+    revokeButtonPreviewUrl()
+    const objectUrl = URL.createObjectURL(file)
+    buttonPreviewObjectUrlRef.current = objectUrl
+    setPendingButtonFile(file)
+    updateComponents('button', { icon: 'custom', customIconUrl: objectUrl })
+    e.target.value = ''
+  }
+
+  const clearButtonImage = useCallback(() => {
+    revokeButtonPreviewUrl()
+    setPendingButtonFile(null)
+    setConfig((c) => ({
+      ...c,
+      components: {
+        ...c.components,
+        button: {
+          ...c.components?.button,
+          icon: 'chat',
+          customIconUrl: '',
+          customIconKey: '',
+        },
+      },
+    }))
+  }, [revokeButtonPreviewUrl])
+
+  useEffect(() => () => {
+    revokeHeaderPreviewUrl()
+    revokeButtonPreviewUrl()
+  }, [revokeHeaderPreviewUrl, revokeButtonPreviewUrl])
 
   const theme = config.theme || {}
   const comp = config.components || {}
@@ -473,7 +727,7 @@ export default function ChatbotCustomizationsPage() {
         {/* Left: Customization form */}
         <div className="flex w-full flex-col lg:w-[400px] lg:shrink-0" style={{ borderRight: '1px solid var(--line)' }}>
           {/* Sticky header */}
-          <div className="shrink-0 px-4 py-4 sm:px-5" style={{ borderBottom: '1px solid var(--line)', background: 'var(--surface)' }}>
+          <div className="shrink-0 px-4 py-4 sm:px-5" style={{ borderBottom: '1px solid var(--line)' }}>
             {error && (
               <div style={{
                 marginBottom: 12, padding: '8px 12px', borderRadius: 'var(--r-md)',
@@ -502,7 +756,24 @@ export default function ChatbotCustomizationsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setConfig(defaultConfig())}
+                  onClick={() => {
+                    const base = defaultConfig()
+                    if (currentAgent) {
+                      setConfig({
+                        ...base,
+                        components: {
+                          ...base.components,
+                          header: {
+                            ...base.components?.header,
+                            title: currentAgent.name,
+                            avatarIcon: (currentAgent as { logoUrl?: string | null }).logoUrl ?? undefined,
+                          },
+                        },
+                      })
+                    } else {
+                      setConfig(base)
+                    }
+                  }}
                   disabled={saveLoading || loading}
                   className="btn btn--ghost btn--sm"
                 >
@@ -609,6 +880,119 @@ export default function ChatbotCustomizationsPage() {
 
               {activeTab === 'components' && (
                 <div className="space-y-2">
+                  <Section
+                    title="Launcher button"
+                    icon={<MessageCircle className="h-4 w-4" />}
+                    expanded={expanded.button}
+                    onToggle={() => toggle('button')}
+                  >
+                    <div className="grid grid-cols-2 gap-3">
+                      <Select
+                        label="Icon"
+                        value={(comp.button?.icon as string) || 'chat'}
+                        options={selectOptions(['bot', 'chat', 'message', 'custom'])}
+                        onChange={(v) => updateComponents('button', { icon: v })}
+                        compact
+                      />
+                      <Select
+                        label="Size"
+                        value={(comp.button?.size as string) || 'large'}
+                        options={selectOptions(['small', 'medium', 'large'])}
+                        onChange={(v) => updateComponents('button', { size: v })}
+                        compact
+                      />
+                      <Select
+                        label="Shape"
+                        value={(comp.button?.type as string) || 'circular'}
+                        options={selectOptions(['circular', 'rounded', 'square'])}
+                        onChange={(v) => updateComponents('button', { type: v })}
+                        compact
+                      />
+                      <div className="field">
+                        <span className="field-label">Position</span>
+                        <UISelect
+                          value={comp.button?.position || 'bottom-right'}
+                          onValueChange={(v) => updateComponents('button', { position: v })}
+                        >
+                          <SelectTrigger compact><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="bottom-right">Bottom right</SelectItem>
+                            <SelectItem value="bottom-left">Bottom left</SelectItem>
+                            <SelectItem value="top-right">Top right</SelectItem>
+                            <SelectItem value="top-left">Top left</SelectItem>
+                          </SelectContent>
+                        </UISelect>
+                      </div>
+                      {comp.button?.icon === 'custom' && (
+                        <div className="col-span-2">
+                          <label className="block text-sm font-medium text-slate-700 mb-1.5">Custom icon</label>
+                          <input
+                            ref={buttonImageInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleButtonImageFile}
+                          />
+                          <button
+                            type="button"
+                            disabled={buttonImageUploading}
+                            onClick={() => buttonImageInputRef.current?.click()}
+                            className="flex items-center gap-3 w-full rounded-lg border border-slate-200 bg-slate-50/50 p-3 text-left transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[var(--v2-primary)] focus:ring-offset-1 disabled:opacity-60 disabled:pointer-events-none"
+                          >
+                            {buttonImageUploading ? (
+                              <>
+                                <Loader2 className="h-12 w-12 shrink-0 animate-spin text-slate-400" />
+                                <div className="min-w-0 flex-1">
+                                  <span className="text-sm font-medium text-slate-700">Uploading…</span>
+                                </div>
+                              </>
+                            ) : comp.button?.customIconUrl ? (
+                              <>
+                                <div
+                                  className="h-12 w-12 shrink-0 overflow-hidden border border-slate-200 bg-white flex items-center justify-center"
+                                  style={{
+                                    borderRadius: comp.button?.type === 'square' ? 0 : comp.button?.type === 'rounded' ? 8 : '50%',
+                                    backgroundColor: theme.primaryColor || DEFAULT_THEME.primaryColor,
+                                  }}
+                                >
+                                  <img
+                                    src={comp.button.customIconUrl}
+                                    alt=""
+                                    className="h-6 w-6 object-contain"
+                                    onError={() => clearButtonImage()}
+                                  />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <span className="text-sm font-medium text-slate-700">Change icon</span>
+                                  <p className="text-xs text-slate-500 mt-0.5">
+                                    {pendingButtonFile ? 'Preview only — click Save to upload' : 'Shown on the floating launcher'}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); clearButtonImage() }}
+                                  className="shrink-0 text-xs font-medium text-slate-500 hover:text-red-600"
+                                >
+                                  Remove
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-slate-200 bg-white text-slate-400">
+                                  <MessageCircle className="h-5 w-5" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <span className="text-sm font-medium text-slate-700">Upload icon</span>
+                                  <p className="text-xs text-slate-500 mt-0.5">PNG or SVG recommended, square works best</p>
+                                </div>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </Section>
+
                   <Section
                     title="Window"
                     icon={<Layout className="h-4 w-4" />}
@@ -845,7 +1229,29 @@ export default function ChatbotCustomizationsPage() {
                 <div className="space-y-3">
                   <div className="rounded-lg border border-slate-200 bg-slate-900 overflow-hidden">
                     <div className="flex items-center justify-between px-3 py-2 border-b border-slate-700/80">
-                      <span className="text-[11px] font-medium uppercase tracking-wider text-slate-400">HTML</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 10.5, color: '#64748b', fontFamily: 'var(--font-mono)' }}>
+                          {EMBED_FRAMEWORKS.find((f) => f.value === embedFramework)?.lang}
+                        </span>
+                        <select
+                          value={embedFramework}
+                          onChange={(e) => setEmbedFramework(e.target.value as EmbedFramework)}
+                          style={{
+                            background: '#1e293b',
+                            color: '#94a3b8',
+                            border: '1px solid #334155',
+                            borderRadius: 4,
+                            padding: '2px 6px',
+                            fontSize: 11,
+                            cursor: 'pointer',
+                            outline: 'none',
+                          }}
+                        >
+                          {EMBED_FRAMEWORKS.map((f) => (
+                            <option key={f.value} value={f.value}>{f.label}</option>
+                          ))}
+                        </select>
+                      </div>
                       <button
                         type="button"
                         onClick={handleCopyEmbed}
@@ -870,14 +1276,7 @@ export default function ChatbotCustomizationsPage() {
                     </pre>
                   </div>
                   <p style={{ fontSize: 12, color: 'var(--ink-3)' }}>
-                    Insert before{' '}
-                    <code style={{
-                      fontFamily: 'var(--font-mono)', fontSize: 11, padding: '1px 5px',
-                      borderRadius: 4, background: 'var(--bg-2)', color: 'var(--ink-2)',
-                    }}>
-                      &lt;/body&gt;
-                    </code>
-                    . The widget will use the look you saved here.
+                    {EMBED_FRAMEWORK_NOTE[embedFramework]}
                   </p>
                 </div>
               )}
@@ -907,19 +1306,20 @@ export default function ChatbotCustomizationsPage() {
               </div>
             ) : (
               <div
-                className="flex-1 min-h-0 w-full overflow-visible m-auto"
+                className="flex flex-1 min-h-0 w-full m-auto"
                 style={{
                   minWidth: CHAT_WIDGET_PREVIEW_MIN_WIDTH,
                   maxWidth: CHAT_WIDGET_PREVIEW_MAX_WIDTH,
-                  borderRadius: `${Math.min(30, Math.max(0, config.components?.window?.borderRadius ?? 8))}px`,
                 }}
               >
                 <SkinRenderer
-                  config={config}
+                  config={config as MergedSkinConfig}
                   apiUrl=""
                   treeId={null}
                   initialMessages={PREVIEW_INITIAL_MESSAGES}
                   previewMode
+                  open={chatOpen}
+                  onOpenChange={setChatOpen}
                   onMessage={async () => { }}
                 />
               </div>

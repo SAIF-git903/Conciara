@@ -18,7 +18,9 @@
       "PowerShell(Get-ChildItem -Path \"D:\\\\Conciara\\\\frontend\" -Depth 0 | Where-Object { $_.PSIsContainer } | Select-Object Name)",
       "PowerShell(Get-ChildItem -Path \"D:\\\\Conciara\\\\design-prototype\" -Depth 0 | Where-Object { $_.PSIsContainer } | Select-Object Name)",
       "PowerShell(Get-ChildItem -Path \"D:\\\\Conciara\\\\frontend\\\\app\" -Directory -Recurse | Select-Object -First 20 | % { $_.FullName.Replace\\(\"D:\\\\Conciara\\\\frontend\\\\app\\\\\", \"\"\\) })",
-      "PowerShell(Get-ChildItem -Path \"D:\\\\Conciara\\\\frontend\\\\components\" -File | Select-Object -First 15 | % { $_.Name })"
+      "PowerShell(Get-ChildItem -Path \"D:\\\\Conciara\\\\frontend\\\\components\" -File | Select-Object -First 15 | % { $_.Name })",
+      "PowerShell(Start-Process -FilePath \"cmd.exe\" -ArgumentList \"/k cd /d d:\\\\Conciara\\\\backend && npm run dev\" -WindowStyle Normal)",
+      "PowerShell(Start-Process -FilePath \"cmd.exe\" -ArgumentList \"/k cd /d d:\\\\Conciara\\\\frontend && npm run dev\" -WindowStyle Normal)"
     ]
   }
 }

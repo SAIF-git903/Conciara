@@ -51,7 +51,9 @@ export default function DataSourcesFilesPage() {
   const [isDragging, setIsDragging] = useState(false)
   const [dragCounter, setDragCounter] = useState(0)
   const [filter, setFilter]         = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const inputRef   = useRef<HTMLInputElement>(null)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const workspaceId = currentWorkspace?.id
   const agentId     = currentAgent?.id
@@ -70,11 +72,29 @@ export default function DataSourcesFilesPage() {
     } finally { setLoading(false) }
   }, [workspaceId, agentId])
 
+  // Initial fetch; clean up any running interval on unmount / agent change
   useEffect(() => {
     fetchDocuments()
-    const t = setInterval(fetchDocuments, 5000)
-    return () => clearInterval(t)
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
   }, [fetchDocuments])
+
+  // Only poll while at least one document is pending/processing; stop once all are settled
+  useEffect(() => {
+    const hasTransitional = documents.some(
+      (d) => d.status === 'pending' || d.status === 'processing'
+    )
+    if (hasTransitional && !intervalRef.current) {
+      intervalRef.current = setInterval(fetchDocuments, 5000)
+    } else if (!hasTransitional && intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+  }, [documents, fetchDocuments])
 
   const pendingCount = documents.filter((d) => d.status === 'pending').length
   const canTrain     = pendingCount > 0 && !training
@@ -115,12 +135,14 @@ export default function DataSourcesFilesPage() {
   }, [workspaceId, agentId, canTrain, fetchDocuments])
 
   const handleRemove = useCallback(async (documentId: number) => {
-    if (!workspaceId || !agentId) return
+    if (!workspaceId || !agentId || deletingId !== null) return
+    setDeletingId(documentId)
     try {
       await api.delete(`/workspaces/${workspaceId}/agents/${agentId}/documents/${documentId}`)
       setDocuments((prev) => prev.filter((d) => d.id !== documentId))
     } catch { setError('Failed to delete document') }
-  }, [workspaceId, agentId])
+    finally { setDeletingId(null) }
+  }, [workspaceId, agentId, deletingId])
 
   const addFiles = useCallback((fileList: FileList | null) => {
     if (!fileList?.length) return
@@ -305,11 +327,14 @@ export default function DataSourcesFilesPage() {
                   <button
                     type="button"
                     onClick={() => handleRemove(doc.id)}
+                    disabled={deletingId !== null}
                     aria-label="Remove"
-                    style={{ width: 28, height: 28, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--ink-4)', cursor: 'pointer', flexShrink: 0 }}
-                    className="hover:bg-[var(--bg-2)] hover:!text-[var(--danger)]"
+                    style={{ width: 28, height: 28, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--ink-4)', cursor: deletingId !== null ? 'not-allowed' : 'pointer', flexShrink: 0, opacity: deletingId !== null && deletingId !== doc.id ? 0.4 : 1 }}
+                    className={deletingId === null ? 'hover:bg-[var(--bg-2)] hover:!text-[var(--danger)]' : ''}
                   >
-                    <Trash2 style={{ width: 14, height: 14 }} />
+                    {deletingId === doc.id
+                      ? <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" />
+                      : <Trash2 style={{ width: 14, height: 14 }} />}
                   </button>
                 </div>
               )

@@ -5,7 +5,7 @@
 import express from 'express';
 import { canManageAgent } from '../agent.service.js';
 import { prisma } from '../../../db/prisma.js';
-import { injectPresignedWidgetHeaderIcon, uploadWidgetHeaderToS3, getPresignedUrl } from '../../../shared/s3.service.js';
+import { injectPresignedWidgetHeaderIcon, uploadWidgetHeaderToS3, uploadWidgetButtonIconToS3, getPresignedUrl } from '../../../shared/s3.service.js';
 import { uploadImage } from '../../../common/uploads.js';
 
 const router = express.Router();
@@ -166,6 +166,31 @@ router.post('/:workspaceId/agents/:agentId/widget-header-image', uploadImage.sin
     return res.status(201).json({ url: result.url, key: result.key, presignedUrl });
   } catch (error: any) {
     console.error('Widget header image upload error:', error);
+    res.status(500).json({ error: 'Failed to upload image', details: error?.message });
+  }
+});
+
+router.post('/:workspaceId/agents/:agentId/widget-button-image', uploadImage.single('file'), async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId)) {
+      return res.status(400).json({ error: 'Invalid workspace or agent ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: 'No file provided' });
+
+    const result = await uploadWidgetButtonIconToS3(file, workspaceId, agentId);
+    const presignedUrl = await getPresignedUrl(result.key, 7 * 24 * 3600);
+    return res.status(201).json({ url: result.url, key: result.key, presignedUrl });
+  } catch (error: any) {
+    console.error('Widget button image upload error:', error);
     res.status(500).json({ error: 'Failed to upload image', details: error?.message });
   }
 });

@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
-import { BookOpen, ChevronRight, Loader2, Pencil, Trash2, X, BarChart2 } from 'lucide-react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { BookOpen, Upload, Loader2, Pencil, Trash2, X, BarChart2, CheckCircle2 } from 'lucide-react'
 import { useDashboard } from '@/contexts/DashboardContext'
 import api from '@/lib/api'
 import QaAnswerEditor from '@/components/QaAnswerEditor'
@@ -53,7 +53,11 @@ export default function DataSourcesQAPage() {
   const [usageLoading, setUsageLoading] = useState(false)
   const [usageError, setUsageError] = useState<string | null>(null)
   const [saving, setSaving]         = useState(false)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [importing, setImporting]   = useState(false)
+  const [importDone, setImportDone] = useState<number | null>(null)
   const [answerEditorNonce, setAnswerEditorNonce] = useState(0)
+  const csvInputRef = useRef<HTMLInputElement>(null)
 
   const workspaceId = currentWorkspace?.id
   const agentId     = currentAgent?.id
@@ -127,9 +131,8 @@ export default function DataSourcesQAPage() {
   }
 
   const handleRemove = async (id: number) => {
-    if (!workspaceId || !agentId) return
-    if (!confirm('Delete this Q&A entry?')) return
-    setError(null)
+    if (!workspaceId || !agentId || deletingId !== null) return
+    setDeletingId(id); setError(null)
     try {
       await api.delete(`/workspaces/${workspaceId}/agents/${agentId}/qa/${id}`)
       await fetchQa()
@@ -139,6 +142,66 @@ export default function DataSourcesQAPage() {
       const msg = e && typeof e === 'object' && 'response' in e
         && (e as { response?: { data?: { error?: unknown } } }).response?.data?.error
       setError(typeof msg === 'string' ? msg : (e instanceof Error ? e.message : 'Failed to delete'))
+    } finally { setDeletingId(null) }
+  }
+
+  const parseCsvRow = (row: string): string[] => {
+    const result: string[] = []
+    let i = 0
+    while (i < row.length) {
+      if (row[i] === '"') {
+        let field = ''; i++
+        while (i < row.length) {
+          if (row[i] === '"' && row[i + 1] === '"') { field += '"'; i += 2 }
+          else if (row[i] === '"') { i++; break }
+          else { field += row[i]; i++ }
+        }
+        result.push(field)
+        if (row[i] === ',') i++
+      } else {
+        const end = row.indexOf(',', i)
+        if (end === -1) { result.push(row.slice(i)); break }
+        else { result.push(row.slice(i, end)); i = end + 1 }
+      }
+    }
+    return result
+  }
+
+  const handleImportCSV = async (file: File) => {
+    if (!workspaceId || !agentId || importing) return
+    setImporting(true); setError(null); setImportDone(null)
+    try {
+      const text = await file.text()
+      const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+      if (lines.length < 2) { setError('CSV must have a header row and at least one data row.'); return }
+      const headers = parseCsvRow(lines[0]).map((h) => h.toLowerCase().trim())
+      const qIdx = headers.findIndex((h) => h === 'question' || h === 'q')
+      const aIdx = headers.findIndex((h) => h === 'answer' || h === 'a')
+      if (qIdx === -1 || aIdx === -1) {
+        setError('CSV must have "question" and "answer" columns (or "q" and "a").')
+        return
+      }
+      const rows = lines.slice(1).map((l) => parseCsvRow(l))
+        .filter((cols) => cols[qIdx]?.trim() && cols[aIdx]?.trim())
+      if (rows.length === 0) { setError('No valid rows found in the CSV.'); return }
+      let imported = 0
+      for (const cols of rows) {
+        try {
+          await api.post(`/workspaces/${workspaceId}/agents/${agentId}/qa`, {
+            question: cols[qIdx].trim(),
+            answer: cols[aIdx].trim(),
+          })
+          imported++
+        } catch { /* skip invalid rows */ }
+      }
+      await fetchQa()
+      setImportDone(imported)
+      setTimeout(() => setImportDone(null), 3000)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Import failed')
+    } finally {
+      setImporting(false)
+      if (csvInputRef.current) csvInputRef.current.value = ''
     }
   }
 
@@ -164,8 +227,25 @@ export default function DataSourcesQAPage() {
               Exact question–answer pairs the agent prioritizes over training data. No retraining needed.
             </p>
           </div>
-          <button type="button" className="btn btn--secondary btn--sm" style={{ flexShrink: 0, marginTop: 2 }}>
-            Import CSV <ChevronRight style={{ width: 11, height: 11 }} />
+          <input
+            ref={csvInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImportCSV(f) }}
+          />
+          <button
+            type="button"
+            onClick={() => csvInputRef.current?.click()}
+            disabled={importing}
+            className="btn btn--secondary btn--sm"
+            style={{ flexShrink: 0, marginTop: 2 }}
+          >
+            {importing
+              ? <><Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> Importing…</>
+              : importDone !== null
+              ? <><CheckCircle2 style={{ width: 12, height: 12, color: 'var(--success)' }} /> {importDone} imported</>
+              : <><Upload style={{ width: 12, height: 12 }} /> Import CSV</>}
           </button>
         </div>
 
@@ -206,9 +286,8 @@ export default function DataSourcesQAPage() {
 
             {/* Answer */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ marginBottom: 6 }}>
                 <label style={{ ...fieldLabel, marginBottom: 0 }}>Answer</label>
-                <span style={{ fontSize: 11.5, color: 'var(--ink-4)' }}>Rich text · stored as Markdown</span>
               </div>
               <QaAnswerEditor
                 instanceKey={`create-${answerEditorNonce}`}
@@ -310,17 +389,22 @@ export default function DataSourcesQAPage() {
                         <p style={{ fontSize: 12, color: 'var(--danger)' }}>{usageError}</p>
                       ) : usageData.length > 0 ? (
                         <>
-                          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 36 }}>
-                            {usageData.map((d) => {
+                          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 48 }}>
+                            {(() => {
                               const max = Math.max(1, ...usageData.map((u) => u.count))
-                              return (
+                              return usageData.map((d) => (
                                 <div
                                   key={d.date}
                                   title={`${d.date}: ${d.count}`}
-                                  style={{ flex: 1, borderRadius: '3px 3px 0 0', minWidth: 0, background: 'var(--accent)', opacity: 0.7, height: `${Math.max(4, (d.count / max) * 100)}%` }}
+                                  style={{
+                                    flex: 1, borderRadius: '3px 3px 0 0', minWidth: 0,
+                                    background: d.count === 0 ? 'var(--line)' : 'var(--accent)',
+                                    opacity: d.count === 0 ? 0.5 : 0.85,
+                                    height: d.count === 0 ? 3 : Math.max(6, Math.round((d.count / max) * 48)),
+                                  }}
                                 />
-                              )
-                            })}
+                              ))
+                            })()}
                           </div>
                           <p style={{ fontSize: 11, color: 'var(--ink-5)', margin: '4px 0 0', fontFamily: 'var(--font-mono)' }}>
                             {usageData[0]?.date} – {usageData[usageData.length - 1]?.date}
@@ -347,11 +431,14 @@ export default function DataSourcesQAPage() {
                   <button
                     type="button"
                     onClick={() => handleRemove(pair.id)}
+                    disabled={deletingId !== null}
                     aria-label="Delete"
-                    style={{ width: 28, height: 28, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--ink-4)', cursor: 'pointer' }}
-                    className="hover:bg-[var(--danger-soft)] hover:!text-[var(--danger)]"
+                    style={{ width: 28, height: 28, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--ink-4)', cursor: deletingId !== null ? 'not-allowed' : 'pointer', opacity: deletingId !== null && deletingId !== pair.id ? 0.4 : 1 }}
+                    className={deletingId === null ? 'hover:bg-[var(--danger-soft)] hover:!text-[var(--danger)]' : ''}
                   >
-                    <Trash2 style={{ width: 13, height: 13 }} />
+                    {deletingId === pair.id
+                      ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" />
+                      : <Trash2 style={{ width: 13, height: 13 }} />}
                   </button>
                 </div>
               </div>

@@ -56,6 +56,9 @@ export async function createAgent(
     id: agent.id,
     workspaceId: agent.workspaceId,
     name: agent.name,
+    model: agent.model ?? null,
+    messageCount: 0,
+    lastRunAt: null,
   };
 }
 
@@ -105,6 +108,14 @@ export async function getAgent(
 ): Promise<AgentDetails | null> {
   const agent = await prisma.agent.findFirst({
     where: { id: agentId, workspaceId },
+    include: {
+      _count: { select: { chatMessages: true } },
+      chatMessages: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: { createdAt: true },
+      },
+    },
   });
   if (!agent) return null;
   return {
@@ -115,6 +126,8 @@ export async function getAgent(
     prePrompt: agent.prePrompt,
     logoUrl: agent.logoUrl,
     temperature: agent.temperature ?? 0.7,
+    messageCount: agent._count.chatMessages,
+    lastRunAt: agent.chatMessages[0]?.createdAt ?? null,
   };
 }
 

@@ -114,6 +114,7 @@ export default function DataSourcesWebsitePage() {
   const [recrawlingId, setRecrawlingId]   = useState<number | null>(null)
   const [expandedCrawlId, setExpandedCrawlId] = useState<number | null>(null)
   const [crawlMenuId, setCrawlMenuId]     = useState<number | null>(null)
+  const [menuPos, setMenuPos]             = useState<{ top: number; right: number } | null>(null)
   const [crawlStats, setCrawlStats]       = useState<CrawlStats | null>(null)
   const [statsLoading, setStatsLoading]   = useState(false)
   const [isTraining, setIsTraining]       = useState(false)
@@ -453,44 +454,22 @@ export default function DataSourcesWebsitePage() {
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
                         {/* Menu */}
-                        <div style={{ position: 'relative' }}>
-                          <button
-                            type="button"
-                            onClick={() => setCrawlMenuId(menuOpen ? null : crawl.id)}
-                            style={{ width: 28, height: 28, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--ink-4)', cursor: 'pointer' }}
-                            className="hover:bg-[var(--bg-2)]"
-                            aria-label="Options"
-                          >
-                            <MoreHorizontal style={{ width: 14, height: 14 }} />
-                          </button>
-                          {menuOpen && (
-                            <>
-                              <div className="fixed inset-0 z-10" aria-hidden onClick={() => setCrawlMenuId(null)} />
-                              <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 20, width: 160, background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 'var(--r-md)', boxShadow: '0 8px 24px rgba(0,0,0,0.10)', overflow: 'hidden', padding: '3px 0' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleRecrawl(crawl)}
-                                  disabled={isRecrawling || isCrawling}
-                                  style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, padding: '7px 12px', fontSize: 13, color: 'var(--ink-2)', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
-                                  className="hover:bg-[var(--bg-2)]"
-                                >
-                                  {isRecrawling ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <RefreshCw style={{ width: 13, height: 13 }} />}
-                                  Re-crawl
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemove(crawl.id)}
-                                  disabled={isDeleting}
-                                  style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, padding: '7px 12px', fontSize: 13, color: 'var(--danger)', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
-                                  className="hover:bg-[var(--danger-soft)]"
-                                >
-                                  {isDeleting ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <Trash2 style={{ width: 13, height: 13 }} />}
-                                  Remove
-                                </button>
-                              </div>
-                            </>
-                          )}
-                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            if (menuOpen) { setCrawlMenuId(null); setMenuPos(null) }
+                            else {
+                              const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect()
+                              setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+                              setCrawlMenuId(crawl.id)
+                            }
+                          }}
+                          style={{ width: 28, height: 28, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--ink-4)', cursor: 'pointer' }}
+                          className="hover:bg-[var(--bg-2)]"
+                          aria-label="Options"
+                        >
+                          <MoreHorizontal style={{ width: 14, height: 14 }} />
+                        </button>
                         {/* Expand */}
                         <button
                           type="button"
@@ -546,6 +525,41 @@ export default function DataSourcesWebsitePage() {
           </>
         )}
       </div>
+
+      {/* Fixed dropdown — rendered outside overflow:hidden cards */}
+      {crawlMenuId !== null && menuPos && (() => {
+        const crawl = crawls.find((c) => c.id === crawlMenuId)
+        if (!crawl) return null
+        const isRecrawling = recrawlingId === crawl.id
+        const isDeleting   = deletingId === crawl.id
+        return (
+          <>
+            <div className="fixed inset-0 z-10" aria-hidden onClick={() => { setCrawlMenuId(null); setMenuPos(null) }} />
+            <div style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 20, width: 160, background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 'var(--r-md)', boxShadow: '0 8px 24px rgba(0,0,0,0.10)', overflow: 'hidden', padding: '3px 0' }}>
+              <button
+                type="button"
+                onClick={() => handleRecrawl(crawl)}
+                disabled={isRecrawling || isCrawling}
+                style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, padding: '7px 12px', fontSize: 13, color: 'var(--ink-2)', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                className="hover:bg-[var(--bg-2)]"
+              >
+                {isRecrawling ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <RefreshCw style={{ width: 13, height: 13 }} />}
+                Re-crawl
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRemove(crawl.id)}
+                disabled={isDeleting}
+                style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, padding: '7px 12px', fontSize: 13, color: 'var(--danger)', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                className="hover:bg-[var(--danger-soft)]"
+              >
+                {isDeleting ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <Trash2 style={{ width: 13, height: 13 }} />}
+                Remove
+              </button>
+            </div>
+          </>
+        )
+      })()}
     </div>
   )
 }
