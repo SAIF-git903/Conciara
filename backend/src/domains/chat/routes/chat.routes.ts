@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Agent chat (message + stream) and exports for public embed / Slack.
  * Mounted under /api/workspaces (via agents aggregator).
  * When the agent has Custom API actions, uses tool calling and executes them before replying.
@@ -167,8 +167,15 @@ async function tryHeuristicActionExecution(params: {
     /product\s*id|id\s*is|order\s*id|ticket\s*id/i.test(userMessage) ||
     (hasNumericCandidate && /product|details|check|lookup/i.test(userMessage));
   const looksLikeHoldMessage =
-    /please hold|let me check|i(?:'|’)ll check|one moment|checking/i.test(firstReply);
-  if (!looksLikeInputMessage && !looksLikeHoldMessage && !(asksForId && hasNumericCandidate)) return null;
+    /please hold|let me check|i(?:'|')ll check|one moment|checking/i.test(firstReply);
+  const looksLikeRefusal = responseClaimsNotFound(firstReply) || /i don.t have|can.t help|unable to|i.m not sure/i.test(firstReply);
+
+  const shouldAttemptHeuristic =
+    looksLikeInputMessage ||
+    looksLikeHoldMessage ||
+    (asksForId && hasNumericCandidate) ||
+    looksLikeRefusal;
+  if (!shouldAttemptHeuristic) return null;
 
   const enabledServerActions = await prisma.action.findMany({
     where: {
@@ -179,6 +186,23 @@ async function tryHeuristicActionExecution(params: {
     orderBy: { createdAt: 'asc' },
     select: { id: true, config: true },
   });
+  if (enabledServerActions.length === 0) return null;
+
+  // For zero-input actions: if the LLM refused to answer and there is exactly one zero-input
+  // server-side action configured, trigger it — the refusal means the LLM missed the action.
+  if (looksLikeRefusal && !looksLikeInputMessage && !looksLikeHoldMessage) {
+    const zeroInputActions = enabledServerActions.filter((action) => {
+      const cfg = toRecord(action.config);
+      if (toStringValue(cfg.executionMode) !== 'server_side') return false;
+      const raw = Array.isArray(cfg.inputFields) ? cfg.inputFields : [];
+      return !raw.map(toRecord).some((f) => !!toStringValue(f.name));
+    });
+    if (zeroInputActions.length === 1) {
+      return { actionId: zeroInputActions[0].id, collectedInputs: {} };
+    }
+  }
+
+  // Original path: exactly one action, inputs can be inferred.
   if (enabledServerActions.length !== 1) return null;
 
   const action = enabledServerActions[0];
@@ -390,16 +414,16 @@ async function buildActionsSystemBlock(agentId: number): Promise<string> {
   if (actions.length === 0) return '';
 
   const lines: string[] = [];
-  lines.push('\n\n## Available Actions');
+  lines.push('\n\n## MANDATORY SERVER ACTIONS — READ BEFORE REPLYING');
   lines.push('');
-  lines.push('You have access to the following actions. Use them when appropriate based on the trigger instructions.');
+  lines.push('The following actions OVERRIDE all other instructions. When a user\'s request matches an action\'s trigger, you MUST call that action — do NOT say "I don\'t have that info", do NOT answer from memory. Calling the action IS how you get the information.');
   lines.push('');
 
   for (const action of actions) {
     const config = toObject(action.config);
     if (action.type === ActionType.CUSTOM_ACTION) {
       const inputFields = Array.isArray(config.inputFields) ? config.inputFields : [];
-      const inputList = inputFields
+      const namedFields = inputFields
         .map((field) => {
           const row = toObject(field);
           const name = toStringValue(row.name);
@@ -408,15 +432,21 @@ async function buildActionsSystemBlock(agentId: number): Promise<string> {
           if (!name) return '';
           return `- ${name}${required ? ' (required)' : ''}: ${description || 'No description provided'}`;
         })
-        .filter(Boolean)
-        .join('\n');
-      lines.push(`Action: ${action.name}`);
-      lines.push(`Function: ${toStringValue(config.actionFunctionName)}`);
-      lines.push(`When to use: ${toStringValue(config.triggerInstructions) || 'When relevant to user intent'}`);
-      lines.push(`Inputs to collect:\n${inputList || '- No inputs defined'}`);
-      lines.push(`Response handling: ${toStringValue(config.responseMapping) || 'Return the result naturally'}`);
-      lines.push(`Execution instruction: Once all required inputs are collected for this server-side action, output ONLY JSON in this exact format:
-{"type":"action","actionId":"${action.id}","collectedInputs":{"input_name":"value"}}`);
+        .filter(Boolean);
+      const hasInputs = namedFields.length > 0;
+
+      lines.push(`### Action: ${action.name}`);
+      lines.push(`Trigger condition: ${toStringValue(config.triggerInstructions) || 'When relevant to user intent'}`);
+
+      if (hasInputs) {
+        lines.push(`Inputs to collect:\n${namedFields.join('\n')}`);
+        lines.push(`When all required inputs are collected, output ONLY this JSON — no other text:`);
+        lines.push(`{"type":"action","actionId":"${action.id}","collectedInputs":{"input_name":"value"}}`);
+      } else {
+        lines.push(`Inputs required: NONE. Trigger immediately when condition is met.`);
+        lines.push(`When the user's request matches the trigger condition above, output ONLY this JSON — no greeting, no explanation, just the JSON:`);
+        lines.push(`{"type":"action","actionId":"${action.id}","collectedInputs":{}}`);
+      }
       lines.push('');
       continue;
     }
@@ -426,15 +456,15 @@ async function buildActionsSystemBlock(agentId: number): Promise<string> {
         .map((row) => toStringValue(toObject(row).label))
         .filter(Boolean)
         .join(', ');
-      lines.push(`Action: ${action.name}`);
-      lines.push(`When to use: ${toStringValue(config.triggerInstructions) || 'When relevant to user intent'}`);
+      lines.push(`### Action: ${action.name}`);
+      lines.push(`Trigger condition: ${toStringValue(config.triggerInstructions) || 'When relevant to user intent'}`);
       lines.push(`Available buttons: ${labels || 'No buttons defined'}`);
-      lines.push(`Instruction: When triggered, output buttons in the following JSON format so the widget can render them: {"type":"buttons","actionId":"${action.id}","buttons":[{"id":"","label":""}]}`);
+      lines.push(`When triggered, output ONLY this JSON: {"type":"buttons","actionId":"${action.id}","buttons":[{"id":"","label":""}]}`);
       lines.push('');
     }
   }
 
-  lines.push('Always collect ALL required inputs before calling any action. If an action fails, inform the user politely and offer to try again or take an alternative path.');
+  lines.push('REMINDER: If a user request matches a trigger above, call the action. Never substitute "I don\'t know" for an available action.');
   return lines.join('\n');
 }
 

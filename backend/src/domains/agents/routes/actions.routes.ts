@@ -204,7 +204,6 @@ function validateCustomActionConfig(config: JsonObject): string[] {
     errors.push('executionMode must be server_side or client_side');
   }
   if (!fnName) errors.push('actionFunctionName is required');
-  if (inputFields.length === 0) errors.push('At least one input field is required');
 
   if (mode === 'server_side') {
     const apiUrl = getString(config, 'apiUrl');
@@ -626,6 +625,7 @@ async function executeServerSideCustomAction(params: {
   durationMs: number;
   error?: string;
   message?: string;
+  debug?: { url: string; method: string };
 }> {
   const config = parseBodyObject(params.action.config);
   const executionMode = getString(config, 'executionMode');
@@ -727,11 +727,15 @@ async function executeServerSideCustomAction(params: {
     console.info(
       `[actions-proxy] ts=${new Date().toISOString()} actionId=${params.action.id} statusCode=${response.status}`,
     );
+    const resolvedBody = parsedBody !== null && parsedBody !== undefined
+      ? parsedBody
+      : (params.isTest ? { _note: `Server returned ${response.status} with an empty response body.` } : null);
     return {
       success: response.ok,
       statusCode: response.status,
-      responseBody: parsedBody,
+      responseBody: resolvedBody,
       durationMs,
+      ...(params.isTest ? { debug: { url: requestPayload.url, method: methodUpper } } : {}),
     };
   } catch (error: unknown) {
     const durationMs = Date.now() - startedAt;
@@ -742,8 +746,9 @@ async function executeServerSideCustomAction(params: {
       return {
         success: false,
         statusCode: 408,
-        responseBody: { error: 'Proxy request timed out after 10 seconds' },
+        responseBody: { error: 'Request timed out after 10 seconds. Check the URL is publicly reachable and responding promptly.' },
         durationMs,
+        ...(params.isTest ? { debug: { url: requestPayload.url, method: methodUpper } } : {}),
       };
     }
     throw error;
@@ -763,6 +768,7 @@ export async function executeServerSideActionProxyRuntime(params: {
   durationMs: number;
   error?: string;
   message?: string;
+  debug?: { url: string; method: string };
 }> {
   const action = await prisma.action.findFirst({
     where: {

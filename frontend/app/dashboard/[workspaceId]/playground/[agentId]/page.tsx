@@ -5,9 +5,9 @@ import SkinRenderer from '@/components/SkinRenderer'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useDashboard } from '@/contexts/DashboardContext'
 import api, { getApiBaseUrl } from '@/lib/api'
-import { CHAT_WIDGET_PREVIEW_MAX_WIDTH, DEFAULT_THEME, DEFAULT_WINDOW } from '@/lib/chat-widget-layout'
+import { CHAT_WIDGET_PREVIEW_MAX_WIDTH, CHAT_WIDGET_PREVIEW_MIN_WIDTH, DEFAULT_THEME, DEFAULT_WINDOW } from '@/lib/chat-widget-layout'
 import type { MergedSkinConfig, SkinConfig } from '@/types/skinConfig'
-import { Check, Loader2, MessageCircle, Trash2, X } from 'lucide-react'
+import { Check, Loader2, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 function formatRelative(date: Date): string {
@@ -22,18 +22,31 @@ function buildPlaygroundConfig(agentName: string, agentLogoUrl?: string | null):
   return {
     theme: { ...DEFAULT_THEME },
     components: {
+      button: {
+        type: 'circular',
+        size: 'large',
+        icon: 'chat',
+        position: 'bottom-right',
+      },
       window: { ...DEFAULT_WINDOW, shadow: 'large' },
       header: {
-        show: true, showTitle: true, title: agentName,
-        showAvatar: true, avatarIcon: agentLogoUrl || undefined,
-        showMinimize: false, showClose: false,
+        show: true,
+        showTitle: true,
+        title: agentName,
+        showAvatar: true,
+        avatarIcon: agentLogoUrl || undefined,
+        showMinimize: true,
+        showClose: true,
       },
       messages: {
-        layout: 'list', bubbleStyle: 'minimal', showAvatars: true,
-        showTimestamps: false, timestampFormat: 'relative',
+        layout: 'list',
+        bubbleStyle: 'minimal',
+        showAvatars: true,
+        showTimestamps: false,
+        timestampFormat: 'relative',
         botAvatar: agentLogoUrl || undefined,
       },
-      input: { placeholder: 'Message...', showSendButton: true },
+      input: { placeholder: 'Message...', showSendButton: true, enableDictation: true },
     },
     states: { error: { message: 'Something went wrong. Please try again.' } },
   }
@@ -400,61 +413,41 @@ export default function PlaygroundAgentPage() {
         </div>
 
         {/* Canvas */}
-        <div style={{
-          position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden',
-          backgroundImage: 'linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px)',
-          backgroundSize: '24px 24px',
-          backgroundColor: 'var(--bg)',
-        }}>
-          {/* Chat window — fills height above the toggle button */}
-          {chatOpen && (
-            <div style={{
-              position: 'absolute',
-              top: 24, bottom: 88,
-              left: '50%', transform: 'translateX(-50%)',
-              width: `min(${CHAT_WIDGET_PREVIEW_MAX_WIDTH}px, calc(100% - 48px))`,
-              borderRadius: effectiveConfig.components?.window?.borderRadius ?? 20,
-              overflow: 'hidden',
-              boxShadow: '0 12px 40px -8px rgba(26,26,29,0.18)',
-            }}>
-              {configLoading ? (
-                <ChatWidgetPreviewSkeleton />
-              ) : (
-                <SkinRenderer
-                  key={clearKey}
-                  config={effectiveConfig}
-                  apiUrl=""
-                  treeId={null}
-                  initialMessages={PLAYGROUND_WELCOME}
-                  previewMode
-                  onMessage={handleMessage}
-                  onMessagesChange={handleMessagesChange}
-                  availableActions={availableActions}
-                />
-              )}
+        <div
+          className="flex flex-1 min-h-0 flex-col overflow-hidden p-6"
+          style={{
+            backgroundImage: 'linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px)',
+            backgroundSize: '24px 24px',
+            backgroundColor: 'var(--bg)',
+          }}
+        >
+          {configLoading ? (
+            <div className="flex flex-1 min-h-0 flex-col">
+              <ChatWidgetPreviewSkeleton />
+            </div>
+          ) : (
+            <div
+              className="flex flex-1 min-h-0 w-full m-auto"
+              style={{
+                minWidth: CHAT_WIDGET_PREVIEW_MIN_WIDTH,
+                maxWidth: CHAT_WIDGET_PREVIEW_MAX_WIDTH,
+              }}
+            >
+              <SkinRenderer
+                key={clearKey}
+                config={effectiveConfig}
+                apiUrl=""
+                treeId={null}
+                initialMessages={PLAYGROUND_WELCOME}
+                previewMode
+                open={chatOpen}
+                onOpenChange={setChatOpen}
+                onMessage={handleMessage}
+                onMessagesChange={handleMessagesChange}
+                availableActions={availableActions}
+              />
             </div>
           )}
-
-          {/* Floating toggle button — centered at bottom, simulates embedded widget launcher */}
-          <button
-            type="button"
-            onClick={() => setChatOpen((o) => !o)}
-            style={{
-              position: 'absolute', bottom: 24,
-              left: '50%', transform: 'translateX(-50%)',
-              width: 52, height: 52, borderRadius: '50%',
-              background: 'var(--accent)', color: 'white',
-              border: 'none', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 4px 20px -2px rgba(91,108,255,0.45)',
-              transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-            }}
-            aria-label={chatOpen ? 'Close chat' : 'Open chat'}
-          >
-            {chatOpen
-              ? <X style={{ width: 20, height: 20 }} strokeWidth={2.5} />
-              : <MessageCircle style={{ width: 22, height: 22 }} strokeWidth={2} />}
-          </button>
         </div>
       </div>
 

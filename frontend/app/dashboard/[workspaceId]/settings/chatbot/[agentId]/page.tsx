@@ -453,7 +453,7 @@ export default function ChatbotCustomizationsPage() {
   const [activeTab, setActiveTab] = useState<TabType>('theme')
   const [embedCopied, setEmbedCopied] = useState(false)
   const [embedFramework, setEmbedFramework] = useState<EmbedFramework>('html')
-  const [chatOpen, setChatOpen] = useState(false)
+  const [chatOpen, setChatOpen] = useState(true)
 
   const fetchConfig = useCallback(async () => {
     if (!workspaceId || !agentId) return

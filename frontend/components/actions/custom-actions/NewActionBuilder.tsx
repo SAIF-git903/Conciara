@@ -1,21 +1,21 @@
-'use client'
+﻿'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
-  ChevronLeft,
-  Check,
-  Settings2,
-  List,
-  Globe,
-  Shield,
-  Zap,
-  MessageSquare,
-  Plus,
-  Trash2,
-  Play,
-  Info,
-  Copy,
   AlertTriangle,
+  Check,
+  ChevronLeft,
+  Copy,
+  Globe,
+  Info,
+  List,
+  MessageSquare,
+  Play,
+  Plus,
+  Settings2,
+  Shield,
+  Trash2,
+  Zap,
 } from 'lucide-react'
 import type {
   ChatbotAction,
@@ -41,6 +41,8 @@ const EMPTY_CONFIG: CustomActionConfig = {
   actionFunctionName: '',
   inputFields: [],
   responseMapping: '',
+  requiresConfirmation: false,
+  allowStreaming: true,
   authConfig: { type: 'none' },
 }
 
@@ -53,12 +55,12 @@ interface Tab {
 }
 
 const TABS: Tab[] = [
-  { id: 'setup', label: 'Setup', Icon: Settings2 },
-  { id: 'params', label: 'Parameters', Icon: List },
-  { id: 'request', label: 'Request', Icon: Globe },
-  { id: 'auth', label: 'Auth', Icon: Shield },
-  { id: 'response', label: 'Response', Icon: Zap },
-  { id: 'when', label: 'When to call', Icon: MessageSquare },
+  { id: 'setup',   label: 'Setup',        Icon: Settings2 },
+  { id: 'params',  label: 'Parameters',   Icon: List },
+  { id: 'request', label: 'Request',      Icon: Globe },
+  { id: 'auth',    label: 'Auth',         Icon: Shield },
+  { id: 'response',label: 'Response',     Icon: Zap },
+  { id: 'when',    label: 'When to call', Icon: MessageSquare },
 ]
 
 const METHOD_COLORS: Record<string, { bg: string; color: string }> = {
@@ -69,9 +71,60 @@ const METHOD_COLORS: Record<string, { bg: string; color: string }> = {
   DELETE: { bg: '#fee2e2', color: '#991b1b' },
 }
 
+function toFunctionName(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 60)
+}
+
+function getTestDiagnostic(statusCode: number, responseBody: unknown): { title: string; detail: string } | null {
+  const bodyStr = typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody ?? '')
+  if (/ssrf|private.{0,10}range|reserved.{0,10}ip/i.test(bodyStr)) {
+    return { title: 'SSRF protection blocked this request', detail: 'The URL resolves to a private / internal IP. Use a public internet endpoint.' }
+  }
+  if (/ENOTFOUND|ECONNREFUSED|ECONNRESET|getaddrinfo/i.test(bodyStr)) {
+    return { title: 'DNS / connection error', detail: 'The hostname could not be resolved or the connection was refused. Check the URL.' }
+  }
+  if (statusCode === 0) {
+    return { title: 'No response received', detail: 'The request could not be sent. Check the URL and that the server is publicly reachable.' }
+  }
+  if (statusCode === 401) {
+    return { title: 'Unauthorized (401)', detail: 'The API key or token is missing or incorrect. Open the Auth tab and verify your credentials.' }
+  }
+  if (statusCode === 403) {
+    return { title: 'Forbidden (403)', detail: 'Your credentials do not have permission for this endpoint. Check the API key scopes.' }
+  }
+  if (statusCode === 404) {
+    return { title: 'Not found (404)', detail: 'The URL path does not exist on the server. Verify the endpoint path.' }
+  }
+  if (statusCode === 405) {
+    return { title: 'Method not allowed (405)', detail: 'The server does not accept this HTTP method. Try a different method (e.g. POST instead of GET).' }
+  }
+  if (statusCode === 422) {
+    return { title: 'Unprocessable entity (422)', detail: 'The request body format is wrong. Check the Request tab and your body params.' }
+  }
+  if (statusCode === 429) {
+    return { title: 'Rate limited (429)', detail: 'Too many requests. Wait a moment before running another test.' }
+  }
+  if (statusCode >= 500) {
+    return { title: `Server error (${statusCode})`, detail: 'The target API returned a server error. This is an issue on the external API side.' }
+  }
+  return null
+}
+
 /* ------------------------------------------------------------------ */
 /* Props                                                               */
 /* ------------------------------------------------------------------ */
+
+interface TestResult {
+  success: boolean
+  statusCode: number
+  responseBody: unknown
+  durationMs: number
+  debug?: { url: string; method: string }
+}
 
 interface NewActionBuilderProps {
   editing?: ChatbotAction | null
@@ -86,7 +139,7 @@ interface NewActionBuilderProps {
   onRunTest: (
     actionId: string,
     inputs: Record<string, unknown>
-  ) => Promise<{ success: boolean; statusCode: number; responseBody: unknown; durationMs: number }>
+  ) => Promise<TestResult>
 }
 
 /* ------------------------------------------------------------------ */
@@ -195,31 +248,12 @@ function IconBtn({
 /* ------------------------------------------------------------------ */
 
 function SetupTab({
-  requireConfirm,
-  setRequireConfirm,
-  streaming,
-  setStreaming,
-  tags,
-  setTags,
+  config,
+  patchConfig,
 }: {
-  requireConfirm: boolean
-  setRequireConfirm: (v: boolean) => void
-  streaming: boolean
-  setStreaming: (v: boolean) => void
-  tags: string[]
-  setTags: (v: string[]) => void
+  config: CustomActionConfig
+  patchConfig: (p: Partial<CustomActionConfig>) => void
 }) {
-  const [tagInput, setTagInput] = useState('')
-  const [rateUnit, setRateUnit] = useState('minute')
-
-  const addTag = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) {
-      e.preventDefault()
-      setTags([...tags, tagInput.trim()])
-      setTagInput('')
-    }
-  }
-
   return (
     <div>
       <Eyebrow>Behavior</Eyebrow>
@@ -229,10 +263,13 @@ function SetupTab({
             <div>
               <div style={{ fontWeight: 500, fontSize: 13.5, color: 'var(--ink)' }}>Require user confirmation</div>
               <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>
-                Agent shows the inputs and asks the user to approve before calling. Recommended for destructive or paid actions.
+                Agent shows the collected inputs and asks the user to approve before calling. Recommended for destructive or paid actions.
               </div>
             </div>
-            <ABToggle on={requireConfirm} onClick={() => setRequireConfirm(!requireConfirm)} />
+            <ABToggle
+              on={config.requiresConfirmation ?? false}
+              onClick={() => patchConfig({ requiresConfirmation: !(config.requiresConfirmation ?? false) })}
+            />
           </label>
           <div className="divider" style={{ margin: '6px 0' }} />
           <label style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, padding: '6px 0' }}>
@@ -242,49 +279,10 @@ function SetupTab({
                 Let the agent narrate the API result as it streams back.
               </div>
             </div>
-            <ABToggle on={streaming} onClick={() => setStreaming(!streaming)} />
-          </label>
-        </div>
-      </div>
-
-      <Eyebrow>Categorization</Eyebrow>
-      <div className="card">
-        <div className="card-body" style={{ padding: 14 }}>
-          <label className="field">
-            <span className="field-label">Tags</span>
-            <div className="ab-tags">
-              {tags.map((t) => (
-                <span key={t} className="ab-tag-chip">
-                  {t}
-                  <button type="button" onClick={() => setTags(tags.filter((x) => x !== t))} style={{ background: 'none', border: 0, cursor: 'pointer', padding: '0 0 0 4px', color: 'inherit' }}>×</button>
-                </span>
-              ))}
-              <input
-                className="ab-tag-input"
-                placeholder="Add tag…"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={addTag}
-              />
-            </div>
-            <span className="field-hint">Tags help group actions and filter logs. Press Enter to add.</span>
-          </label>
-          <label className="field" style={{ marginBottom: 0 }}>
-            <span className="field-label">Rate limit</span>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input className="input" style={{ width: 80 }} type="number" defaultValue={30} />
-              <UISelect value={rateUnit} onValueChange={setRateUnit}>
-                <SelectTrigger compact style={{ width: 140 }}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="minute">calls / minute</SelectItem>
-                  <SelectItem value="hour">calls / hour</SelectItem>
-                  <SelectItem value="day">calls / day</SelectItem>
-                </SelectContent>
-              </UISelect>
-              <span className="muted" style={{ fontSize: 12, marginLeft: 8 }}>per conversation</span>
-            </div>
+            <ABToggle
+              on={config.allowStreaming ?? true}
+              onClick={() => patchConfig({ allowStreaming: !(config.allowStreaming ?? true) })}
+            />
           </label>
         </div>
       </div>
@@ -333,7 +331,6 @@ function ParamsTab({
         border: '1px solid var(--line)', borderRadius: 10,
         overflow: 'hidden', background: 'var(--surface)', marginBottom: 12,
       }}>
-        {/* Head row */}
         <div style={{
           display: 'grid', gridTemplateColumns: '1.4fr 0.9fr 1.3fr 72px 28px',
           gap: 8, padding: '7px 12px',
@@ -394,7 +391,7 @@ function ParamsTab({
               <ABInput
                 value={f.description}
                 onChange={(v) => update(i, { description: v })}
-                placeholder="Description — tell the agent how to extract this value"
+                placeholder="Tell the agent how to extract this value from the conversation"
                 style={{
                   height: 30, width: '100%', fontSize: 12,
                   background: 'var(--bg)', borderStyle: 'dashed',
@@ -416,6 +413,90 @@ function ParamsTab({
 /* Tab: Request                                                        */
 /* ------------------------------------------------------------------ */
 
+function BodyParamsEditor({
+  config,
+  patchConfig,
+}: {
+  config: CustomActionConfig
+  patchConfig: (p: Partial<CustomActionConfig>) => void
+}) {
+  const params = config.bodyParams ?? []
+  const inputFieldNames = (config.inputFields ?? []).map((f) => f.name).filter(Boolean)
+
+  const update = (idx: number, patch: Partial<ActionKeyValuePair>) =>
+    patchConfig({ bodyParams: params.map((p, i) => (i === idx ? { ...p, ...patch } : p)) })
+
+  const remove = (idx: number) =>
+    patchConfig({ bodyParams: params.filter((_, i) => i !== idx) })
+
+  const add = () =>
+    patchConfig({ bodyParams: [...params, { key: '', value: '', source: 'static' as const }] })
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {params.length > 0 && (
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 110px 1.5fr 28px',
+          gap: 6, padding: '5px 4px',
+          fontFamily: 'var(--font-mono)', fontSize: 10.5,
+          textTransform: 'uppercase' as const, letterSpacing: '0.06em',
+          color: 'var(--ink-3)', fontWeight: 500,
+        }}>
+          <span>Key</span><span>Source</span><span>Value / Parameter</span><span />
+        </div>
+      )}
+      {params.map((p, i) => {
+        const src = p.source ?? 'static'
+        return (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 110px 1.5fr 28px', gap: 6 }}>
+            <ABInput
+              value={p.key}
+              onChange={(v) => update(i, { key: v })}
+              placeholder="field_name"
+              mono
+              style={{ height: 32 }}
+            />
+            <ABSelect
+              value={src}
+              onChange={(v) => update(i, { source: v as ActionKeyValuePair['source'], userInputField: undefined, value: '' })}
+              options={[
+                { value: 'static', label: 'Static' },
+                { value: 'user_input', label: 'From param' },
+              ]}
+              style={{ height: 32 }}
+            />
+            {src === 'user_input' ? (
+              <ABSelect
+                value={p.userInputField ?? ''}
+                onChange={(v) => update(i, { userInputField: v })}
+                options={[
+                  { value: '', label: '— select param —' },
+                  ...inputFieldNames.map((n) => ({ value: n, label: n })),
+                ]}
+                style={{ height: 32 }}
+              />
+            ) : (
+              <ABInput
+                value={p.value ?? ''}
+                onChange={(v) => update(i, { value: v })}
+                placeholder="value or {{param_name}}"
+                mono
+                style={{ height: 32 }}
+              />
+            )}
+            <IconBtn onClick={() => remove(i)}>
+              <Trash2 style={{ width: 13, height: 13 }} />
+            </IconBtn>
+          </div>
+        )
+      })}
+      <button type="button" onClick={add} className="btn btn--ghost btn--sm" style={{ alignSelf: 'flex-start' }}>
+        <Plus style={{ width: 12, height: 12 }} /> Add field
+      </button>
+    </div>
+  )
+}
+
 function RequestTab({
   config,
   patchConfig,
@@ -426,9 +507,6 @@ function RequestTab({
   method: string
 }) {
   const headers = config.headers ?? []
-  const bodyType = (config as { _bodyType?: string })._bodyType ?? (
-    ['POST', 'PUT', 'PATCH'].includes(method) ? 'json' : 'none'
-  )
 
   const updateHeader = (idx: number, patch: Partial<ActionKeyValuePair>) =>
     patchConfig({ headers: headers.map((h, i) => (i === idx ? { ...h, ...patch } : h)) })
@@ -472,41 +550,11 @@ function RequestTab({
       {hasBody && (
         <>
           <Eyebrow style={{ marginTop: 24 }}>Request body</Eyebrow>
-          <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
-            {['json', 'form', 'none'].map((t) => (
-              <button
-                key={t}
-                type="button"
-                className={`ab-pill ${bodyType === t ? 'ab-pill--active' : ''}`}
-                onClick={() => patchConfig({ bodyParams: [] })}
-              >
-                {t === 'json' ? 'JSON' : t === 'form' ? 'Form data' : 'None'}
-              </button>
-            ))}
-          </div>
-          {bodyType === 'json' && (
-            <div className="ab-code-wrap">
-              <div className="ab-code-head">
-                <span className="mono">application/json</span>
-                <button type="button" className="ab-mini-btn">
-                  <Copy style={{ width: 11, height: 11 }} /> Format
-                </button>
-              </div>
-              <textarea
-                className="ab-code"
-                rows={8}
-                defaultValue={`{\n  "id": "{{id}}"\n}`}
-                spellCheck={false}
-              />
-            </div>
-          )}
-          {bodyType !== 'json' && (
-            <div style={{ fontSize: 12.5, padding: 14, background: 'var(--bg-2)', borderRadius: 8, color: 'var(--ink-3)' }}>
-              {bodyType === 'form'
-                ? 'Form fields will be auto-generated from your Parameters.'
-                : 'No body will be sent. Parameters will be passed as URL query strings.'}
-            </div>
-          )}
+          <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 4, marginBottom: 14 }}>
+            Each field is sent as JSON. Use <code className="code-inline">Static</code> for literal values or{' '}
+            <code className="code-inline">From param</code> to inject a collected parameter.
+          </p>
+          <BodyParamsEditor config={config} patchConfig={patchConfig} />
         </>
       )}
 
@@ -518,7 +566,7 @@ function RequestTab({
       }}>
         <Info style={{ width: 12, height: 12, color: 'var(--accent)', flexShrink: 0, marginTop: 1 }} />
         <div>
-          Use <code className="code-inline">{'{{param_name}}'}</code> to insert parameter values. They get filled at runtime.
+          Use <code className="code-inline">{'{{param_name}}'}</code> in the URL or static values to insert parameters at runtime.
         </div>
       </div>
     </div>
@@ -541,15 +589,15 @@ function AuthTab({
     patchConfig({ authConfig: { ...auth, ...patch } })
 
   const authOptions: { id: string; label: string; desc: string }[] = [
-    { id: 'none', label: 'None', desc: 'Public endpoint' },
-    { id: 'bearer', label: 'Bearer token', desc: 'Authorization: Bearer …' },
-    { id: 'basic', label: 'Basic auth', desc: 'Username + password' },
-    { id: 'apikey', label: 'API key in header', desc: 'Custom header name' },
-    { id: 'oauth', label: 'OAuth 2.0', desc: 'Connect a provider' },
+    { id: 'none',   label: 'None',               desc: 'Public endpoint' },
+    { id: 'bearer', label: 'Bearer token',        desc: 'Authorization: Bearer …' },
+    { id: 'basic',  label: 'Basic auth',          desc: 'Username + password' },
+    { id: 'apikey', label: 'API key in header',   desc: 'Custom header name' },
+    { id: 'oauth',  label: 'OAuth 2.0',           desc: 'Connect a provider' },
   ]
-  // Map design IDs to production auth type stored in config
   const authUiId = auth.type === 'api_key' ? 'apikey' : auth.type === 'oauth_bearer' ? 'oauth' : auth.type
-  const uiToAuthType = (id: string): AuthType => id === 'apikey' ? 'api_key' : id === 'oauth' ? 'oauth_bearer' : id as AuthType
+  const uiToAuthType = (id: string): AuthType =>
+    id === 'apikey' ? 'api_key' : id === 'oauth' ? 'oauth_bearer' : (id as AuthType)
 
   return (
     <div>
@@ -712,10 +760,10 @@ function ResponseTab({
       <div className="card">
         <div className="card-body" style={{ padding: 0 }}>
           {[
-            { code: '401, 403', label: 'Auth errors', action: 'Tell the user the integration needs attention' },
-            { code: '404', label: 'Not found', action: "Tell the user the resource doesn't exist" },
-            { code: '429', label: 'Rate limited', action: 'Retry once with backoff, then tell the user' },
-            { code: '5xx', label: 'Server errors', action: 'Retry twice, then apologize and offer to escalate' },
+            { code: '401, 403', label: 'Auth errors',   action: 'Tell the user the integration needs attention' },
+            { code: '404',      label: 'Not found',     action: "Tell the user the resource doesn't exist" },
+            { code: '429',      label: 'Rate limited',  action: 'Retry once with backoff, then tell the user' },
+            { code: '5xx',      label: 'Server errors', action: 'Retry twice, then apologize and offer to escalate' },
           ].map((r, i) => (
             <div key={i} style={{
               display: 'flex', alignItems: 'center', gap: 12,
@@ -746,51 +794,68 @@ function WhenToCallTab({
   config: CustomActionConfig
   patchConfig: (p: Partial<CustomActionConfig>) => void
 }) {
+  const trigger = config.triggerInstructions.trim()
+  const isEmpty = trigger.length === 0
+  const isTooShort = trigger.length > 0 && trigger.length < 20
+
   return (
     <div>
       <Eyebrow>Trigger instructions</Eyebrow>
       <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 4, marginBottom: 14 }}>
-        Plain-English description of when the agent should call this action. The agent uses this to decide between actions.
+        Plain-English description of when the agent should call this action. The agent uses this to decide between multiple actions.
       </p>
       <textarea
         className="textarea"
-        rows={4}
+        rows={5}
         value={config.triggerInstructions}
         onChange={(e) => patchConfig({ triggerInstructions: e.target.value })}
         placeholder="e.g. When the user asks about an order status, refund, or shipment."
-        style={{ width: '100%', fontSize: 13 }}
+        style={{
+          width: '100%', fontSize: 13,
+          borderColor: isEmpty ? 'var(--danger)' : isTooShort ? 'var(--warn)' : undefined,
+        }}
       />
 
-      <Eyebrow style={{ marginTop: 24 }}>Examples (few-shot)</Eyebrow>
-      <p style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 4, marginBottom: 12 }}>
-        Give the agent examples of conversations that should — and shouldn't — trigger this action.
-      </p>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
-        {[
-          { kind: 'positive' as const, text: 'Where is my order #4421?' },
-          { kind: 'negative' as const, text: 'What are your business hours?' },
-        ].map((ex, i) => (
-          <div key={i} style={{
-            background: 'var(--surface)', border: '1px solid var(--line)',
-            borderRadius: 10, padding: 12,
-            borderLeftWidth: 3,
-            borderLeftColor: ex.kind === 'positive' ? 'var(--success)' : 'var(--ink-4)',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              {ex.kind === 'positive'
-                ? <span className="badge badge--success"><Check style={{ width: 10, height: 10 }} /> Should call</span>
-                : <span className="badge badge--neutral">Should NOT call</span>
-              }
-              <IconBtn onClick={() => {}}><Trash2 style={{ width: 13, height: 13 }} /></IconBtn>
-            </div>
-            <div style={{ fontSize: 13, color: 'var(--ink)', fontStyle: 'italic' }}>"{ex.text}"</div>
+      {isEmpty && (
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', gap: 8,
+          padding: '10px 12px', background: 'var(--danger-soft)',
+          border: '1px solid rgba(195,54,101,0.2)', borderRadius: 8, marginTop: 10,
+          fontSize: 12.5, color: 'var(--danger)',
+        }}>
+          <AlertTriangle style={{ width: 12, height: 12, flexShrink: 0, marginTop: 1 }} />
+          <div>
+            <strong>Required — </strong>
+            without trigger instructions the agent will never call this action, even when it should.
           </div>
-        ))}
+        </div>
+      )}
+
+      {isTooShort && (
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', gap: 8,
+          padding: '10px 12px', background: 'var(--warn-soft)',
+          border: '1px solid rgba(184,106,23,0.2)', borderRadius: 8, marginTop: 10,
+          fontSize: 12.5, color: 'var(--warn)',
+        }}>
+          <AlertTriangle style={{ width: 12, height: 12, flexShrink: 0, marginTop: 1 }} />
+          <div>
+            These instructions are very short. Add more detail — the more specific they are, the more reliably the agent invokes the action.
+          </div>
+        </div>
+      )}
+
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', gap: 8,
+        padding: '10px 12px', background: 'var(--bg-2)',
+        border: '1px solid var(--line)', borderRadius: 8, marginTop: 14,
+        fontSize: 12.5, color: 'var(--ink-3)',
+      }}>
+        <Info style={{ width: 12, height: 12, color: 'var(--ink-3)', flexShrink: 0, marginTop: 1 }} />
+        <div>
+          The more specific these instructions are, the better the agent decides when to call vs. not call. Include scenarios where it should <strong>not</strong> trigger.
+        </div>
       </div>
-      <button type="button" className="btn btn--ghost btn--sm">
-        <Plus style={{ width: 12, height: 12 }} /> Add example
-      </button>
     </div>
   )
 }
@@ -805,9 +870,10 @@ interface TestRunnerProps {
   paramValues: Record<string, string>
   setParamValues: React.Dispatch<React.SetStateAction<Record<string, string>>>
   testStatus: null | 'running' | 'ok' | 'err'
-  testResponse: { success: boolean; statusCode: number; responseBody: unknown; durationMs: number } | null
+  testResponse: TestResult | null
   onRun: () => void
   onClear: () => void
+  isSaved: boolean
 }
 
 function TestRunner({
@@ -819,6 +885,7 @@ function TestRunner({
   testResponse,
   onRun,
   onClear,
+  isSaved,
 }: TestRunnerProps) {
   const fields = config.inputFields ?? []
   const headers = config.headers ?? []
@@ -827,7 +894,6 @@ function TestRunner({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Head */}
       <div style={{
         display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
         padding: '14px 16px', borderBottom: '1px solid var(--line)',
@@ -841,7 +907,7 @@ function TestRunner({
             color: 'var(--ink-3)', fontWeight: 500,
           }}>Test runner</div>
           <div style={{ fontSize: 11.5, color: 'var(--ink-4)', marginTop: 2 }}>
-            Try this action with sample inputs.
+            Calls the real API with sample inputs.
           </div>
         </div>
         {testStatus && testStatus !== 'running' && (
@@ -849,9 +915,19 @@ function TestRunner({
         )}
       </div>
 
-      {/* Body */}
       <div style={{ padding: '14px 16px 40px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* Sample inputs */}
+        {!isSaved && (
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', gap: 8,
+            padding: '10px 12px', background: 'var(--warn-soft)',
+            border: '1px solid rgba(184,106,23,0.2)', borderRadius: 8,
+            fontSize: 12.5, color: 'var(--warn)',
+          }}>
+            <AlertTriangle style={{ width: 12, height: 12, flexShrink: 0, marginTop: 1 }} />
+            Save this action first, then run a live test.
+          </div>
+        )}
+
         <div>
           <div style={{
             fontFamily: 'var(--font-mono)', fontSize: 10.5,
@@ -883,7 +959,6 @@ function TestRunner({
           )}
         </div>
 
-        {/* Outgoing request preview */}
         <div>
           <div style={{
             fontFamily: 'var(--font-mono)', fontSize: 10.5,
@@ -912,11 +987,10 @@ function TestRunner({
           </div>
         </div>
 
-        {/* Run button */}
         <button
           type="button"
           onClick={onRun}
-          disabled={testStatus === 'running'}
+          disabled={testStatus === 'running' || !isSaved}
           className="btn btn--primary"
           style={{ width: '100%', justifyContent: 'center' }}
         >
@@ -927,9 +1001,37 @@ function TestRunner({
           )}
         </button>
 
-        {/* Response */}
         {testResponse && (
           <div>
+            {testResponse.debug && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{
+                  fontFamily: 'var(--font-mono)', fontSize: 10.5,
+                  letterSpacing: '0.08em', textTransform: 'uppercase',
+                  color: 'var(--ink-3)', fontWeight: 500, marginBottom: 6,
+                }}>
+                  Resolved request
+                </div>
+                <div style={{
+                  background: 'var(--surface)', border: '1px solid var(--line)',
+                  borderRadius: 8, padding: '8px 12px',
+                  fontFamily: 'var(--font-mono)', fontSize: 11.5,
+                  display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                }}>
+                  <span style={{
+                    padding: '2px 7px', borderRadius: 4, fontSize: 10.5, fontWeight: 700,
+                    letterSpacing: '0.04em',
+                    background: (METHOD_COLORS[testResponse.debug.method] ?? METHOD_COLORS.POST).bg,
+                    color: (METHOD_COLORS[testResponse.debug.method] ?? METHOD_COLORS.POST).color,
+                  }}>
+                    {testResponse.debug.method}
+                  </span>
+                  <span style={{ color: 'var(--ink)', wordBreak: 'break-all', fontSize: 11.5 }}>
+                    {testResponse.debug.url}
+                  </span>
+                </div>
+              </div>
+            )}
             <div style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               fontFamily: 'var(--font-mono)', fontSize: 10.5,
@@ -938,14 +1040,14 @@ function TestRunner({
             }}>
               <span>Response</span>
               <span className={`badge ${testResponse.success ? 'badge--success' : 'badge--danger'}`}>
-                {testResponse.statusCode} · {testResponse.durationMs}ms
+                {testResponse.statusCode > 0 ? `${testResponse.statusCode} · ${testResponse.durationMs}ms` : 'Error'}
               </span>
             </div>
             <div style={{
               background: 'var(--surface)', border: '1px solid var(--line)',
               borderRadius: 8, padding: '10px 12px',
               fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.7,
-              overflowX: 'auto',
+              overflowX: 'auto', maxHeight: 220, overflowY: 'auto',
             }}>
               <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 11 }}>
                 {JSON.stringify(testResponse.responseBody, null, 2)}
@@ -961,26 +1063,32 @@ function TestRunner({
                 <div>
                   <div style={{ fontWeight: 500, fontSize: 12.5 }}>Test passed</div>
                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--ink-3)', marginTop: 2 }}>
-                    Status {testResponse.statusCode} in {testResponse.durationMs}ms
+                    Status {testResponse.statusCode} in {testResponse.durationMs}ms — the action is reachable and responding correctly.
                   </div>
                 </div>
               </div>
             )}
-            {!testResponse.success && (
-              <div style={{
-                display: 'flex', alignItems: 'flex-start', gap: 8,
-                padding: '10px 12px', background: 'var(--danger-soft)',
-                border: '1px solid rgba(195,54,101,0.15)', borderRadius: 8, marginTop: 8,
-              }}>
-                <AlertTriangle style={{ width: 11, height: 11, color: 'var(--danger)', marginTop: 2, flexShrink: 0 }} />
-                <div>
-                  <div style={{ fontWeight: 500, fontSize: 12.5, color: 'var(--danger)' }}>Test failed</div>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--ink-3)', marginTop: 2 }}>
-                    Status {testResponse.statusCode} in {testResponse.durationMs}ms
+            {!testResponse.success && (() => {
+              const diag = getTestDiagnostic(testResponse.statusCode, testResponse.responseBody)
+              return (
+                <div style={{
+                  padding: '10px 12px', background: 'var(--danger-soft)',
+                  border: '1px solid rgba(195,54,101,0.15)', borderRadius: 8, marginTop: 8,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: diag ? 6 : 0 }}>
+                    <AlertTriangle style={{ width: 11, height: 11, color: 'var(--danger)', flexShrink: 0 }} />
+                    <div style={{ fontWeight: 500, fontSize: 12.5, color: 'var(--danger)' }}>
+                      {diag ? diag.title : `Test failed — status ${testResponse.statusCode}`}
+                    </div>
                   </div>
+                  {diag && (
+                    <div style={{ fontSize: 12, color: 'var(--ink-2)', marginLeft: 18, lineHeight: 1.5 }}>
+                      {diag.detail}
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              )
+            })()}
           </div>
         )}
       </div>
@@ -1005,23 +1113,46 @@ export default function NewActionBuilder({
   )
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [requireConfirm, setRequireConfirm] = useState(false)
-  const [streaming, setStreaming] = useState(true)
-  const [tags, setTags] = useState<string[]>([])
   const [testStatus, setTestStatus] = useState<null | 'running' | 'ok' | 'err'>(null)
-  const [testResponse, setTestResponse] = useState<{
-    success: boolean
-    statusCode: number
-    responseBody: unknown
-    durationMs: number
-  } | null>(null)
+  const [testResponse, setTestResponse] = useState<TestResult | null>(null)
   const [paramValues, setParamValues] = useState<Record<string, string>>({})
 
   const isSaved = Boolean(editing?.id)
   const method = config.method ?? 'POST'
-  const isValid = name.trim().length > 0 && (
-    config.executionMode === 'client_side' || (config.apiUrl ?? '').trim().length > 8
-  )
+
+  // Auto-generate function name from action name
+  useEffect(() => {
+    setConfig((c) => ({ ...c, actionFunctionName: toFunctionName(name) }))
+  }, [name])
+
+  const isValid =
+    name.trim().length > 0 &&
+    config.actionFunctionName.trim().length > 0 &&
+    (config.executionMode === 'client_side' || (config.apiUrl ?? '').trim().length > 8)
+
+  const saveWarnings = useMemo(() => {
+    const w: { key: string; msg: string }[] = []
+    const trigger = config.triggerInstructions.trim()
+    if (!trigger) {
+      w.push({ key: 'trigger', msg: 'No trigger instructions — the agent won\'t know when to call this action.' })
+    } else if (trigger.length < 20) {
+      w.push({ key: 'trigger-short', msg: 'Trigger instructions are very short — add more detail for reliable invocation.' })
+    }
+    const auth = config.authConfig ?? { type: 'none' as const }
+    if (auth.type === 'bearer' && !auth.bearerToken?.trim()) {
+      w.push({ key: 'auth-bearer', msg: 'Bearer auth is selected but no token is configured.' })
+    }
+    if (auth.type === 'api_key' && !auth.apiKeyValue?.trim()) {
+      w.push({ key: 'auth-apikey', msg: 'API key auth is selected but the key value is empty.' })
+    }
+    if (auth.type === 'basic' && !auth.basicPassword?.trim()) {
+      w.push({ key: 'auth-basic', msg: 'Basic auth is selected but no password is set.' })
+    }
+    if (method === 'GET' && (config.bodyParams ?? []).length > 0) {
+      w.push({ key: 'get-body', msg: 'Body params are ignored for GET requests — use Query Params instead.' })
+    }
+    return w
+  }, [config, method])
 
   const patchConfig = (patch: Partial<CustomActionConfig>) =>
     setConfig((c) => ({ ...c, ...patch }))
@@ -1038,7 +1169,8 @@ export default function NewActionBuilder({
         config,
       })
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } }).response?.data?.error
+      const msg = (err as { response?: { data?: { error?: string; errors?: string[] } } }).response?.data?.error
+        ?? (err as { response?: { data?: { errors?: string[] } } }).response?.data?.errors?.join(', ')
       setSaveError(msg || 'Failed to save — please try again.')
     } finally {
       setSaving(false)
@@ -1046,21 +1178,24 @@ export default function NewActionBuilder({
   }
 
   const runTest = async () => {
-    if (!editing?.id) {
-      setTestStatus('err')
-      setTestResponse({ success: false, statusCode: 0, responseBody: { error: 'Save this action first, then run a live test.' }, durationMs: 0 })
-      return
-    }
+    if (!isSaved) return
     setTestStatus('running')
     setTestResponse(null)
     try {
       const inputs: Record<string, unknown> = {}
       config.inputFields.forEach((f) => { inputs[f.name] = paramValues[f.name] ?? '' })
-      const result = await onRunTest(editing.id, inputs)
+      const result = await onRunTest(editing!.id, inputs)
       setTestStatus(result.success ? 'ok' : 'err')
       setTestResponse(result)
-    } catch {
+      if (result.success) {
+        try { localStorage.setItem(`ab-tested-${editing!.id}`, 'true') } catch { /* storage unavailable */ }
+      }
+    } catch (err: unknown) {
       setTestStatus('err')
+      const errMsg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? 'Could not reach the test endpoint — check your internet connection.'
+      setTestResponse({ success: false, statusCode: 0, responseBody: { error: errMsg }, durationMs: 0 })
     }
   }
 
@@ -1093,24 +1228,35 @@ export default function NewActionBuilder({
         </button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, justifyContent: 'flex-end', paddingRight: 16 }}>
-          {!isSaved && (
-            <span className="badge badge--neutral">Draft</span>
-          )}
-          <span className="muted" style={{ fontSize: 11.5 }}>
-            Autosaved <span style={{ fontFamily: 'var(--font-mono)' }}>just now</span>
-          </span>
+          {!isSaved && <span className="badge badge--neutral">Draft</span>}
           {saveError && (
-            <span style={{ fontSize: 12, color: 'var(--danger)' }}>{saveError}</span>
+            <span style={{ fontSize: 12, color: 'var(--danger)', maxWidth: 340, textAlign: 'right' }}>{saveError}</span>
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
+          {saveWarnings.length > 0 && (
+            <div
+              title={saveWarnings.map(w => w.msg).join('\n')}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                padding: '3px 8px', borderRadius: 6,
+                background: 'var(--warn-soft)', border: '1px solid rgba(184,106,23,0.25)',
+                fontSize: 12, color: 'var(--warn)', cursor: 'default',
+                fontWeight: 500,
+              }}
+            >
+              <AlertTriangle style={{ width: 11, height: 11 }} />
+              {saveWarnings.length} warning{saveWarnings.length > 1 ? 's' : ''}
+            </div>
+          )}
           <button type="button" onClick={onCancel} className="btn btn--ghost btn--sm">Discard</button>
           <button
             type="button"
             onClick={() => void handleSave()}
             disabled={!isValid || saving}
             className="btn btn--primary btn--sm"
+            title={!name.trim() ? 'Action name is required' : undefined}
           >
             <Check style={{ width: 12, height: 12 }} />
             {saving ? 'Saving…' : 'Save action'}
@@ -1126,6 +1272,7 @@ export default function NewActionBuilder({
         flexShrink: 0,
       }}>
         <div style={{ maxWidth: 720 }}>
+          {/* Action name */}
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -1134,21 +1281,11 @@ export default function NewActionBuilder({
               display: 'block', width: '100%',
               border: 'none', background: 'transparent',
               fontSize: 26, fontWeight: 500, letterSpacing: '-0.02em',
-              color: 'var(--ink)', padding: 0, marginBottom: 6,
+              color: 'var(--ink)', padding: 0, marginBottom: 14,
               fontFamily: 'var(--font-sans)', outline: 'none',
             }}
           />
-          <input
-            value={config.triggerInstructions}
-            onChange={(e) => patchConfig({ triggerInstructions: e.target.value })}
-            placeholder="What does this action do? (visible to the agent)"
-            style={{
-              display: 'block', width: '100%',
-              border: 'none', background: 'transparent',
-              fontSize: 13.5, color: 'var(--ink-3)', padding: 0,
-              marginBottom: 14, fontFamily: 'var(--font-sans)', outline: 'none',
-            }}
-          />
+
           {/* Method + URL bar */}
           <div style={{
             display: 'flex', alignItems: 'stretch',
@@ -1163,7 +1300,7 @@ export default function NewActionBuilder({
                   background: (METHOD_COLORS[method] ?? METHOD_COLORS.POST).bg,
                   color: (METHOD_COLORS[method] ?? METHOD_COLORS.POST).color,
                   fontFamily: 'var(--font-mono)', fontWeight: 700, letterSpacing: '0.04em', fontSize: 12.5,
-                  minWidth: 90,
+                  width: 100, flexShrink: 0,
                 }}
               >
                 <SelectValue />
@@ -1195,7 +1332,6 @@ export default function NewActionBuilder({
       }}>
         {/* Left: tabs + content */}
         <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--line)', overflow: 'hidden' }}>
-          {/* Tab nav */}
           <nav style={{
             display: 'flex', gap: 0, padding: '0 20px',
             borderBottom: '1px solid var(--line)',
@@ -1237,41 +1373,18 @@ export default function NewActionBuilder({
             })}
           </nav>
 
-          {/* Tab content */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px 40px' }}>
-            {tab === 'setup' && (
-              <SetupTab
-                requireConfirm={requireConfirm}
-                setRequireConfirm={setRequireConfirm}
-                streaming={streaming}
-                setStreaming={setStreaming}
-                tags={tags}
-                setTags={setTags}
-              />
-            )}
-            {tab === 'params' && (
-              <ParamsTab config={config} patchConfig={patchConfig} />
-            )}
-            {tab === 'request' && (
-              <RequestTab config={config} patchConfig={patchConfig} method={method} />
-            )}
-            {tab === 'auth' && (
-              <AuthTab config={config} patchConfig={patchConfig} />
-            )}
-            {tab === 'response' && (
-              <ResponseTab config={config} patchConfig={patchConfig} />
-            )}
-            {tab === 'when' && (
-              <WhenToCallTab config={config} patchConfig={patchConfig} />
-            )}
+            {tab === 'setup'    && <SetupTab config={config} patchConfig={patchConfig} />}
+            {tab === 'params'   && <ParamsTab config={config} patchConfig={patchConfig} />}
+            {tab === 'request'  && <RequestTab config={config} patchConfig={patchConfig} method={method} />}
+            {tab === 'auth'     && <AuthTab config={config} patchConfig={patchConfig} />}
+            {tab === 'response' && <ResponseTab config={config} patchConfig={patchConfig} />}
+            {tab === 'when'     && <WhenToCallTab config={config} patchConfig={patchConfig} />}
           </div>
         </div>
 
         {/* Right: test runner */}
-        <aside style={{
-          background: 'var(--bg)', overflowY: 'auto',
-          borderLeft: '1px solid var(--line)',
-        }}>
+        <aside style={{ background: 'var(--bg)', overflowY: 'auto' }}>
           <TestRunner
             config={config}
             method={method}
@@ -1281,6 +1394,7 @@ export default function NewActionBuilder({
             testResponse={testResponse}
             onRun={() => void runTest()}
             onClear={() => { setTestStatus(null); setTestResponse(null) }}
+            isSaved={isSaved}
           />
         </aside>
       </div>

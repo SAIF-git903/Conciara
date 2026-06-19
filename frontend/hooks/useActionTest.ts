@@ -13,6 +13,7 @@ interface ActionTestResult {
   statusCode: number
   responseBody: unknown
   durationMs: number
+  debug?: { url: string; method: string }
 }
 
 function toId(value?: string): number | null {

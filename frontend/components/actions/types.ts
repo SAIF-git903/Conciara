@@ -68,6 +68,10 @@ export interface CustomActionConfig {
   actionFunctionName: string
   inputFields: ActionInputField[]
   responseMapping?: string
+  /** Require user to confirm collected inputs before the action executes */
+  requiresConfirmation?: boolean
+  /** Allow the agent to stream its narration of the action result */
+  allowStreaming?: boolean
   /** Dedicated auth config (per-action). Injected server-side at call time, bypasses header denylist. */
   authConfig?: ActionAuthConfig
 }
