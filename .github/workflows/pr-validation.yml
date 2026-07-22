@@ -1,0 +1,140 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+
+concurrency:
+  group: pr-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Filter paths
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/pr-validation.yml'
+            backend:
+              - 'backend/**'
+              - '.github/workflows/pr-validation.yml'
+
+  frontend:
+    name: Frontend
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint --if-present
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test --if-present
+
+      - name: Build
+        run: npm run build
+        env:
+          # Build-time placeholders so Next.js can compile without real secrets
+          NEXT_PUBLIC_API_URL: http://localhost:3009/api
+          NEXT_PUBLIC_SOCKET_URL: http://localhost:3009
+
+  backend:
+    name: Backend
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint --if-present
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test --if-present
+
+      - name: Build
+        run: npm run build
+
+  # Always runs so branch protection can require this single check
+  # even when Frontend or Backend is skipped by path filters.
+  result:
+    name: PR Validation
+    needs: [changes, frontend, backend]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check job results
+        run: |
+          frontend="${{ needs.frontend.result }}"
+          backend="${{ needs.backend.result }}"
+
+          echo "Frontend: $frontend"
+          echo "Backend: $backend"
+
+          if [[ "$frontend" != "success" && "$frontend" != "skipped" ]]; then
+            echo "Frontend job failed"
+            exit 1
+          fi
+
+          if [[ "$backend" != "success" && "$backend" != "skipped" ]]; then
+            echo "Backend job failed"
+            exit 1
+          fi
+
+          if [[ "$frontend" == "skipped" && "$backend" == "skipped" ]]; then
+            echo "No frontend/backend changes — nothing to validate"
+          fi
+
+          echo "PR validation passed"
