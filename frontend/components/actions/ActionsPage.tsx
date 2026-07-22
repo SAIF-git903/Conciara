@@ -22,9 +22,10 @@ import {
 import { useDashboard } from '@/contexts/DashboardContext'
 import NewActionBuilder from '@/components/actions/custom-actions/NewActionBuilder'
 import CustomButtonsDrawer from '@/components/actions/custom-buttons/CustomButtonsDrawer'
+import WebSearchDrawer from '@/components/actions/web-search/WebSearchDrawer'
 import { useActions } from '@/hooks/useActions'
 import { useActionTest } from '@/hooks/useActionTest'
-import type { ActionType, ChatbotAction, CustomActionConfig, CustomButtonsConfig } from '@/components/actions/types'
+import type { ActionType, ChatbotAction, CustomActionConfig, CustomButtonsConfig, WebSearchConfig } from '@/components/actions/types'
 
 // ──────────────────────── Catalog data ────────────────────────
 interface CatalogItem {
@@ -35,6 +36,7 @@ interface CatalogItem {
   tag: string
   desc: string
   actionType: ActionType | null
+  comingSoon?: boolean
 }
 
 interface CatalogGroup {
@@ -47,21 +49,21 @@ const ACTION_CATALOG: CatalogGroup[] = [
     group: 'Custom',
     items: [
       { id: 'custom-server',    icon: Server,           color: '#5b6cff', name: 'Server',           tag: 'API',      desc: 'Call an external API. The agent uses the response to answer the user.',                       actionType: 'custom_action' },
-      { id: 'custom-server-ui', icon: Layers,            color: '#7c3aed', name: 'Server + Widget',  tag: 'API + UI', desc: 'Call an API and display the result as a rich interactive widget in chat.',                     actionType: null },
-      { id: 'custom-client',    icon: Code2,             color: '#0891b2', name: 'Client',           tag: 'Browser',  desc: "Run JavaScript in the user's browser via your embed. No server needed.",                       actionType: null },
-      { id: 'custom-widget',    icon: LayoutTemplate,    color: '#475569', name: 'Widget only',      tag: 'UI',       desc: 'Show a standalone widget in chat — no API call. Built from conversation context.',              actionType: null },
+      { id: 'custom-server-ui', icon: Layers,            color: '#7c3aed', name: 'Server + Widget',  tag: 'API + UI', desc: 'Call an API and display the result as a rich interactive widget in chat.',                     actionType: null,           comingSoon: true },
+      { id: 'custom-client',    icon: Code2,             color: '#0891b2', name: 'Client',           tag: 'Browser',  desc: "Run JavaScript in the user's browser via your embed. No server needed.",                       actionType: null,           comingSoon: true },
+      { id: 'custom-widget',    icon: LayoutTemplate,    color: '#475569', name: 'Widget only',      tag: 'UI',       desc: 'Show a standalone widget in chat — no API call. Built from conversation context.',              actionType: null,           comingSoon: true },
     ],
   },
   {
     group: 'Integrations',
     items: [
-      { id: 'stripe',        icon: CreditCard,        color: '#635bff', name: 'Stripe',            tag: 'Payments',    desc: 'Show invoices, subscriptions, and billing info. Let users update payment methods.',             actionType: 'stripe' },
+      { id: 'stripe',        icon: CreditCard,        color: '#635bff', name: 'Stripe',            tag: 'Payments',    desc: 'Show invoices, subscriptions, and billing info. Let users update payment methods.',             actionType: 'stripe',         comingSoon: true },
       { id: 'web-search',    icon: Search,            color: '#0e9b6b', name: 'Web Search',        tag: 'Search',      desc: 'Search the web in real time. Gives the agent access to current, up-to-date information.',       actionType: 'web_search' },
-      { id: 'collect-leads', icon: UserPlus,          color: '#b86a17', name: 'Collect Leads',     tag: 'CRM',         desc: 'Collect name, email, and phone from users. Leads are stored in your dashboard.',                actionType: 'collect_leads' },
-      { id: 'escalate',      icon: Headphones,        color: '#c33665', name: 'Escalate to Human', tag: 'Support',     desc: 'Create support tickets in Zendesk, Salesforce, Intercom, Freshdesk, or Zoho Desk.',             actionType: 'escalate_human' },
-      { id: 'slack',         icon: MessageSquare,     color: '#611f69', name: 'Slack',             tag: 'Notify',      desc: 'Send messages to Slack channels or DMs when an event happens inside the chat.',                actionType: 'slack' },
-      { id: 'calendly',      icon: CalendarDays,      color: '#00a2ff', name: 'Calendly',          tag: 'Scheduling',  desc: 'Show available time slots and let users book meetings — directly inside the conversation.',     actionType: 'calendly' },
-      { id: 'cal-com',       icon: Calendar,          color: '#111118', name: 'Cal.com',           tag: 'Scheduling',  desc: 'Connect a Cal.com event URL. Users can browse availability and confirm bookings in chat.',      actionType: null },
+      { id: 'collect-leads', icon: UserPlus,          color: '#b86a17', name: 'Collect Leads',     tag: 'CRM',         desc: 'Collect name, email, and phone from users. Leads are stored in your dashboard.',                actionType: 'collect_leads',  comingSoon: true },
+      { id: 'escalate',      icon: Headphones,        color: '#c33665', name: 'Escalate to Human', tag: 'Support',     desc: 'Create support tickets in Zendesk, Salesforce, Intercom, Freshdesk, or Zoho Desk.',             actionType: 'escalate_human', comingSoon: true },
+      { id: 'slack',         icon: MessageSquare,     color: '#611f69', name: 'Slack',             tag: 'Notify',      desc: 'Send messages to Slack channels or DMs when an event happens inside the chat.',                actionType: 'slack',          comingSoon: true },
+      { id: 'calendly',      icon: CalendarDays,      color: '#00a2ff', name: 'Calendly',          tag: 'Scheduling',  desc: 'Show available time slots and let users book meetings — directly inside the conversation.',     actionType: 'calendly',       comingSoon: true },
+      { id: 'cal-com',       icon: Calendar,          color: '#111118', name: 'Cal.com',           tag: 'Scheduling',  desc: 'Connect a Cal.com event URL. Users can browse availability and confirm bookings in chat.',      actionType: null,             comingSoon: true },
       { id: 'buttons',       icon: MousePointerClick, color: '#1d8348', name: 'Custom Buttons',    tag: 'Navigation',  desc: 'Display tappable buttons that route users to specific pages or trigger flows.',                actionType: 'custom_buttons' },
     ],
   },
@@ -69,7 +71,7 @@ const ACTION_CATALOG: CatalogGroup[] = [
 
 const ALL_CATALOG_ITEMS: CatalogItem[] = ACTION_CATALOG.flatMap(g => g.items)
 
-const ACTION_TYPE_DESIGN_META: Record<string, { label: string; color: string }> = {
+const ACTION_TYPE_DESIGN_META: Record<string, { label: string; color: string; onRowClick?: (setOpenType: (t: ActionType) => void) => void }> = {
   custom_action:   { label: 'Server',     color: '#5b6cff' },
   custom_buttons:  { label: 'Buttons',    color: '#1d8348' },
   stripe:          { label: 'Stripe',     color: '#635bff' },
@@ -169,6 +171,7 @@ export default function ActionsPage({ chatbotIdParam }: ActionsPageProps) {
 
   const allActions = useMemo(() => Object.values(actionsByType).flat(), [actionsByType])
   const customButtons = useMemo(() => actionsByType.custom_buttons ?? [], [actionsByType])
+  const webSearchActions = useMemo(() => actionsByType.web_search ?? [], [actionsByType])
   const activeCount = useMemo(() => allActions.filter(a => a.isEnabled).length, [allActions])
   const dangerCount = useMemo(() => {
     return allActions.filter(a => {
@@ -183,20 +186,17 @@ export default function ActionsPage({ chatbotIdParam }: ActionsPageProps) {
   }
 
   const handleCatalogConfigure = (item: CatalogItem) => {
+    if (item.comingSoon) return
     if (item.actionType === 'custom_action') {
       setView('builder')
     } else if (item.actionType === 'custom_buttons') {
       setView('list')
       setSelectedCatalogId(null)
       setOpenType('custom_buttons')
-    } else if (item.actionType) {
-      addToast(`${item.name} coming soon`)
+    } else if (item.actionType === 'web_search') {
       setView('list')
       setSelectedCatalogId(null)
-    } else {
-      addToast(`${item.name} coming soon`)
-      setView('list')
-      setSelectedCatalogId(null)
+      setOpenType('web_search')
     }
   }
 
@@ -214,8 +214,7 @@ export default function ActionsPage({ chatbotIdParam }: ActionsPageProps) {
               config: payload.config as CustomActionConfig,
             })
             addToast('Action saved')
-            setBuilderEditing(null)
-            setView('list')
+            setBuilderEditing(action)
             return action
           }}
           onRunTest={runTest}
@@ -284,23 +283,35 @@ export default function ActionsPage({ chatbotIdParam }: ActionsPageProps) {
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                         <div style={{
                           width: 34, height: 34, borderRadius: 'var(--r-md)',
-                          background: item.color + '18',
+                          background: item.color + (item.comingSoon ? '0d' : '18'),
                           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                          color: item.color, flexShrink: 0,
+                          color: item.comingSoon ? 'var(--ink-4)' : item.color, flexShrink: 0,
                         }}>
                           <Icon style={{ width: 16, height: 16 }} />
                         </div>
-                        <span style={{
-                          fontSize: 10.5, fontWeight: 600, fontFamily: 'var(--font-mono)',
-                          padding: '2px 7px', borderRadius: 'var(--r-sm)',
-                          background: 'var(--bg-2)', color: 'var(--ink-3)',
-                          whiteSpace: 'nowrap',
-                        }}>
-                          {item.tag}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {item.comingSoon && (
+                            <span style={{
+                              fontSize: 9.5, fontWeight: 600, fontFamily: 'var(--font-mono)',
+                              padding: '2px 6px', borderRadius: 'var(--r-sm)',
+                              background: 'var(--bg-2)', color: 'var(--ink-4)',
+                              whiteSpace: 'nowrap', letterSpacing: '0.04em',
+                            }}>
+                              SOON
+                            </span>
+                          )}
+                          <span style={{
+                            fontSize: 10.5, fontWeight: 600, fontFamily: 'var(--font-mono)',
+                            padding: '2px 7px', borderRadius: 'var(--r-sm)',
+                            background: 'var(--bg-2)', color: 'var(--ink-3)',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {item.tag}
+                          </span>
+                        </div>
                       </div>
-                      <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--ink)' }}>{item.name}</div>
-                      <div style={{ fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.45 }}>{item.desc}</div>
+                      <div style={{ fontWeight: 600, fontSize: 13.5, color: item.comingSoon ? 'var(--ink-3)' : 'var(--ink)' }}>{item.name}</div>
+                      <div style={{ fontSize: 12, color: item.comingSoon ? 'var(--ink-4)' : 'var(--ink-3)', lineHeight: 1.45 }}>{item.desc}</div>
                     </button>
                   )
                 })}
@@ -319,10 +330,12 @@ export default function ActionsPage({ chatbotIdParam }: ActionsPageProps) {
             <button
               type="button"
               className="btn btn--primary"
-              disabled={!selectedCatalogId}
-              onClick={() => { if (selectedItem) handleCatalogConfigure(selectedItem) }}
+              disabled={!selectedCatalogId || (selectedItem?.comingSoon ?? false)}
+              onClick={() => { if (selectedItem && !selectedItem.comingSoon) handleCatalogConfigure(selectedItem) }}
             >
-              Configure {selectedItem ? selectedItem.name : 'action'} →
+              {selectedItem?.comingSoon
+                ? 'Coming soon'
+                : `Configure ${selectedItem ? selectedItem.name : 'action'} →`}
             </button>
           </div>
         </div>
@@ -553,16 +566,22 @@ export default function ActionsPage({ chatbotIdParam }: ActionsPageProps) {
         }}>
           {ALL_CATALOG_ITEMS.map(item => {
             const Icon = item.icon
+            const handleTileClick = () => {
+              if (item.comingSoon) { setSelectedCatalogId(item.id); setView('catalog'); return }
+              handleCatalogConfigure(item)
+            }
             return (
               <button
                 key={item.id}
                 type="button"
-                onClick={() => { setSelectedCatalogId(item.id); setView('catalog') }}
+                onClick={handleTileClick}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '10px 12px', borderRadius: 'var(--r-md)',
-                  border: '1px solid var(--line)', background: 'var(--surface)',
+                  border: '1px solid var(--line)',
+                  background: 'var(--surface)',
                   cursor: 'pointer', textAlign: 'left', transition: 'border-color .12s',
+                  opacity: item.comingSoon ? 0.65 : 1,
                 }}
                 className="hover:border-[var(--line-strong)]"
               >
@@ -575,7 +594,9 @@ export default function ActionsPage({ chatbotIdParam }: ActionsPageProps) {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--ink)' }}>{item.name}</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 1 }}>{item.tag}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 1 }}>
+                    {item.comingSoon ? 'Coming soon' : item.tag}
+                  </div>
                 </div>
                 <ChevronRight style={{ width: 13, height: 13, color: 'var(--ink-4)', flexShrink: 0 }} />
               </button>
@@ -605,6 +626,30 @@ export default function ActionsPage({ chatbotIdParam }: ActionsPageProps) {
         }}
         onToggle={async (actionId, next) => {
           try { await toggleAction(actionId, next); addToast(next ? 'Action enabled' : 'Action disabled') }
+          catch { addToast('Failed to update — please try again', 'error') }
+        }}
+      />
+
+      {/* Web Search drawer */}
+      <WebSearchDrawer
+        open={openType === 'web_search'}
+        actions={webSearchActions}
+        onOpenChange={(open) => { if (!open) setOpenType(null) }}
+        onSave={async (payload) => {
+          const action = await saveAction({
+            ...payload,
+            type: 'web_search',
+            config: payload.config as WebSearchConfig,
+          })
+          addToast('Web Search saved')
+          return action
+        }}
+        onDelete={async (actionId) => {
+          try { await deleteAction(actionId); addToast('Web Search removed') }
+          catch { addToast('Failed to delete — please try again', 'error') }
+        }}
+        onToggle={async (actionId, next) => {
+          try { await toggleAction(actionId, next); addToast(next ? 'Web Search enabled' : 'Web Search disabled') }
           catch { addToast('Failed to update — please try again', 'error') }
         }}
       />

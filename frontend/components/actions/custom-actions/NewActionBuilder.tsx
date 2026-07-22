@@ -124,6 +124,8 @@ interface TestResult {
   responseBody: unknown
   durationMs: number
   debug?: { url: string; method: string }
+  responseHeaders?: Record<string, string>
+  responseSize?: number
 }
 
 interface NewActionBuilderProps {
@@ -876,6 +878,77 @@ interface TestRunnerProps {
   isSaved: boolean
 }
 
+// ── HTTP status text ────────────────────────────────────────────
+const HTTP_STATUS_TEXT: Record<number, string> = {
+  200: 'OK', 201: 'Created', 202: 'Accepted', 204: 'No Content',
+  301: 'Moved Permanently', 302: 'Found', 304: 'Not Modified',
+  400: 'Bad Request', 401: 'Unauthorized', 403: 'Forbidden',
+  404: 'Not Found', 405: 'Method Not Allowed', 408: 'Timeout',
+  409: 'Conflict', 410: 'Gone', 422: 'Unprocessable Entity', 429: 'Too Many Requests',
+  500: 'Internal Server Error', 502: 'Bad Gateway', 503: 'Service Unavailable', 504: 'Gateway Timeout',
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  return `${(bytes / 1024).toFixed(1)} KB`
+}
+
+function smartFillValue(field: ActionInputField): string {
+  const hint = `${field.name} ${field.description ?? ''}`.toLowerCase()
+  if (field.type === 'boolean') return 'true'
+  if (field.type === 'number') {
+    if (/page|offset/.test(hint)) return '1'
+    if (/limit|size|count|max/.test(hint)) return '10'
+    if (/price|amount|total|cost|fee/.test(hint)) return '99.99'
+    return '42'
+  }
+  if (/email/.test(hint)) return 'user@example.com'
+  if (/phone|mobile|tel/.test(hint)) return '+1-555-0100'
+  if (/_id$|^id$|identifier/.test(field.name.toLowerCase())) return '12345'
+  if (/url|link|endpoint|website/.test(hint)) return 'https://example.com'
+  if (/first.?name/.test(hint)) return 'Jane'
+  if (/last.?name/.test(hint)) return 'Smith'
+  if (/name|username/.test(hint)) return 'Jane Smith'
+  if (/date|birthday/.test(hint)) return new Date().toISOString().slice(0, 10)
+  if (/city/.test(hint)) return 'New York'
+  if (/country/.test(hint)) return 'US'
+  if (/zip|postal/.test(hint)) return '10001'
+  if (/message|body|text|content/.test(hint)) return 'Hello, this is a test.'
+  if (/token|key|secret/.test(hint)) return 'test-token-abc123'
+  if (/status/.test(hint)) return 'active'
+  if (/type|category/.test(hint)) return 'default'
+  return `sample_${field.name}`
+}
+
+function summariseResponse(body: unknown): string {
+  if (Array.isArray(body)) {
+    if (body.length === 0) return 'Empty array returned.'
+    const first = body[0]
+    if (first && typeof first === 'object' && !Array.isArray(first)) {
+      const keys = Object.keys(first as Record<string, unknown>)
+      const preview = keys.slice(0, 5).join(', ')
+      const extra = keys.length > 5 ? ` +${keys.length - 5} more` : ''
+      return `${body.length} item${body.length !== 1 ? 's' : ''} returned — fields: ${preview}${extra}`
+    }
+    return `${body.length} item${body.length !== 1 ? 's' : ''} returned`
+  }
+  if (body && typeof body === 'object') {
+    const obj = body as Record<string, unknown>
+    for (const k of ['data', 'items', 'results', 'records', 'list', 'rows', 'content']) {
+      if (Array.isArray(obj[k])) {
+        const arr = obj[k] as unknown[]
+        return `${arr.length} ${k} returned`
+      }
+    }
+    const keys = Object.keys(obj)
+    const preview = keys.slice(0, 5).join(', ')
+    const extra = keys.length > 5 ? ` +${keys.length - 5} more` : ''
+    return `Object with ${keys.length} field${keys.length !== 1 ? 's' : ''}: ${preview}${extra}`
+  }
+  if (typeof body === 'string') return `Plain text (${(body as string).length} chars)`
+  return 'Response received'
+}
+
 function TestRunner({
   config,
   method,
@@ -887,25 +960,60 @@ function TestRunner({
   onClear,
   isSaved,
 }: TestRunnerProps) {
+  const [responseTab, setResponseTab] = useState<'body' | 'headers'>('body')
+  const [bodyMode, setBodyMode] = useState<'pretty' | 'raw'>('pretty')
+  const [copied, setCopied] = useState(false)
+  const [reqBodyOpen, setReqBodyOpen] = useState(false)
+
   const fields = config.inputFields ?? []
   const headers = config.headers ?? []
+  const queryParams = (config.queryParams ?? []).filter((q: ActionKeyValuePair) => q.key)
+  const bodyParams = (config.bodyParams ?? []).filter((b: ActionKeyValuePair) => b.key)
   const url = (config.apiUrl ?? '').replace(/\{\{(\w+)\}\}/g, (_, k: string) => paramValues[k] ?? `{{${k}}}`)
   const methodStyle = METHOD_COLORS[method] ?? { bg: 'var(--bg-2)', color: 'var(--ink-3)' }
+  const methodUpper = method.toUpperCase()
+  const hasBody = ['POST', 'PUT', 'PATCH'].includes(methodUpper)
+
+  const hasResponseHeaders = !!(
+    testResponse?.responseHeaders && Object.keys(testResponse.responseHeaders).length > 0
+  )
+  const bodyJson = testResponse
+    ? (bodyMode === 'pretty'
+        ? JSON.stringify(testResponse.responseBody, null, 2)
+        : JSON.stringify(testResponse.responseBody))
+    : ''
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(bodyJson).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }).catch(() => { /* clipboard unavailable */ })
+  }
+
+  const monoBlock: React.CSSProperties = {
+    background: 'var(--surface)', border: '1px solid var(--line)',
+    borderRadius: 8, padding: '10px 12px',
+    fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.7,
+    color: 'var(--ink-2)',
+  }
+
+  const eyebrowSt: React.CSSProperties = {
+    fontFamily: 'var(--font-mono)', fontSize: 10.5,
+    letterSpacing: '0.08em', textTransform: 'uppercase' as const,
+    color: 'var(--ink-3)', fontWeight: 500,
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+
+      {/* ── Sticky header ── */}
       <div style={{
         display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
         padding: '14px 16px', borderBottom: '1px solid var(--line)',
-        background: 'var(--surface)',
-        position: 'sticky', top: 0, zIndex: 5,
+        background: 'var(--surface)', position: 'sticky', top: 0, zIndex: 5,
       }}>
         <div>
-          <div style={{
-            fontFamily: 'var(--font-mono)', fontSize: 10.5,
-            letterSpacing: '0.08em', textTransform: 'uppercase',
-            color: 'var(--ink-3)', fontWeight: 500,
-          }}>Test runner</div>
+          <div style={eyebrowSt}>Test runner</div>
           <div style={{ fontSize: 11.5, color: 'var(--ink-4)', marginTop: 2 }}>
             Calls the real API with sample inputs.
           </div>
@@ -916,24 +1024,38 @@ function TestRunner({
       </div>
 
       <div style={{ padding: '14px 16px 40px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+        {/* ── Unsaved warning ── */}
         {!isSaved && (
           <div style={{
-            display: 'flex', alignItems: 'flex-start', gap: 8,
-            padding: '10px 12px', background: 'var(--warn-soft)',
-            border: '1px solid rgba(184,106,23,0.2)', borderRadius: 8,
-            fontSize: 12.5, color: 'var(--warn)',
+            display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 12px',
+            background: 'var(--warn-soft)', border: '1px solid rgba(184,106,23,0.2)',
+            borderRadius: 8, fontSize: 12.5, color: 'var(--warn)',
           }}>
             <AlertTriangle style={{ width: 12, height: 12, flexShrink: 0, marginTop: 1 }} />
             Save this action first, then run a live test.
           </div>
         )}
 
+        {/* ── Sample inputs ── */}
         <div>
-          <div style={{
-            fontFamily: 'var(--font-mono)', fontSize: 10.5,
-            letterSpacing: '0.08em', textTransform: 'uppercase',
-            color: 'var(--ink-3)', fontWeight: 500, marginBottom: 8,
-          }}>Sample inputs</div>
+          <div style={{ ...eyebrowSt, display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span>Sample inputs</span>
+            {fields.length > 0 && (
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                style={{ fontSize: 11 }}
+                onClick={() => {
+                  const filled: Record<string, string> = {}
+                  fields.forEach((f) => { filled[f.name] = smartFillValue(f) })
+                  setParamValues((v) => ({ ...v, ...filled }))
+                }}
+              >
+                ✨ Auto-fill
+              </button>
+            )}
+          </div>
           {fields.length === 0 ? (
             <div style={{ fontSize: 12.5, color: 'var(--ink-4)' }}>
               No parameters defined. Add some on the Parameters tab.
@@ -959,24 +1081,18 @@ function TestRunner({
           )}
         </div>
 
+        {/* ── Outgoing request preview ── */}
         <div>
-          <div style={{
-            fontFamily: 'var(--font-mono)', fontSize: 10.5,
-            letterSpacing: '0.08em', textTransform: 'uppercase',
-            color: 'var(--ink-3)', fontWeight: 500, marginBottom: 8,
-          }}>Outgoing request</div>
-          <div style={{
-            background: 'var(--surface)', border: '1px solid var(--line)',
-            borderRadius: 8, padding: '10px 12px',
-            fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.7,
-            color: 'var(--ink-2)', overflowX: 'auto',
-          }}>
+          <div style={{ ...eyebrowSt, marginBottom: 8 }}>Outgoing request</div>
+          <div style={{ ...monoBlock, overflowX: 'auto' }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, paddingBottom: 8, borderBottom: '1px dashed var(--line)' }}>
               <span style={{
                 padding: '2px 7px', borderRadius: 4, fontSize: 10.5, fontWeight: 700,
                 letterSpacing: '0.04em', background: methodStyle.bg, color: methodStyle.color,
               }}>{method}</span>
-              <span style={{ fontSize: 11.5, color: 'var(--ink)', wordBreak: 'break-all' }}>{url || 'https://api.example.com/…'}</span>
+              <span style={{ fontSize: 11.5, color: 'var(--ink)', wordBreak: 'break-all' }}>
+                {url || 'https://api.example.com/…'}
+              </span>
             </div>
             {headers.filter((h) => h.key).map((h, i) => (
               <div key={i} style={{ display: 'flex', gap: 6 }}>
@@ -984,9 +1100,41 @@ function TestRunner({
                 <span style={{ color: 'var(--ink)' }}>{h.value}</span>
               </div>
             ))}
+            {queryParams.length > 0 && (
+              <>
+                <div style={{ margin: '6px 0 3px', color: 'var(--ink-4)', fontSize: 10, letterSpacing: '0.06em' }}>
+                  ── Query params ──
+                </div>
+                {queryParams.map((q: ActionKeyValuePair, i: number) => (
+                  <div key={i} style={{ display: 'flex', gap: 6 }}>
+                    <span style={{ color: 'var(--ink-3)' }}>{q.key}:</span>
+                    <span style={{ color: 'var(--ink)' }}>{q.value ?? ''}</span>
+                  </div>
+                ))}
+              </>
+            )}
+            {hasBody && bodyParams.length > 0 && (
+              <>
+                <div
+                  style={{ margin: '6px 0 3px', color: 'var(--ink-4)', fontSize: 10, letterSpacing: '0.06em', cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => setReqBodyOpen((o) => !o)}
+                >
+                  {reqBodyOpen ? '▾' : '▸'} ── Body ──
+                </div>
+                {reqBodyOpen && (
+                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 10.5, color: 'var(--ink)' }}>
+                    {JSON.stringify(
+                      Object.fromEntries(bodyParams.map((b: ActionKeyValuePair) => [b.key, b.value || `{{${b.key}}}`])),
+                      null, 2,
+                    )}
+                  </pre>
+                )}
+              </>
+            )}
           </div>
         </div>
 
+        {/* ── Run button ── */}
         <button
           type="button"
           onClick={onRun}
@@ -1001,63 +1149,139 @@ function TestRunner({
           )}
         </button>
 
+        {/* ── Response ── */}
         {testResponse && (
           <div>
+
+            {/* Resolved request */}
             {testResponse.debug && (
               <div style={{ marginBottom: 10 }}>
-                <div style={{
-                  fontFamily: 'var(--font-mono)', fontSize: 10.5,
-                  letterSpacing: '0.08em', textTransform: 'uppercase',
-                  color: 'var(--ink-3)', fontWeight: 500, marginBottom: 6,
-                }}>
-                  Resolved request
-                </div>
-                <div style={{
-                  background: 'var(--surface)', border: '1px solid var(--line)',
-                  borderRadius: 8, padding: '8px 12px',
-                  fontFamily: 'var(--font-mono)', fontSize: 11.5,
-                  display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-                }}>
+                <div style={{ ...eyebrowSt, marginBottom: 6 }}>Resolved request</div>
+                <div style={{ ...monoBlock, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
                   <span style={{
                     padding: '2px 7px', borderRadius: 4, fontSize: 10.5, fontWeight: 700,
                     letterSpacing: '0.04em',
                     background: (METHOD_COLORS[testResponse.debug.method] ?? METHOD_COLORS.POST).bg,
                     color: (METHOD_COLORS[testResponse.debug.method] ?? METHOD_COLORS.POST).color,
-                  }}>
-                    {testResponse.debug.method}
-                  </span>
+                  }}>{testResponse.debug.method}</span>
                   <span style={{ color: 'var(--ink)', wordBreak: 'break-all', fontSize: 11.5 }}>
                     {testResponse.debug.url}
                   </span>
                 </div>
               </div>
             )}
+
+            {/* Status bar */}
             <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              fontFamily: 'var(--font-mono)', fontSize: 10.5,
-              letterSpacing: '0.08em', textTransform: 'uppercase',
-              color: 'var(--ink-3)', fontWeight: 500, marginBottom: 8,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '7px 12px',
+              background: testResponse.success ? 'var(--success-soft)' : 'var(--danger-soft)',
+              border: `1px solid ${testResponse.success ? 'rgba(14,155,107,0.2)' : 'rgba(195,54,101,0.15)'}`,
+              borderRadius: 8, marginBottom: 10, gap: 8,
             }}>
-              <span>Response</span>
-              <span className={`badge ${testResponse.success ? 'badge--success' : 'badge--danger'}`}>
-                {testResponse.statusCode > 0 ? `${testResponse.statusCode} · ${testResponse.durationMs}ms` : 'Error'}
+              <span style={{
+                fontFamily: 'var(--font-mono)', fontSize: 11.5, fontWeight: 600,
+                color: testResponse.success ? 'var(--success)' : 'var(--danger)',
+              }}>
+                {testResponse.statusCode > 0
+                  ? `${testResponse.statusCode} ${HTTP_STATUS_TEXT[testResponse.statusCode] ?? ''}`
+                  : 'Error'
+                }
+                {' · '}{testResponse.durationMs}ms
+                {testResponse.responseSize != null
+                  ? ` · ${formatBytes(testResponse.responseSize)}`
+                  : ''
+                }
               </span>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={handleCopy}
+                style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
+              >
+                <Copy style={{ width: 10, height: 10 }} />
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
             </div>
-            <div style={{
-              background: 'var(--surface)', border: '1px solid var(--line)',
-              borderRadius: 8, padding: '10px 12px',
-              fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.7,
-              overflowX: 'auto', maxHeight: 220, overflowY: 'auto',
-            }}>
-              <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 11 }}>
-                {JSON.stringify(testResponse.responseBody, null, 2)}
-              </pre>
+
+            {/* Body / Headers tabs */}
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8, borderBottom: '1px solid var(--line)' }}>
+              {(['body', ...(hasResponseHeaders ? ['headers'] : [])] as Array<'body' | 'headers'>).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setResponseTab(t)}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    padding: '5px 10px 6px', fontSize: 12, fontWeight: 500,
+                    color: responseTab === t ? 'var(--ink)' : 'var(--ink-3)',
+                    borderBottom: `2px solid ${responseTab === t ? 'var(--accent)' : 'transparent'}`,
+                    marginBottom: -1, textTransform: 'capitalize' as const,
+                  }}
+                >
+                  {t}
+                </button>
+              ))}
+              {responseTab === 'body' && (
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 2 }}>
+                  {(['pretty', 'raw'] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setBodyMode(m)}
+                      style={{
+                        background: bodyMode === m ? 'var(--bg-2)' : 'none',
+                        border: '1px solid ' + (bodyMode === m ? 'var(--line)' : 'transparent'),
+                        borderRadius: 4, cursor: 'pointer',
+                        padding: '2px 8px', fontSize: 10.5, color: 'var(--ink-3)',
+                        textTransform: 'capitalize' as const,
+                      }}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
+
+            {/* Body tab */}
+            {responseTab === 'body' && (
+              <div style={{ ...monoBlock, overflowX: 'auto', maxHeight: 220, overflowY: 'auto' }}>
+                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 11 }}>
+                  {bodyJson}
+                </pre>
+              </div>
+            )}
+
+            {/* Headers tab */}
+            {responseTab === 'headers' && hasResponseHeaders && (
+              <div style={{ ...monoBlock, maxHeight: 220, overflowY: 'auto' }}>
+                {Object.entries(testResponse.responseHeaders!).map(([k, v]) => (
+                  <div key={k} style={{ display: 'flex', gap: 6, marginBottom: 2 }}>
+                    <span style={{ color: 'var(--ink-3)', flexShrink: 0 }}>{k}:</span>
+                    <span style={{ color: 'var(--ink)', wordBreak: 'break-all' }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* ✨ AI summary */}
             {testResponse.success && (
               <div style={{
-                display: 'flex', alignItems: 'flex-start', gap: 8,
-                padding: '10px 12px', background: 'var(--success-soft)',
-                border: '1px solid rgba(14,155,107,0.2)', borderRadius: 8, marginTop: 8,
+                marginTop: 8, padding: '6px 10px',
+                background: 'var(--bg-2)', borderRadius: 6,
+                fontSize: 11.5, color: 'var(--ink-3)', fontFamily: 'var(--font-mono)',
+              }}>
+                ✨ {summariseResponse(testResponse.responseBody)}
+              </div>
+            )}
+
+            {/* Success banner */}
+            {testResponse.success && (
+              <div style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 12px',
+                background: 'var(--success-soft)', border: '1px solid rgba(14,155,107,0.2)',
+                borderRadius: 8, marginTop: 8,
               }}>
                 <Check style={{ width: 11, height: 11, color: 'var(--success)', marginTop: 2, flexShrink: 0 }} />
                 <div>
@@ -1068,6 +1292,8 @@ function TestRunner({
                 </div>
               </div>
             )}
+
+            {/* Error diagnostic */}
             {!testResponse.success && (() => {
               const diag = getTestDiagnostic(testResponse.statusCode, testResponse.responseBody)
               return (
@@ -1089,6 +1315,7 @@ function TestRunner({
                 </div>
               )
             })()}
+
           </div>
         )}
       </div>

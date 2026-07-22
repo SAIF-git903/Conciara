@@ -6,21 +6,46 @@ import { useDashboard } from '@/contexts/DashboardContext'
 import { buildDashboardUrl } from '@/lib/dashboard-url'
 import api from '@/lib/api'
 import { ArrowRight, Check } from 'lucide-react'
+import { SiWhatsapp, SiZendesk, SiShopify, SiIntercom, SiHubspot } from 'react-icons/si'
+
+// Slack official multicolor logo
+function SlackLogo({ size = 26 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 127 127" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M27.2 80c0 7.3-5.9 13.2-13.2 13.2C6.7 93.2.8 87.3.8 80c0-7.3 5.9-13.2 13.2-13.2h13.2V80z" fill="#E01E5A"/>
+      <path d="M33.6 80c0-7.3 5.9-13.2 13.2-13.2 7.3 0 13.2 5.9 13.2 13.2v33c0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V80z" fill="#E01E5A"/>
+      <path d="M46.8 27c-7.3 0-13.2-5.9-13.2-13.2C33.6 6.5 39.5.6 46.8.6c7.3 0 13.2 5.9 13.2 13.2V27H46.8z" fill="#36C5F0"/>
+      <path d="M46.8 33.4c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H13.8C6.5 59.8.6 53.9.6 46.6c0-7.3 5.9-13.2 13.2-13.2h33z" fill="#36C5F0"/>
+      <path d="M99.8 46.6c0-7.3 5.9-13.2 13.2-13.2 7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H99.8V46.6z" fill="#2EB67D"/>
+      <path d="M93.4 46.6c0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V13.6C66.9 6.3 72.9.4 80.2.4c7.3 0 13.2 5.9 13.2 13.2v33z" fill="#2EB67D"/>
+      <path d="M80.2 100c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V100h13.2z" fill="#ECB22E"/>
+      <path d="M80.2 93.6c-7.3 0-13.2-5.9-13.2-13.2 0-7.3 5.9-13.2 13.2-13.2h33c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2h-33z" fill="#ECB22E"/>
+    </svg>
+  )
+}
+
+// Brand icon config: color used for the Si* icon and the tinted background
+const BRAND_ICONS: Record<string, { Icon?: React.ElementType; color: string; bg: string; custom?: React.ElementType }> = {
+  slack:    { color: '#000', bg: '#ffffff', custom: SlackLogo },
+  whatsapp: { Icon: SiWhatsapp, color: '#25D366', bg: '#e9faf0' },
+  zendesk:  { Icon: SiZendesk,  color: '#00363D', bg: '#e6f4f5' },
+  shopify:  { Icon: SiShopify,  color: '#96BF48', bg: '#f2f7e8' },
+  intercom: { Icon: SiIntercom, color: '#1F8DED', bg: '#e8f3fd' },
+  hubspot:  { Icon: SiHubspot,  color: '#FF7A59', bg: '#fff1ee' },
+}
 
 const APPS = [
   {
     id: 'slack',
     name: 'Slack',
     desc: 'Respond in channels and DMs. @mention your agent or message it directly.',
-    color: '#611f69',
-    letter: '#',
     available: true,
   },
-  { id: 'whatsapp', name: 'WhatsApp', desc: 'Chat with customers over WhatsApp Business.', color: '#25d366', letter: 'W', available: false },
-  { id: 'zendesk', name: 'Zendesk', desc: 'Support tickets and help center in one place.', color: '#03363d', letter: 'Z', available: false },
-  { id: 'shopify', name: 'Shopify', desc: 'Product and order context for your store.', color: '#7ab55c', letter: 'S', available: false },
-  { id: 'intercom', name: 'Intercom', desc: 'Hand off to humans inside Intercom.', color: '#1f8ded', letter: 'I', available: false },
-  { id: 'hubspot', name: 'HubSpot', desc: 'Sync CRM contacts and conversations.', color: '#ff7a59', letter: 'H', available: false },
+  { id: 'whatsapp', name: 'WhatsApp', desc: 'Chat with customers over WhatsApp Business.', available: false },
+  { id: 'zendesk',  name: 'Zendesk',  desc: 'Support tickets and help center in one place.', available: false },
+  { id: 'shopify',  name: 'Shopify',  desc: 'Product and order context for your store.', available: false },
+  { id: 'intercom', name: 'Intercom', desc: 'Hand off to humans inside Intercom.', available: false },
+  { id: 'hubspot',  name: 'HubSpot',  desc: 'Sync CRM contacts and conversations.', available: false },
 ] as const
 
 function getSlackHref(workspaceId: number | undefined, agentId: string | undefined): string {
@@ -96,25 +121,30 @@ export default function ConnectedAppsPage() {
                   transition: 'border-color .12s ease',
                 }}
               >
-                {/* Card Top: mark + badge */}
+                {/* Card Top: brand icon + badge */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 'var(--r-md)',
-                      background: app.color,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white',
-                      fontWeight: 700,
-                      fontSize: 16,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {app.letter}
-                  </div>
+                  {(() => {
+                    const brand = BRAND_ICONS[app.id]
+                    const Custom = brand?.custom
+                    const Icon = brand?.Icon
+                    return (
+                      <div
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 10,
+                          background: brand?.bg ?? '#f5f5f5',
+                          border: '1px solid rgba(0,0,0,0.07)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {Custom ? <Custom size={26} /> : Icon ? <Icon size={24} color={brand?.color} /> : null}
+                      </div>
+                    )
+                  })()}
                   {connected ? (
                     <span
                       style={{

@@ -88,7 +88,12 @@ export interface CustomButtonsConfig {
   triggerInstructions: string
 }
 
-export type SupportedActionConfig = CustomActionConfig | CustomButtonsConfig
+export interface WebSearchConfig {
+  maxResults: number
+  triggerInstructions: string
+}
+
+export type SupportedActionConfig = CustomActionConfig | CustomButtonsConfig | WebSearchConfig
 
 export interface ChatbotAction {
   id: string

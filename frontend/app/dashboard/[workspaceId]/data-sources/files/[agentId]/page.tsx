@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { AlertCircle, ChevronRight, Loader2, ScrollText, Sparkles, Trash2 } from 'lucide-react'
 import { useDashboard } from '@/contexts/DashboardContext'
 import api from '@/lib/api'
+import FileContentPanel from './FileContentPanel'
 
 const ACCEPT_TYPES = '.pdf,.docx,.doc,.txt,.md'
 const MAX_SIZE_BYTES = 10 * 1024 * 1024
@@ -52,6 +53,7 @@ export default function DataSourcesFilesPage() {
   const [dragCounter, setDragCounter] = useState(0)
   const [filter, setFilter]         = useState('')
   const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [viewingDoc, setViewingDoc] = useState<AgentDocument | null>(null)
   const inputRef   = useRef<HTMLInputElement>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -294,8 +296,9 @@ export default function DataSourcesFilesPage() {
               return (
                 <div
                   key={doc.id}
-                  style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '11px 18px', borderTop: '1px solid var(--line)' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '11px 18px', borderTop: '1px solid var(--line)', cursor: 'pointer' }}
                   className="hover:bg-[var(--bg-2)]"
+                  onClick={() => setViewingDoc(doc)}
                 >
                   <div style={{
                     width: 32, height: 32, borderRadius: 'var(--r-sm)', flexShrink: 0,
@@ -324,9 +327,10 @@ export default function DataSourcesFilesPage() {
                       ? <><Loader2 style={{ width: 10, height: 10, marginRight: 4 }} className="animate-spin" />{badge.label}</>
                       : badge.label}
                   </span>
+                  <ChevronRight style={{ width: 14, height: 14, color: 'var(--ink-4)', flexShrink: 0 }} />
                   <button
                     type="button"
-                    onClick={() => handleRemove(doc.id)}
+                    onClick={(e) => { e.stopPropagation(); handleRemove(doc.id) }}
                     disabled={deletingId !== null}
                     aria-label="Remove"
                     style={{ width: 28, height: 28, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--ink-4)', cursor: deletingId !== null ? 'not-allowed' : 'pointer', flexShrink: 0, opacity: deletingId !== null && deletingId !== doc.id ? 0.4 : 1 }}
@@ -348,6 +352,22 @@ export default function DataSourcesFilesPage() {
           </div>
         )}
       </div>
+
+      {/* File content viewer / editor */}
+      {viewingDoc && workspaceId && agentId && (
+        <FileContentPanel
+          docId={viewingDoc.id}
+          fileName={viewingDoc.fileName}
+          mimeType={viewingDoc.mimeType}
+          workspaceId={workspaceId}
+          agentId={agentId}
+          onClose={() => setViewingDoc(null)}
+          onSaved={() => {
+            setViewingDoc(null)
+            fetchDocuments()
+          }}
+        />
+      )}
     </div>
   )
 }

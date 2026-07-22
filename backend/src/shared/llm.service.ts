@@ -420,6 +420,72 @@ export async function translateLinesToLanguage(
 export type ChatMessageRole = 'user' | 'assistant' | 'system';
 
 /**
+ * Streaming version of webSearchCompletion.
+ * Yields text deltas as they arrive from the Responses API.
+ */
+export async function* webSearchCompletionStream(
+  systemContent: string,
+  messages: { role: 'user' | 'assistant'; content: string }[],
+  options?: { maxResults?: number }
+): AsyncGenerator<string> {
+  if (!openai || !apiKey) {
+    throw new Error('OpenAI not configured');
+  }
+
+  const contextSize: 'low' | 'medium' | 'high' =
+    (options?.maxResults ?? 5) <= 3 ? 'low' : (options?.maxResults ?? 5) >= 8 ? 'high' : 'medium';
+
+  const input: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    { role: 'system', content: systemContent || 'You are a helpful assistant.' },
+    ...messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+  ];
+
+  const stream = await (openai as any).responses.create({
+    model: 'gpt-4o',
+    tools: [{ type: 'web_search_preview', search_context_size: contextSize }],
+    input,
+    stream: true,
+  });
+
+  for await (const event of stream) {
+    if (event.type === 'response.output_text.delta' && typeof event.delta === 'string' && event.delta) {
+      yield event.delta;
+    }
+  }
+}
+
+/**
+ * Web-search-enabled completion using the OpenAI Responses API.
+ * Uses gpt-4o with the web_search_preview tool so the model can fetch
+ * current information from the web before replying.
+ */
+export async function webSearchCompletion(
+  systemContent: string,
+  messages: { role: 'user' | 'assistant'; content: string }[],
+  options?: { maxResults?: number }
+): Promise<string> {
+  if (!openai || !apiKey) {
+    throw new Error('OpenAI not configured');
+  }
+
+  const contextSize: 'low' | 'medium' | 'high' =
+    (options?.maxResults ?? 5) <= 3 ? 'low' : (options?.maxResults ?? 5) >= 8 ? 'high' : 'medium';
+
+  const input: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    { role: 'system', content: systemContent || 'You are a helpful assistant.' },
+    ...messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+  ];
+
+  const response = await (openai as any).responses.create({
+    model: 'gpt-4o',
+    tools: [{ type: 'web_search_preview', search_context_size: contextSize }],
+    input,
+  });
+
+  return (response.output_text as string | undefined)?.trim() || "I couldn't find relevant information right now.";
+}
+
+/**
  * Agent chat: model + system prompt + conversation history.
  * Used by v2 playground with RAG context in system prompt.
  */

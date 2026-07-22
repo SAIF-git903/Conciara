@@ -9,7 +9,7 @@ import { ActionType } from '@prisma/client';
 import { canManageAgent } from '../../agents/agent.service.js';
 import { executeServerSideActionProxyRuntime } from '../../agents/routes/actions.routes.js';
 import { prisma } from '../../../db/prisma.js';
-import { chatCompletion, chatCompletionStream } from '../../../shared/llm.service.js';
+import { chatCompletion, chatCompletionStream, webSearchCompletion, webSearchCompletionStream } from '../../../shared/llm.service.js';
 import { retrieveChunks } from '../../training/services/rag.service.js';
 import { retrieveQa, recordQaUsage } from '../../qa/qa.service.js';
 import { createOrGetSession, appendMessage } from '../services/chatLog.service.js';
@@ -311,6 +311,24 @@ async function resolveReplyWithActions(params: {
   sessionData?: Record<string, string>;
 }): Promise<string> {
   const { modelId, systemContent, historyList, userMessage, agentId, sessionId, sessionData } = params;
+
+  // ── Web search: check trigger first, then use Responses API ──
+  const webSearch = await getActiveWebSearchAction(agentId);
+  if (webSearch) {
+    const triggered = await shouldUseWebSearch(modelId, webSearch.triggerInstructions, userMessage, historyList);
+    if (triggered) {
+      try {
+        return await webSearchCompletion(
+          systemContent,
+          [...historyList, { role: 'user', content: userMessage }],
+          { maxResults: webSearch.maxResults },
+        );
+      } catch (err: unknown) {
+        console.error('[chat-web-search] Responses API failed, falling back to standard completion:', err instanceof Error ? err.message : err);
+      }
+    }
+  }
+
   const firstReply = await chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
     maxTokens: 1024,
     temperature: 0.7,
@@ -406,6 +424,111 @@ Important:
   return followUpReply;
 }
 
+async function* resolveReplyWithActionsStream(params: {
+  modelId: string;
+  systemContent: string;
+  historyList: { role: 'user' | 'assistant'; content: string }[];
+  userMessage: string;
+  agentId: number;
+  sessionId?: string | null;
+  sessionData?: Record<string, string>;
+}): AsyncGenerator<string> {
+  const { modelId, systemContent, historyList, userMessage, agentId, sessionId, sessionData } = params;
+
+  // ── Web search: check trigger first, then stream from Responses API ──
+  const webSearch = await getActiveWebSearchAction(agentId);
+  if (webSearch) {
+    const triggered = await shouldUseWebSearch(modelId, webSearch.triggerInstructions, userMessage, historyList);
+    if (triggered) {
+      try {
+        for await (const chunk of webSearchCompletionStream(
+          systemContent,
+          [...historyList, { role: 'user', content: userMessage }],
+          { maxResults: webSearch.maxResults },
+        )) {
+          yield chunk;
+        }
+        return;
+      } catch (err: unknown) {
+        console.error('[chat-web-search-stream] failed, falling back:', err instanceof Error ? err.message : err);
+      }
+    }
+  }
+
+  // ── Custom action path ──
+  // First call cannot stream — we need the full response to parse the action directive.
+  const firstReply = await chatCompletion(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
+    maxTokens: 1024,
+    temperature: 0.7,
+  });
+
+  const directive =
+    parseActionDirective(firstReply) ??
+    (await tryHeuristicActionExecution({ agentId, userMessage, firstReply }));
+
+  if (!directive) {
+    yield firstReply;
+    return;
+  }
+
+  let executionResult: {
+    success: boolean;
+    statusCode: number;
+    responseBody: unknown;
+    durationMs: number;
+    error?: string;
+    message?: string;
+  };
+  try {
+    executionResult = await executeServerSideActionProxyRuntime({
+      chatbotId: agentId,
+      actionId: directive.actionId,
+      collectedInputs: directive.collectedInputs,
+      context: { sessionId: sessionId ?? undefined, sessionData: sessionData ?? {} },
+      isTest: false,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '';
+    if (message.toLowerCase().includes('enabled server-side custom action not found')) {
+      yield firstReply;
+      return;
+    }
+    throw error;
+  }
+
+  if (executionResult.error === 'auth_expired') {
+    console.warn(`[chat-actions-stream] agentId=${agentId} actionId=${directive.actionId} authExpired=true`);
+    yield "I'm having trouble connecting to the store right now. Please try again shortly.";
+    return;
+  }
+
+  const followUpSystemContent = `${systemContent}
+
+The requested server-side custom action has been executed.
+Action ID: ${directive.actionId}
+Status code: ${executionResult.statusCode}
+Success: ${executionResult.success ? 'true' : 'false'}
+Execution duration ms: ${executionResult.durationMs}
+Action result JSON:
+${JSON.stringify(executionResult.responseBody)}
+
+Now respond to the user naturally using this action result and the CURRENT user message only.
+Important:
+- Do NOT ask again for inputs that were already collected and used.
+- Do NOT output action JSON again for this turn.
+- Do NOT say "please hold on" or "checking now"; provide the final answer immediately.
+- If the API result indicates "not found", mention the exact provided input value and suggest trying another value.`;
+
+  // Stream the follow-up narration so the user sees the answer appear progressively.
+  for await (const chunk of chatCompletionStream(modelId, followUpSystemContent, [
+    ...historyList,
+    { role: 'assistant', content: firstReply },
+    { role: 'user', content: userMessage },
+  ], { maxTokens: 1024, temperature: 0.2 })) {
+    yield chunk;
+  }
+}
+
 async function buildActionsSystemBlock(agentId: number): Promise<string> {
   const actions = await prisma.action.findMany({
     where: { chatbotId: agentId, isEnabled: true },
@@ -462,10 +585,70 @@ async function buildActionsSystemBlock(agentId: number): Promise<string> {
       lines.push(`When triggered, output ONLY this JSON: {"type":"buttons","actionId":"${action.id}","buttons":[{"id":"","label":""}]}`);
       lines.push('');
     }
+
+    if (action.type === ActionType.WEB_SEARCH) {
+      lines.push(`### Web Search enabled`);
+      lines.push(`This agent has real-time web search. Trigger when: ${toStringValue(config.triggerInstructions) || 'when the user asks about current events, news, or anything requiring up-to-date information'}`);
+      lines.push('');
+    }
   }
 
   lines.push('REMINDER: If a user request matches a trigger above, call the action. Never substitute "I don\'t know" for an available action.');
   return lines.join('\n');
+}
+
+/**
+ * Ask the model whether the current user message satisfies the web-search
+ * trigger instructions. Returns true when trigger is blank (always search)
+ * or when the model confirms the message matches.
+ */
+async function shouldUseWebSearch(
+  modelId: string,
+  triggerInstructions: string,
+  userMessage: string,
+  historyList: { role: 'user' | 'assistant'; content: string }[],
+): Promise<boolean> {
+  if (!triggerInstructions.trim()) return true;
+
+  const recentContext = historyList
+    .slice(-4)
+    .map((m) => `${m.role}: ${m.content.slice(0, 200)}`)
+    .join('\n');
+
+  const decision = await chatCompletion(
+    modelId,
+    `You are a routing assistant. Given the web search trigger condition below, decide whether the user's latest message should activate web search.
+
+Trigger condition:
+${triggerInstructions}
+
+Answer with exactly one word: "yes" or "no". No explanation.`,
+    [
+      ...(recentContext
+        ? [
+            { role: 'user' as const, content: `Recent conversation:\n${recentContext}` },
+            { role: 'assistant' as const, content: 'Understood.' },
+          ]
+        : []),
+      { role: 'user' as const, content: userMessage },
+    ],
+    { maxTokens: 3, temperature: 0 },
+  );
+
+  return decision.toLowerCase().trim().startsWith('y');
+}
+
+async function getActiveWebSearchAction(agentId: number): Promise<{ maxResults: number; triggerInstructions: string } | null> {
+  const action = await prisma.action.findFirst({
+    where: { chatbotId: agentId, isEnabled: true, type: ActionType.WEB_SEARCH },
+    select: { config: true },
+  });
+  if (!action) return null;
+  const config = toObject(action.config);
+  return {
+    maxResults: typeof config.maxResults === 'number' ? config.maxResults : 5,
+    triggerInstructions: toStringValue(config.triggerInstructions),
+  };
 }
 
 /** Run SSE stream for agent chat. Used by auth and public-embed routes. */
@@ -554,7 +737,7 @@ export async function runAgentChatStream(
   let fullReply = '';
   try {
     if (actionsBlock.trim()) {
-      fullReply = await resolveReplyWithActions({
+      for await (const chunk of resolveReplyWithActionsStream({
         modelId,
         systemContent,
         historyList,
@@ -562,9 +745,11 @@ export async function runAgentChatStream(
         agentId,
         sessionId: bodySessionId ?? null,
         sessionData,
-      });
-      res.write(`data: ${JSON.stringify({ content: fullReply })}\n\n`);
-      if (typeof (res as any).flush === 'function') (res as any).flush();
+      })) {
+        fullReply += chunk;
+        res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
+        if (typeof (res as any).flush === 'function') (res as any).flush();
+      }
     } else {
       for await (const chunk of chatCompletionStream(modelId, systemContent, [...historyList, { role: 'user', content: userMessage }], {
         maxTokens: 1024,

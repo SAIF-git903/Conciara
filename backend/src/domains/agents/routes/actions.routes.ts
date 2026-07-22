@@ -626,6 +626,8 @@ async function executeServerSideCustomAction(params: {
   error?: string;
   message?: string;
   debug?: { url: string; method: string };
+  responseHeaders?: Record<string, string>;
+  responseSize?: number;
 }> {
   const config = parseBodyObject(params.action.config);
   const executionMode = getString(config, 'executionMode');
@@ -657,9 +659,11 @@ async function executeServerSideCustomAction(params: {
   const shouldAttachBody = !['GET', 'DELETE'].includes(methodUpper);
   const startedAt = Date.now();
 
+  const RESPONSE_HEADER_DENYLIST = new Set(['set-cookie', 'www-authenticate', 'authorization']);
+
   const doFetch = async (
     forceAuthRefresh: boolean,
-  ): Promise<{ response: Response; parsedBody: unknown }> => {
+  ): Promise<{ response: Response; parsedBody: unknown; rawBodySize: number; responseHeaders: Record<string, string> }> => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
     try {
@@ -677,13 +681,20 @@ async function executeServerSideCustomAction(params: {
         signal: controller.signal,
       });
       const text = await response.text();
+      const rawBodySize = text.length;
+      const responseHeaders: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        if (!RESPONSE_HEADER_DENYLIST.has(key.toLowerCase())) {
+          responseHeaders[key.toLowerCase()] = value;
+        }
+      });
       let parsedBody: unknown = text;
       try {
         parsedBody = text ? JSON.parse(text) : null;
       } catch {
         // Keep raw text.
       }
-      return { response, parsedBody };
+      return { response, parsedBody, rawBodySize, responseHeaders };
     } catch (error: unknown) {
       if (controller.signal.aborted) {
         throw Object.assign(new Error('timeout'), { __timeout: true });
@@ -695,13 +706,15 @@ async function executeServerSideCustomAction(params: {
   };
 
   try {
-    let { response, parsedBody } = await doFetch(false);
+    let { response, parsedBody, rawBodySize, responseHeaders } = await doFetch(false);
 
     if (response.status === 401 && authConfig?.type === 'oauth_bearer') {
       try {
         const retry = await doFetch(true);
         response = retry.response;
         parsedBody = retry.parsedBody;
+        rawBodySize = retry.rawBodySize;
+        responseHeaders = retry.responseHeaders;
       } catch (retryError: unknown) {
         console.warn(
           `[actions-proxy] ts=${new Date().toISOString()} actionId=${params.action.id} oauthRefreshRetryFailed=${retryError instanceof Error ? retryError.message : 'unknown'}`,
@@ -735,7 +748,11 @@ async function executeServerSideCustomAction(params: {
       statusCode: response.status,
       responseBody: resolvedBody,
       durationMs,
-      ...(params.isTest ? { debug: { url: requestPayload.url, method: methodUpper } } : {}),
+      ...(params.isTest ? {
+        debug: { url: requestPayload.url, method: methodUpper },
+        responseHeaders,
+        responseSize: rawBodySize,
+      } : {}),
     };
   } catch (error: unknown) {
     const durationMs = Date.now() - startedAt;
@@ -769,6 +786,8 @@ export async function executeServerSideActionProxyRuntime(params: {
   error?: string;
   message?: string;
   debug?: { url: string; method: string };
+  responseHeaders?: Record<string, string>;
+  responseSize?: number;
 }> {
   const action = await prisma.action.findFirst({
     where: {
