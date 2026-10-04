@@ -24,8 +24,18 @@ const PORT = process.env.PORT || 3001;
 const NOTIFICATION_RETENTION_DAYS = parseInt(process.env.NOTIFICATION_RETENTION_DAYS || '30', 10);
 const NOTIFICATION_CLEANUP_INTERVAL_HOURS = parseInt(process.env.NOTIFICATION_CLEANUP_INTERVAL_HOURS || '24', 10);
 
-// Ensure correct client IPs behind reverse proxies (needed for rate limiting, logs, etc.)
-app.set('trust proxy', process.env.TRUST_PROXY === 'true' || process.env.NODE_ENV === 'production');
+// Correct client IPs behind reverse proxies (needed for rate limiting, logs, etc.).
+// Trust a fixed number of hops: `true` would trust a client-supplied X-Forwarded-For and let
+// anyone spoof their IP past the rate limiters. Render's load balancer is one hop.
+function resolveTrustProxy(): number | false {
+  const raw = process.env.TRUST_PROXY;
+  if (raw === undefined || raw === '') return process.env.NODE_ENV === 'production' ? 1 : false;
+  if (raw === 'false' || raw === '0') return false;
+  if (raw === 'true') return 1;
+  const hops = parseInt(raw, 10);
+  return Number.isNaN(hops) || hops < 0 ? 1 : hops;
+}
+app.set('trust proxy', resolveTrustProxy());
 
 // CORS configuration - allow all localhost ports for development
 app.use(cors({
@@ -62,17 +72,35 @@ app.get('/', (req, res) => {
 // Integrations (webhooks, OAuth callbacks) need raw body for signature verification (must be before express.json())
 app.use('/api/integrations', express.raw({ type: 'application/json' }), integrationsRouter);
 
+// In production, never send internal error details (Prisma/SQL/upstream messages) to clients.
+// Many handlers attach `details: error.message` to 5xx responses; strip it in one place.
+if (process.env.NODE_ENV === 'production') {
+  app.use((_req, res, next) => {
+    const json = res.json.bind(res);
+    res.json = (body?: unknown) => {
+      if (res.statusCode >= 500 && body && typeof body === 'object' && 'details' in body) {
+        const { details: _details, ...rest } = body as Record<string, unknown>;
+        return json(rest);
+      }
+      return json(body);
+    };
+    next();
+  });
+}
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Rate limiting: general API limit for all /api, then stricter per-route limiters
 app.use('/api', generalApiRateLimiter);
 
-// Swagger API Documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'Conciara API Documentation',
-}));
+// Swagger API Documentation (dev only unless ENABLE_API_DOCS=true: it maps every internal route)
+if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_API_DOCS === 'true') {
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'Conciara API Documentation',
+  }));
+}
 
 // Routes (JSON body)
 app.use('/api/auth', authRateLimiter, authRoutes);
