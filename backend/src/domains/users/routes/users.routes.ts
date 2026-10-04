@@ -15,6 +15,7 @@ import {
   removeUserFromWebsite,
 } from '../user.service.js';
 import { requireAuth, requireAdmin } from '../../../common/middleware/authMiddleware.js';
+import { isPlatformAdmin } from '../../../common/platformAdmin.js';
 
 const router = express.Router();
 
@@ -124,7 +125,7 @@ router.get('/:id', async (req, res) => {
     const userId = parseInt(req.params.id);
     const currentUser = req.user!;
 
-    if (currentUser.role !== 'owner' && currentUser.id !== userId) {
+    if (!isPlatformAdmin(currentUser) && currentUser.id !== userId) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
 
@@ -316,17 +317,18 @@ router.put('/:id', async (req, res) => {
     const userId = parseInt(req.params.id);
     const currentUser = req.user!;
 
-    if (currentUser.role !== 'owner' && currentUser.id !== userId) {
+    const isAdmin = isPlatformAdmin(currentUser);
+    if (!isAdmin && currentUser.id !== userId) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
-    if (currentUser.role !== 'owner' && req.body.role) {
-      return res.status(403).json({ error: 'Cannot change role' });
-    }
-    if (currentUser.role !== 'owner' && req.body.isActive !== undefined) {
-      return res.status(403).json({ error: 'Cannot change active status' });
-    }
 
-    const user = await updateUser(userId, req.body);
+    // Users may only change their own display name here. Email and password changes go
+    // through their dedicated flows (change-password requires the current password).
+    const { email, password, fullName, role, isActive } = req.body ?? {};
+    const user = await updateUser(
+      userId,
+      isAdmin ? { email, password, fullName, role, isActive } : { fullName }
+    );
 
     // Remove password hash
     res.json({
