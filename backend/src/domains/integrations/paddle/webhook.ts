@@ -12,8 +12,13 @@ import { resetPeriod } from '../../billing/credits.service.js';
 const PADDLE_WEBHOOK_SECRET = process.env.PADDLE_WEBHOOK_SECRET || '';
 const PADDLE_API_KEY = process.env.PADDLE_API_KEY || '';
 const PADDLE_ENABLED = !!PADDLE_WEBHOOK_SECRET;
+/** Local testing only: unsigned webhooks would let anyone grant themselves a paid plan. */
 const PADDLE_WEBHOOK_SKIP_VERIFY =
-  process.env.PADDLE_WEBHOOK_SKIP_VERIFY === '1' || process.env.PADDLE_WEBHOOK_SKIP_VERIFY === 'true';
+  process.env.NODE_ENV !== 'production' &&
+  (process.env.PADDLE_WEBHOOK_SKIP_VERIFY === '1' || process.env.PADDLE_WEBHOOK_SKIP_VERIFY === 'true');
+if (process.env.NODE_ENV === 'production' && process.env.PADDLE_WEBHOOK_SKIP_VERIFY) {
+  console.warn('[paddle] PADDLE_WEBHOOK_SKIP_VERIFY is ignored in production; signatures are always verified');
+}
 
 const PADDLE_API_BASE =
   process.env.PADDLE_API_BASE_URL ||
