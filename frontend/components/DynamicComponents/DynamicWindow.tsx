@@ -15,6 +15,8 @@ export default function DynamicWindow({ config, children, isMinimized, fillConta
   const windowConfig = config.components?.window || {}
   const backgroundColor = config.theme?.backgroundColor || '#ffffff'
   const borderColor = config.theme?.borderColor || '#e2e8f0'
+  const fontFamily = config.theme?.fontFamily || undefined
+  const fontSize = config.theme?.fontSize ? `${config.theme.fontSize}px` : undefined
 
   const width = windowConfig.width || 384
   const height = windowConfig.height || 600
@@ -31,11 +33,13 @@ export default function DynamicWindow({ config, children, isMinimized, fillConta
   return (
     <div
       className={`bg-white border ${shadow} flex flex-col transition-all overflow-hidden ${
-        isMinimized ? 'w-80 h-12' : fillContainer ? 'w-full h-full min-h-0' : 'animate-scale-in'
+        isMinimized ? 'w-80 h-12' : fillContainer ? 'w-full h-full min-h-0' : ''
       }`}
       style={{
         backgroundColor,
         borderColor,
+        fontFamily,
+        fontSize,
         ...(fillContainer && !isMinimized
           ? { borderRadius: `${borderRadius}px` }
           : {

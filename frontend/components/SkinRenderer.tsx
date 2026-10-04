@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
 import { MergedSkinConfig } from '../types/skinConfig'
 import { WIDGET_LANGUAGES, getWidgetTranslations } from '@/lib/widgetTranslations'
@@ -10,6 +11,49 @@ import DynamicHeader from './DynamicComponents/DynamicHeader'
 import DynamicMessages from './DynamicComponents/DynamicMessages'
 import DynamicInput from './DynamicComponents/DynamicInput'
 import DynamicQuickReplies from './DynamicComponents/DynamicQuickReplies'
+
+/** Gap between launcher and chat window (px) */
+const LAUNCHER_GAP_PX = 12
+const LAUNCHER_SIZE_PX = { small: 48, medium: 56, large: 64 } as const
+
+/** Symmetric scale; opacity lags on open and reaches 1 when fully expanded */
+const CHAT_EASE = [0.16, 1, 0.3, 1] as const
+const CHAT_DURATION = 0.34
+
+const chatWindowVariants = {
+  hidden: { scale: 0, opacity: 0 },
+  visible: {
+    scale: 1,
+    opacity: 1,
+    transition: {
+      scale: { duration: CHAT_DURATION, ease: CHAT_EASE },
+      opacity: { duration: 0.22, ease: CHAT_EASE, delay: 0.14 },
+    },
+  },
+  exit: {
+    scale: 0,
+    opacity: 0,
+    transition: { duration: CHAT_DURATION, ease: CHAT_EASE },
+  },
+}
+
+function getLauncherLayout(config: MergedSkinConfig) {
+  const buttonConfig = config.components?.button || {}
+  const position = buttonConfig.position || 'bottom-right'
+  const sizeKey = (buttonConfig.size || 'large') as keyof typeof LAUNCHER_SIZE_PX
+  const launcherHeight = LAUNCHER_SIZE_PX[sizeKey] ?? LAUNCHER_SIZE_PX.large
+  const isTop = position.startsWith('top')
+  const isLeft = position.endsWith('left')
+  const transformOrigin = isTop
+    ? (isLeft ? 'top left' : 'top right')
+    : (isLeft ? 'bottom left' : 'bottom right')
+  const alignItems = isLeft ? 'items-start' : 'items-end'
+  const offset = launcherHeight + LAUNCHER_GAP_PX
+  const windowAnchor: React.CSSProperties = isTop
+    ? { top: offset, ...(isLeft ? { left: 0 } : { right: 0 }) }
+    : { bottom: offset, ...(isLeft ? { left: 0 } : { right: 0 }) }
+  return { position, launcherHeight, isTop, transformOrigin, alignItems, windowAnchor, offset }
+}
 
 interface MediaItem {
   id: number
@@ -53,8 +97,14 @@ export interface SkinRendererProps {
   onMessagesChange?: (messages: Message[]) => void
   initialMessages?: Message[]
   sessionId?: string | null
-  /** When true, only the chat window is shown (no floating button); window starts open. For embed/preview. */
+  /** When true, only the chat window is shown (no floating button). For embed/preview. */
   previewMode?: boolean
+  /** When true with previewMode, parent renders the launcher button; window starts closed unless `open` is set. */
+  hideLauncher?: boolean
+  /** Controlled open state (e.g. live preview with external launcher). */
+  open?: boolean
+  /** Called when the user opens or closes the chat window. */
+  onOpenChange?: (open: boolean) => void
   /** When in previewMode (embed), called when user clicks close so the host can hide the panel and show the launcher. */
   onEmbedClose?: () => void
   availableActions?: {
@@ -89,10 +139,22 @@ export default function SkinRenderer({
   initialMessages = [],
   sessionId: initialSessionId = null,
   previewMode = false,
+  hideLauncher = false,
+  open: openProp,
+  onOpenChange,
   onEmbedClose,
   availableActions = { customButtons: [], customActions: [] },
 }: SkinRendererProps) {
-  const [isOpen, setIsOpen] = useState(previewMode)
+  const isControlled = openProp !== undefined
+  const [internalOpen, setInternalOpen] = useState(
+    isControlled ? false : (previewMode && hideLauncher)
+  )
+  const isOpen = isControlled ? openProp : internalOpen
+
+  const setOpen = useCallback((next: boolean) => {
+    if (!isControlled) setInternalOpen(next)
+    onOpenChange?.(next)
+  }, [isControlled, onOpenChange])
   const [isMinimized, setIsMinimized] = useState(false)
   const [messages, setMessages] = useState<Message[]>(initialMessages)
 
@@ -473,63 +535,90 @@ export default function SkinRenderer({
   }
 
   const handleClose = () => {
-    setIsOpen(false)
+    setOpen(false)
     setIsMinimized(false)
     setSettingsOpen(false)
+    if (previewMode && onEmbedClose) onEmbedClose()
   }
 
   // Show error message if no treeId and no custom onMessage (skip in preview mode – use initialMessages only)
   if (!treeId && !onMessage && !previewMode) {
-    return (
-      <div className={`fixed ${positionClasses[position]} z-50`}>
+    const errorLayout = getLauncherLayout(config)
+    const { isTop: errorIsTop, alignItems: errorAlign, transformOrigin: errorOrigin, windowAnchor: errorAnchor } = errorLayout
+    const errorShellJustify = errorIsTop ? 'justify-start' : 'justify-end'
+
+    const errorWindow = (
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            key="chat-window-error"
+            className="absolute z-10 flex flex-col will-change-transform"
+            style={{ transformOrigin: errorOrigin, ...errorAnchor }}
+            variants={chatWindowVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+          >
+            <DynamicWindow config={config} isMinimized={isMinimized}>
+              <DynamicHeader
+                config={config}
+                isMinimized={isMinimized}
+                onMinimize={() => {}}
+                onClose={handleClose}
+              />
+              {!isMinimized && (
+                <div className="flex-1 p-4 flex items-center justify-center">
+                  <div className="text-center text-gray-500">
+                    <p className="text-sm">
+                      {config.states?.error?.message || "No chatbot is configured for this website."}
+                    </p>
+                    <p className="text-xs mt-2 text-gray-400">
+                      Please contact support or check the configuration.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </DynamicWindow>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    )
+
+    const errorLauncher = (
+      <div className="relative z-20 shrink-0">
         <DynamicButton
           config={config}
-          onClick={() => setIsOpen(true)}
+          isOpen={isOpen}
+          onClick={() => (isOpen ? handleClose() : setOpen(true))}
         />
-        {isOpen && (
-          <DynamicWindow config={config} isMinimized={isMinimized}>
-            <DynamicHeader
-              config={config}
-              isMinimized={isMinimized}
-              onMinimize={() => {}}
-              onClose={handleClose}
-            />
-            {!isMinimized && (
-              <div className="flex-1 p-4 flex items-center justify-center">
-                <div className="text-center text-gray-500">
-                  <p className="text-sm">
-                    {config.states?.error?.message || "No chatbot is configured for this website."}
-                  </p>
-                  <p className="text-xs mt-2 text-gray-400">
-                    Please contact support or check the configuration.
-                  </p>
-                </div>
-              </div>
-            )}
-          </DynamicWindow>
-        )}
+      </div>
+    )
+
+    return (
+      <div className={`fixed z-50 ${positionClasses[position]}`}>
+        <div className={`relative flex flex-col ${errorShellJustify} ${errorAlign}`}>
+          {errorIsTop ? (
+            <>{errorLauncher}{errorWindow}</>
+          ) : (
+            <>{errorWindow}{errorLauncher}</>
+          )}
+        </div>
       </div>
     )
   }
 
-  return (
-    <div className={previewMode ? 'relative flex h-full w-full flex-col justify-end items-center' : `fixed ${positionClasses[position]} z-50`}>
-      {/* Chat Button - hidden in preview mode */}
-      {!previewMode && !isOpen && (
-        <DynamicButton
-          config={config}
-          onClick={() => setIsOpen(true)}
-        />
-      )}
+  const layout = getLauncherLayout(config)
+  const { isTop, alignItems, transformOrigin, windowAnchor, offset } = layout
+  const showLauncher = !hideLauncher
+  const shellJustify = isTop ? 'justify-start' : 'justify-end'
 
-      {/* Chat Window */}
-      {isOpen && (
+  const chatWindowInner = (
         <DynamicWindow config={config} isMinimized={isMinimized} fillContainer={previewMode}>
           <DynamicHeader
             config={config}
             isMinimized={isMinimized}
             onMinimize={() => {}}
-            onClose={previewMode ? () => onEmbedClose?.() : handleClose}
+            onClose={handleClose}
             showSettings={!previewMode && !!(language && typeof onLanguageSelect === 'function')}
             onSettingsClick={() => setSettingsOpen(true)}
           />
@@ -665,7 +754,77 @@ export default function SkinRenderer({
             </>
           )}
         </DynamicWindow>
+  )
+
+  // Embed iframe: full-bleed chat panel (launcher lives in embed.js on the host page)
+  if (previewMode && hideLauncher) {
+    return (
+      <div className="relative flex h-full w-full min-h-0 flex-col">
+        {chatWindowInner}
+      </div>
+    )
+  }
+
+  const chatWindow = (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          key="chat-window"
+          variants={chatWindowVariants}
+          initial="hidden"
+          animate="visible"
+          exit="exit"
+          className={`absolute z-10 flex flex-col will-change-transform ${previewMode ? 'w-full min-h-0' : ''}`}
+          style={{
+            transformOrigin,
+            ...windowAnchor,
+            ...(previewMode
+              ? {
+                  height: `calc(100% - ${offset}px)`,
+                  maxHeight: `calc(100% - ${offset}px)`,
+                }
+              : {}),
+          }}
+        >
+          {chatWindowInner}
+        </motion.div>
       )}
+    </AnimatePresence>
+  )
+
+  const launcherButton = showLauncher ? (
+    <div className="relative z-20 shrink-0">
+      <DynamicButton
+        config={config}
+        isOpen={isOpen}
+        onClick={() => (isOpen ? handleClose() : setOpen(true))}
+      />
+    </div>
+  ) : null
+
+  const widgetShell = (
+    <div className={`relative flex flex-col ${shellJustify} ${alignItems} ${previewMode ? 'h-full w-full' : ''}`}>
+      {isTop ? (
+        <>
+          {launcherButton}
+          {chatWindow}
+        </>
+      ) : (
+        <>
+          {chatWindow}
+          {launcherButton}
+        </>
+      )}
+    </div>
+  )
+
+  if (previewMode) {
+    return widgetShell
+  }
+
+  return (
+    <div className={`fixed z-50 ${positionClasses[position]}`}>
+      {widgetShell}
     </div>
   )
 }

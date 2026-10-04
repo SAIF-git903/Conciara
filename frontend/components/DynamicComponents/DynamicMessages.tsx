@@ -67,10 +67,10 @@ function CodeBlockWithCopy({ children }: { children: React.ReactNode }) {
   )
 }
 
-export default function DynamicMessages({ 
-  config, 
-  messages, 
-  isLoading 
+export default function DynamicMessages({
+  config,
+  messages,
+  isLoading
 }: DynamicMessagesProps) {
   const [viewer, setViewer] = useState<{
     items: Array<{ src: string; type: 'image' | 'video'; file_name?: string }>;

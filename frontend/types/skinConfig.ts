@@ -10,6 +10,8 @@ export interface ThemeColors {
   textColor?: string;
   borderColor?: string;
   accentColor?: string;
+  fontFamily?: string;
+  fontSize?: number;
 }
 
 export interface ButtonConfig {
@@ -18,6 +20,8 @@ export interface ButtonConfig {
   icon?: 'bot' | 'chat' | 'message' | 'custom' | null;
   /** URL to image for chat icon when icon is 'custom' */
   customIconUrl?: string;
+  /** S3 key for custom launcher icon; backend resolves to presigned customIconUrl. */
+  customIconKey?: string;
   position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
   showLabel?: boolean;
   label?: string;

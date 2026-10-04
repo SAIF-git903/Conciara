@@ -13,6 +13,8 @@ export interface ThemeColors {
   textColor?: string;
   borderColor?: string;
   accentColor?: string;
+  fontFamily?: string;
+  fontSize?: number;
 }
 
 // Button component configuration

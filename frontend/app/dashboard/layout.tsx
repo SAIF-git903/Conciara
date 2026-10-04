@@ -1,54 +1,43 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
-import Link from 'next/link'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { AnimatePresence, motion } from 'framer-motion'
+import { ConciaraMark } from '@/components/branding/ConciaraMark'
+import NotificationBell from '@/components/NotificationBell'
+import PermissionButton from '@/components/PermissionButton'
 import { useAuth } from '@/contexts/AuthContext'
-import api, { getSocketUrl } from '@/lib/api'
-import { io as ioClient, type Socket } from 'socket.io-client'
-import {
-  Bot,
-  ChevronDown,
-  ChevronsUpDown,
-  Clock,
-  UserRound,
-  Settings,
-  Search,
-  Plus,
-  Check,
-  Play,
-  MessageSquare,
-  BarChart3,
-  Database,
-  Users,
-  Plug,
-  Palette,
-  BookOpen,
-  Trash2,
-  AlertTriangle,
-  LogOut,
-  Loader2,
-  X,
-  Zap,
-} from 'lucide-react'
-import type { ReactNode } from 'react'
-import { Suspense } from 'react'
 import { DashboardProvider } from '@/contexts/DashboardContext'
 import { UpgradeProvider } from '@/contexts/UpgradeContext'
-import { getSelectedWorkspaceId, setSelectedWorkspaceId } from '@/lib/workspace-selection'
+import api, { getSocketUrl } from '@/lib/api'
+import { buildDashboardUrl, parseDashboardPath } from '@/lib/dashboard-url'
 import { startNewAgentFlow } from '@/lib/onboarding'
-import { parseDashboardPath, buildDashboardUrl } from '@/lib/dashboard-url'
-import { ConciaraMark } from '@/components/branding/ConciaraMark'
-import CreditUsageWidget from '@/components/CreditUsageWidget'
-import PermissionButton from '@/components/PermissionButton'
-import NotificationBell from '@/components/NotificationBell'
+import { getSelectedWorkspaceId, setSelectedWorkspaceId } from '@/lib/workspace-selection'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion'
+  AlertTriangle,
+  ArrowLeft,
+  BarChart3,
+  Bell,
+  Bot,
+  Check,
+  ChevronsUpDown,
+  Clock,
+  Command,
+  CreditCard,
+  Key,
+  Loader2,
+  LogOut,
+  Plus,
+  Search,
+  Settings,
+  Trash2,
+  Users,
+  X,
+  Zap
+} from 'lucide-react'
+import Link from 'next/link'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import type { ReactNode } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { io as ioClient, type Socket } from 'socket.io-client'
 
 // Sidebar when on dashboard (Agents list). Members cannot access workspace settings or billing.
 const dashboardNavItemsOwner = [
@@ -84,16 +73,48 @@ const childPathMap: Record<string, Record<string, string>> = {
   },
 }
 
+function DesignIcon({ name, active, size = 16 }: { name: string; active: boolean; size?: number }) {
+  const c = active ? 'var(--accent)' : 'var(--ink-4)'
+  const sw = active ? 2.2 : 1.75
+  const p = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: c, strokeWidth: sw, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
+  switch (name) {
+    case 'play':
+      return <svg {...p} stroke="none"><path d="M6 4v16l14-8z" fill={c} /></svg>
+    case 'scroll':
+      return <svg {...p}><path d="M8 21h8a3 3 0 0 0 3-3V7a4 4 0 0 1-4-4H7a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3z" /><path d="M8 7h7M8 11h7M8 15h5" /></svg>
+    case 'usage':
+      return <svg {...p}><path d="M3 3v18h18" /><path d="M7 14l3-3 3 3 5-6" /></svg>
+    case 'book':
+      return <svg {...p}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>
+    case 'external':
+      return <svg {...p}><path d="M15 3h6v6" /><path d="M10 14 21 3" /><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6" /></svg>
+    case 'file':
+      return <svg {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M16 13H8M16 17H8M10 9H8" /></svg>
+    case 'globe':
+      return <svg {...p}><circle cx="12" cy="12" r="10" /><path d="M2 12h20" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>
+    case 'plug':
+      return <svg {...p}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+    case 'spark':
+      return <svg {...p}><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" /></svg>
+    case 'bot':
+      return <svg {...p}><rect x="4" y="7" width="16" height="13" rx="3" /><path d="M12 7V3M9 3h6" /><circle cx="9" cy="13" r=".8" fill={c} stroke="none" /><circle cx="15" cy="13" r=".8" fill={c} stroke="none" /><path d="M9 17h6" /></svg>
+    case 'settings':
+      return <svg {...p}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
+    default:
+      return null
+  }
+}
+
 // Sidebar when inside an agent (e.g. Playground, agent settings)
 const agentNavItems = [
-  { href: '/dashboard/playground', label: 'Playground', Icon: Play },
-  { href: '#', label: 'Activity', Icon: MessageSquare, children: ['Chat logs'] },
-  { href: '#', label: 'Analytics', Icon: BarChart3, children: ['Chats'] },
-  { href: '#', label: 'Data sources', Icon: Database, children: ['Files', 'Q&A', 'Website'] },
-  { href: '/dashboard/connected-apps', label: 'Connected Apps', Icon: Plug },
-  { href: '/dashboard/actions', label: 'Actions', Icon: Zap },
-  { href: '/dashboard/settings/chatbot', label: 'Chat widget', Icon: Palette },
-  { href: '#', label: 'Settings', Icon: Settings, children: ['General'] },
+  { href: '/dashboard/playground', label: 'Playground', icon: 'play' },
+  { href: '#', label: 'Activity', icon: 'scroll', children: ['Chat logs'] },
+  { href: '#', label: 'Analytics', icon: 'usage', children: ['Chats'] },
+  { href: '#', label: 'Data sources', icon: 'file', children: ['Files', 'Q&A', 'Website'] },
+  { href: '/dashboard/connected-apps', label: 'Connected Apps', icon: 'plug' },
+  { href: '/dashboard/actions', label: 'Actions', icon: 'spark' },
+  { href: '/dashboard/settings/chatbot', label: 'Chat widget', icon: 'bot' },
+  { href: '#', label: 'Settings', icon: 'settings', children: ['General'] },
 ]
 
 function DashboardLayoutInner({ children }: { children: ReactNode }) {
@@ -207,7 +228,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     }
     setAgentsLoading(true)
     try {
-      const res = await api.get<{ agents: Array<{ id: number; workspaceId: number; name: string }> }>(
+      const res = await api.get<{ agents: Array<{ id: number; workspaceId: number; name: string; model: string | null; messageCount: number; lastRunAt: string | null }> }>(
         `/workspaces/${workspaceId}/agents`
       )
       if (currentWorkspaceIdRef.current !== workspaceId) return
@@ -215,6 +236,9 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         id: String(a.id),
         name: a.name,
         workspaceId: a.workspaceId,
+        model: a.model,
+        messageCount: a.messageCount,
+        lastRunAt: a.lastRunAt,
       }))
       setAgents(list)
     } catch {
@@ -266,7 +290,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     const handleSubscriptionUpdate = (event: CustomEvent) => {
       const { workspaceId: updatedWorkspaceId } = event.detail || {}
       // Always refresh user so workspace plans in nav are up to date
-      refreshUser().catch(() => {})
+      refreshUser().catch(() => { })
       if (updatedWorkspaceId === currentWorkspaceIdRef.current) {
         fetchUsage()
         refreshWorkspaceLimits()
@@ -375,7 +399,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         if (data.trainingInProgress) {
           setTrainingStatus('training')
         } else {
-          // This agent is not training — clear any stale state from another agent
+          // This agent is not training �" clear any stale state from another agent
           setTrainingStatus('idle')
         }
       })
@@ -472,8 +496,8 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
       if (createdAgent) {
         setAgents((prev) => (prev.some((a) => a.id === createdAgent.id) ? prev : [...prev, createdAgent]))
       }
-      refreshAgentsForWorkspace(workspaceId).catch(() => {})
-      refreshWorkspaceLimits().catch(() => {})
+      refreshAgentsForWorkspace(workspaceId).catch(() => { })
+      refreshWorkspaceLimits().catch(() => { })
     }
     window.addEventListener('dashboard-agent-created', onAgentCreated as EventListener)
     return () => window.removeEventListener('dashboard-agent-created', onAgentCreated as EventListener)
@@ -501,13 +525,16 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
     const found = inWorkspace.find((a) => a.id === aid)
     if (!found) {
       let cancelled = false
-      api.get<{ agents: Array<{ id: number; workspaceId: number; name: string }> }>(`/workspaces/${workspaceId}/agents`)
+      api.get<{ agents: Array<{ id: number; workspaceId: number; name: string; model: string | null; messageCount: number; lastRunAt: string | null }> }>(`/workspaces/${workspaceId}/agents`)
         .then((res) => {
           if (cancelled || currentWorkspaceIdRef.current !== workspaceId) return
           const list = (res.data.agents ?? []).map((a) => ({
             id: String(a.id),
             name: a.name,
             workspaceId: a.workspaceId,
+            model: a.model,
+            messageCount: a.messageCount,
+            lastRunAt: a.lastRunAt,
           }))
           setAgents(list)
         })
@@ -572,7 +599,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
       setAgents((prev) => [...prev, newAgent])
       // Keep permissions in sync immediately, then reconcile with server.
       bumpWorkspaceAgentUsage(1)
-      refreshWorkspaceLimits().catch(() => {})
+      refreshWorkspaceLimits().catch(() => { })
       return newAgent
     } catch {
       return null
@@ -591,7 +618,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
       setAgents((prev) => prev.filter((a) => a.id !== agentToDelete.id))
       // Keep permissions in sync immediately, then reconcile with server.
       bumpWorkspaceAgentUsage(-1)
-      refreshWorkspaceLimits().catch(() => {})
+      refreshWorkspaceLimits().catch(() => { })
       if (currentAgent?.id === agentToDelete.id) {
         const remaining = agents.filter((a) => a.workspaceId === currentWorkspace.id && a.id !== agentToDelete.id)
         setCurrentAgent(remaining[0] ?? null)
@@ -660,7 +687,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   if (loading || !user) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-white">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--v2-primary)] border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
       </div>
     )
   }
@@ -669,7 +696,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   if (!hasWorkspaces) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-white">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--v2-primary)] border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
       </div>
     )
   }
@@ -680,7 +707,7 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   if (needsWorkspaceChoice) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-white">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--v2-primary)] border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
       </div>
     )
   }
@@ -733,13 +760,11 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   if (isNewAgentFlow) {
     return (
       <div
-        className="flex h-[100vh] min-h-0 w-full flex-col overflow-hidden bg-white px-6 sm:px-8 lg:px-10"
-        style={{
-          paddingTop: 'max(2rem, env(safe-area-inset-top, 2rem))',
-        }}
+        className="flex h-[100vh] min-h-0 w-full flex-col overflow-hidden px-6 sm:px-8 lg:px-10"
+        style={{ background: 'var(--bg)', paddingTop: 'max(2rem, env(safe-area-inset-top, 2rem))' }}
       >
         <UpgradeProvider>
-            <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} agentsLoading={agentsLoading} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete} socket={socket} refreshUsage={fetchUsage} openAgentLimitModal={undefined} openMemberLimitModal={undefined} workspaceLimits={workspaceLimits} workspaceLimitsLoading={workspaceLimitsLoading} refreshWorkspaceLimits={refreshWorkspaceLimits}>
+          <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} agentsLoading={agentsLoading} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete} socket={socket} refreshUsage={fetchUsage} openAgentLimitModal={undefined} openMemberLimitModal={undefined} workspaceLimits={workspaceLimits} workspaceLimitsLoading={workspaceLimitsLoading} refreshWorkspaceLimits={refreshWorkspaceLimits}>
             {children}
           </DashboardProvider>
         </UpgradeProvider>
@@ -748,275 +773,280 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex h-full w-full min-h-0 flex-col bg-white">
-      <header className="relative z-40 flex min-h-[3.25rem] shrink-0 items-center gap-2 border-b border-slate-200/80 bg-[rgb(248,250,252)] px-3 sm:gap-3 sm:px-5">
-        <nav className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3" aria-label="Workspace">
-          <Link
-            href="/"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--v2-primary)] text-[var(--v2-primary-foreground)] shadow-sm ring-1 ring-slate-900/5 transition-[box-shadow,transform] duration-200 hover:shadow-md active:scale-[0.98]"
-            aria-label="Conciara home"
+    <div className="flex h-full w-full min-h-0 flex-col" style={{ background: 'var(--bg)' }}>
+      {/* �"��"� Topbar �"��"� 52px sticky */}
+      <header className="relative z-40 flex h-[52px] shrink-0 items-center gap-3 border-b" style={{ borderColor: 'var(--line)', background: 'var(--bg)', padding: '0 14px 0 12px' }}>
+        {/* Workspace switcher */}
+        <div className="relative flex min-w-0 items-center" ref={workspaceRef}>
+          <button
+            type="button"
+            onClick={() => setOpenDropdown((v) => (v === 'workspace' ? null : 'workspace'))}
+            className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-[var(--bg-2)]"
+            style={{ color: 'var(--ink)' }}
+            aria-expanded={openDropdown === 'workspace'}
+            aria-haspopup="true"
           >
-            <ConciaraMark size={20} tone="onDark" />
-          </Link>
-
-          <span className="hidden h-6 w-px shrink-0 bg-slate-200 sm:block" aria-hidden />
-
-          {/* Workspace: name links home; only chevron opens the menu */}
-          <div className="relative flex min-w-0 items-stretch rounded-lg" ref={workspaceRef}>
-            <Link
-              href={dashboardBase}
-              className="flex min-w-0 max-w-[min(36vw,12rem)] sm:max-w-[15rem] items-center gap-2 py-2 pl-2 pr-2 text-sm text-slate-800 sm:pl-2.5"
-              title="Agents and workspace home"
-            >
-              <span className="min-w-0 truncate font-medium tracking-tight">{currentWorkspace.name}</span>
-              <span className="inline-flex shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 ring-1 ring-slate-200/80">
-                {currentWorkspace.plan.charAt(0).toUpperCase() + currentWorkspace.plan.slice(1)}
-              </span>
-            </Link>
-            <button
-              type="button"
-              onClick={() => setOpenDropdown((v) => (v === 'workspace' ? null : 'workspace'))}
-              className={`flex shrink-0 items-center rounded-md px-2 py-1 text-slate-400 transition-colors duration-200 hover:bg-slate-100/80 hover:text-slate-700 ${
-                openDropdown === 'workspace' ? 'bg-slate-100/90 text-slate-700' : ''
-              }`}
-              aria-expanded={openDropdown === 'workspace'}
-              aria-haspopup="true"
-              aria-label="Open workspace list"
-            >
-              <ChevronsUpDown className="h-3.5 w-3.5" aria-hidden strokeWidth={2} />
-            </button>
-            <AnimatePresence>
-              {openDropdown === 'workspace' && (
-                <motion.div
-                  key="workspace-menu"
-                  role="menu"
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
-                  className="absolute left-0 top-full z-50 mt-1.5 w-64 origin-top-left overflow-hidden rounded-xl border border-slate-200/90 bg-white py-1.5 shadow-[0_10px_40px_-12px_rgba(15,23,42,0.2)] backdrop-blur-md"
-                >
-                  {isOwner && (
-                    <div className="border-b border-slate-100 px-2 pb-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCreateWorkspaceOpen(true)
-                          setOpenDropdown(null)
-                          setCreateWorkspaceName('')
-                          setCreateWorkspaceError('')
-                        }}
-                        className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--v2-primary)] py-2 text-xs font-medium text-[var(--v2-primary)] transition-colors duration-200 hover:bg-[var(--v2-primary)]/10"
-                      >
-                        <Plus className="h-3.5 w-3.5" aria-hidden />
-                        New workspace
-                      </button>
-                    </div>
-                  )}
-                  <div className="px-2 pt-2">
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden />
-                      <input
-                        type="text"
-                        value={workspaceSearch}
-                        onChange={(e) => setWorkspaceSearch(e.target.value)}
-                        placeholder="Find workspace…"
-                        className="w-full rounded-lg border border-slate-200/90 bg-slate-50 py-2 pl-8 pr-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-[var(--v2-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--v2-primary)]/15"
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-1 max-h-36 overflow-auto px-1">
-                    {filteredWorkspaces.map((w) => (
-                      <button
-                        key={w.id}
-                        type="button"
-                        role="menuitem"
-                        onClick={() => handleWorkspaceSelect(w)}
-                        className={`flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs transition-colors duration-150 ${
-                          currentWorkspace.id === w.id
-                            ? 'bg-slate-100 font-medium text-slate-900'
-                            : 'text-slate-700 hover:bg-slate-50'
-                        }`}
-                      >
-                        <span className="min-w-0 truncate">{w.name}</span>
-                        {currentWorkspace.id === w.id && (
-                          <Check className="h-3.5 w-3.5 shrink-0 text-[var(--v2-primary)]" aria-hidden />
-                        )}
-                      </button>
-                    ))}
-                    {filteredWorkspaces.length === 0 && (
-                      <p className="px-2 py-3 text-center text-xs text-slate-500">No matches</p>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {!isWorkspaceLevelRoute && (
-            <>
-              <span className="hidden h-6 w-px shrink-0 bg-slate-200 sm:block" aria-hidden />
-              <div className="relative min-w-0" ref={agentRef}>
-                <div className="flex min-w-0 items-stretch rounded-lg">
-                  {currentAgent?.id ?? agentIdFromPath ? (
-                    <Link
-                      href={buildDashboardUrl(currentWorkspace.id, {
-                        agentId: (currentAgent?.id ?? agentIdFromPath) as string,
-                        subPath: 'playground',
-                      })}
-                      className="flex min-w-0 max-w-[min(36vw,11rem)] sm:max-w-[15rem] items-center py-2 pl-2 pr-2 text-sm text-slate-800 transition-colors duration-200 hover:bg-slate-50/80 sm:pl-2.5"
-                      title="Open Playground"
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px]" style={{ background: 'var(--ink)', color: '#fff' }}>
+              <ConciaraMark size={15} tone="onDark" />
+            </span>
+            <span className="flex min-w-0 flex-col" style={{ gap: 1 }}>
+              <span className="min-w-0 max-w-[10rem] truncate leading-none" style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{currentWorkspace.name}</span>
+              <span className="leading-none flex items-start" style={{ fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.01em' }}>{currentWorkspace.plan.charAt(0).toUpperCase() + currentWorkspace.plan.slice(1)}</span>
+            </span>
+            <ChevronsUpDown className="h-[12px] w-[12px] shrink-0" style={{ color: 'var(--ink-4)' }} strokeWidth={2} />
+          </button>
+          <AnimatePresence>
+            {openDropdown === 'workspace' && (
+              <motion.div
+                key="workspace-menu"
+                role="menu"
+                initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute left-0 top-full z-50 mt-1.5 w-64 origin-top-left overflow-hidden rounded-xl py-1.5 shadow-[0_12px_40px_-8px_rgba(26,26,29,0.18)]"
+                style={{ background: 'var(--surface)', border: '1px solid var(--line)' }}
+              >
+                {isOwner && (
+                  <div className="border-b px-2 pb-2" style={{ borderColor: 'var(--line)' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreateWorkspaceOpen(true)
+                        setOpenDropdown(null)
+                        setCreateWorkspaceName('')
+                        setCreateWorkspaceError('')
+                      }}
+                      className="flex w-full items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-medium transition-colors"
+                      style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
                     >
-                      <span className="min-w-0 flex-1 truncate font-medium tracking-tight">
-                        {currentAgent?.name ?? 'Agent'}
-                      </span>
-                    </Link>
-                  ) : (
-                    <span className="flex min-w-0 max-w-[min(36vw,11rem)] items-center py-2 pl-2 pr-2 text-sm text-slate-500 sm:pl-2.5">
-                      <span className="min-w-0 flex-1 truncate">Agent</span>
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setOpenDropdown((v) => (v === 'agent' ? null : 'agent'))}
-                    className={`flex shrink-0 items-center rounded-md px-2 py-1 text-slate-400 transition-colors duration-200 hover:bg-slate-100/80 hover:text-slate-700 ${
-                      openDropdown === 'agent' ? 'bg-slate-100/90 text-slate-700' : ''
-                    }`}
-                    aria-expanded={openDropdown === 'agent'}
-                    aria-haspopup="true"
-                    aria-label="Open agent list"
-                  >
-                    <ChevronsUpDown className="h-3.5 w-3.5" aria-hidden strokeWidth={2} />
-                  </button>
+                      <Plus className="h-3.5 w-3.5" aria-hidden />
+                      New workspace
+                    </button>
+                  </div>
+                )}
+                <div className="px-2 pt-2">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: 'var(--ink-4)' }} aria-hidden />
+                    <input
+                      type="text"
+                      value={workspaceSearch}
+                      onChange={(e) => setWorkspaceSearch(e.target.value)}
+                      placeholder="Find workspace…"
+                      className="w-full rounded-lg py-2 pl-8 pr-2 text-xs outline-none"
+                      style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--ink)' }}
+                    />
+                  </div>
                 </div>
-                <AnimatePresence>
-                  {openDropdown === 'agent' && (
-                    <motion.div
-                      key="agent-menu"
-                      role="menu"
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -4 }}
-                      transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
-                      className="absolute left-0 top-full z-50 mt-1.5 w-64 origin-top-left overflow-hidden rounded-xl border border-slate-200/90 bg-white py-1.5 shadow-[0_10px_40px_-12px_rgba(15,23,42,0.2)] backdrop-blur-md"
+                <div className="mt-1 max-h-36 overflow-auto px-1">
+                  {filteredWorkspaces.map((w) => (
+                    <button
+                      key={w.id}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => handleWorkspaceSelect(w)}
+                      className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs transition-colors"
+                      style={{
+                        background: currentWorkspace.id === w.id ? 'var(--bg-2)' : 'transparent',
+                        color: currentWorkspace.id === w.id ? 'var(--ink)' : 'var(--ink-2)',
+                        fontWeight: currentWorkspace.id === w.id ? 500 : 400,
+                      }}
                     >
-                      <div className="border-b border-slate-100 px-2 pb-2">
-                        <PermissionButton
-                          feature="createAgent"
-                          onClick={() => {
-                            setOpenDropdown(null)
-                            startNewAgentFlow(currentWorkspace.id)
-                            router.push(buildDashboardUrl(currentWorkspace.id) + '/new-agent/link')
-                          }}
-                          variant="outline"
-                          size="sm"
-                          className="w-full gap-1.5 rounded-lg border-[var(--v2-primary)] text-[var(--v2-primary)] hover:bg-[var(--v2-primary)]/10"
-                          showCrownIcon
-                        >
-                          <Plus className="h-3.5 w-3.5" /> New agent
-                        </PermissionButton>
+                      <span className="min-w-0 truncate">{w.name}</span>
+                      {currentWorkspace.id === w.id && <Check className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--accent)' }} aria-hidden />}
+                    </button>
+                  ))}
+                  {filteredWorkspaces.length === 0 && (
+                    <p className="px-2 py-3 text-center text-xs" style={{ color: 'var(--ink-4)' }}>No matches</p>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Agent breadcrumb (agent routes only) */}
+        {!isWorkspaceLevelRoute && (
+          <>
+            <span className="h-5 w-px shrink-0" style={{ background: 'var(--line-strong)' }} aria-hidden />
+            <div className="relative" ref={agentRef}>
+              <button
+                type="button"
+                onClick={() => setOpenDropdown((v) => (v === 'agent' ? null : 'agent'))}
+                className="flex items-center gap-[7px] rounded-lg transition-colors hover:bg-[var(--bg-2)]"
+                style={{ height: 32, paddingLeft: 8, paddingRight: 10, maxWidth: '13rem' }}
+                aria-expanded={openDropdown === 'agent'}
+                aria-haspopup="true"
+              >
+                <span
+                  className="shrink-0 inline-flex items-center justify-center rounded-[6px]"
+                  style={{ width: 20, height: 20, background: 'var(--accent)' }}
+                >
+                  <Bot className="h-[11px] w-[11px]" style={{ color: 'white' }} />
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[13px] font-medium" style={{ color: 'var(--ink)' }}>
+                  {currentAgent?.name ?? 'Agent'}
+                </span>
+                <ChevronsUpDown className="h-[12px] w-[12px] shrink-0" style={{ color: 'var(--ink-4)' }} strokeWidth={2} />
+              </button>
+              <AnimatePresence>
+                {openDropdown === 'agent' && (
+                  <motion.div
+                    key="agent-menu"
+                    role="menu"
+                    initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                    transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                    className="absolute left-0 top-full z-50 mt-1.5 w-64 origin-top-left overflow-hidden rounded-xl py-1.5 shadow-[0_12px_40px_-8px_rgba(26,26,29,0.18)]"
+                    style={{ background: 'var(--surface)', border: '1px solid var(--line)' }}
+                  >
+                    <div className="border-b px-2 pb-2" style={{ borderColor: 'var(--line)' }}>
+                      <PermissionButton
+                        feature="createAgent"
+                        onClick={() => {
+                          setOpenDropdown(null)
+                          startNewAgentFlow(currentWorkspace.id)
+                          router.push(buildDashboardUrl(currentWorkspace.id) + '/new-agent/link')
+                        }}
+                        variant="outline"
+                        size="sm"
+                        className="w-full gap-1.5 rounded-lg border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent-soft)] text-xs font-medium"
+                        showCrownIcon
+                      >
+                        <Plus className="h-3.5 w-3.5" /> New agent
+                      </PermissionButton>
+                    </div>
+                    <div className="px-2 pt-2">
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: 'var(--ink-4)' }} aria-hidden />
+                        <input
+                          type="text"
+                          value={agentSearch}
+                          onChange={(e) => setAgentSearch(e.target.value)}
+                          placeholder="Find agent…"
+                          className="w-full rounded-lg py-2 pl-8 pr-2 text-xs outline-none"
+                          style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--ink)' }}
+                        />
                       </div>
-                      <div className="px-2 pt-2">
-                        <div className="relative">
-                          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden />
-                          <input
-                            type="text"
-                            value={agentSearch}
-                            onChange={(e) => setAgentSearch(e.target.value)}
-                            placeholder="Find agent…"
-                            className="w-full rounded-lg border border-slate-200/90 bg-slate-50 py-2 pl-8 pr-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-[var(--v2-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--v2-primary)]/15"
-                          />
-                        </div>
-                      </div>
-                      <div className="mt-1 max-h-36 overflow-auto px-1">
-                        {agentsLoading ? (
-                          <>
-                            {[1, 2, 3].map((i) => (
-                              <div key={i} className="flex items-center gap-2 rounded-lg px-2 py-2.5" aria-hidden>
-                                <div className="h-4 w-8 shrink-0 rounded bg-slate-200/80" />
-                                <div className="h-4 flex-1 rounded bg-slate-100" />
-                              </div>
-                            ))}
-                          </>
-                        ) : (
-                          <>
-                            {filteredAgents.map((a) => (
-                              <div
-                                key={a.id}
-                                className={`flex w-full items-center justify-between gap-1 rounded-lg px-2 py-1.5 text-left text-xs ${
-                                  currentAgent?.id === a.id
-                                    ? 'bg-slate-100 font-medium text-slate-900'
-                                    : 'text-slate-700 hover:bg-slate-50'
-                                }`}
+                    </div>
+                    <div className="mt-1 max-h-36 overflow-auto px-1">
+                      {agentsLoading ? (
+                        <>
+                          {[1, 2, 3].map((i) => (
+                            <div key={i} className="flex items-center gap-2 rounded-lg px-2 py-2.5" aria-hidden>
+                              <div className="h-4 w-8 shrink-0 rounded" style={{ background: 'var(--line-2)' }} />
+                              <div className="h-4 flex-1 rounded" style={{ background: 'var(--bg-2)' }} />
+                            </div>
+                          ))}
+                        </>
+                      ) : (
+                        <>
+                          {filteredAgents.map((a) => (
+                            <div
+                              key={a.id}
+                              className="flex w-full items-center justify-between gap-1 rounded-lg px-2 py-1.5 text-left text-xs transition-colors"
+                              style={{
+                                background: currentAgent?.id === a.id ? 'var(--bg-2)' : 'transparent',
+                                color: currentAgent?.id === a.id ? 'var(--ink)' : 'var(--ink-2)',
+                              }}
+                            >
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => {
+                                  setCurrentAgent(a)
+                                  setOpenDropdown(null)
+                                  router.push(buildDashboardUrl(currentWorkspace.id, { agentId: a.id, subPath: 'playground' }))
+                                }}
+                                className="min-w-0 flex-1 truncate text-left transition-colors"
                               >
+                                {a.name}
+                              </button>
+                              <div className="flex shrink-0 items-center gap-0.5">
+                                {currentAgent?.id === a.id && <Check className="h-3.5 w-3.5" style={{ color: 'var(--accent)' }} aria-hidden />}
                                 <button
                                   type="button"
-                                  role="menuitem"
-                                  onClick={() => {
-                                    setCurrentAgent(a)
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setAgentToDelete({ id: a.id, name: a.name })
                                     setOpenDropdown(null)
-                                    router.push(buildDashboardUrl(currentWorkspace.id, { agentId: a.id, subPath: 'playground' }))
                                   }}
-                                  className="min-w-0 flex-1 truncate text-left transition-colors duration-150"
+                                  className="rounded-md p-1 transition-colors hover:bg-red-50 hover:text-red-600"
+                                  style={{ color: 'var(--ink-4)' }}
+                                  aria-label={`Delete ${a.name}`}
+                                  title="Remove agent"
                                 >
-                                  {a.name}
+                                  <Trash2 className="h-3.5 w-3.5" aria-hidden />
                                 </button>
-                                <div className="flex shrink-0 items-center gap-0.5">
-                                  {currentAgent?.id === a.id && (
-                                    <Check className="h-3.5 w-3.5 text-[var(--v2-primary)]" aria-hidden />
-                                  )}
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      setAgentToDelete({ id: a.id, name: a.name })
-                                      setOpenDropdown(null)
-                                    }}
-                                    className="rounded-md p-1 text-slate-400 transition-colors duration-150 hover:bg-red-50 hover:text-red-600"
-                                    aria-label={`Delete ${a.name}`}
-                                    title="Remove agent"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                                  </button>
-                                </div>
                               </div>
-                            ))}
-                            {filteredAgents.length === 0 && (
-                              <p className="px-2 py-3 text-center text-xs text-slate-500">No matches</p>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </>
-          )}
-        </nav>
+                            </div>
+                          ))}
+                          {filteredAgents.length === 0 && (
+                            <p className="px-2 py-3 text-center text-xs" style={{ color: 'var(--ink-4)' }}>No matches</p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </>
+        )}
 
-        <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1">
-          <NotificationBell workspaceId={currentWorkspace?.id} />
-          <Link
-            href="/docs"
-            className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-slate-600 transition-colors duration-200 hover:bg-slate-100 hover:text-slate-900"
-            aria-label="Product documentation"
+        {/* Right side: cmd pill + credits + notifications + avatar */}
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {/* Command palette pill */}
+          <button
+            type="button"
+            className="hidden md:flex items-center gap-2 h-[30px] px-2.5 rounded-lg border text-xs transition-colors hover:bg-[var(--bg-2)]"
+            style={{ borderColor: 'var(--line)', background: 'var(--surface-2)', color: 'var(--ink-3)' }}
+            aria-label="Search"
           >
-            <BookOpen className="h-4 w-4 shrink-0 text-slate-500" aria-hidden />
-            <span className="hidden sm:inline">Docs</span>
-          </Link>
+            <Search className="h-3.5 w-3.5" style={{ color: 'var(--ink-4)' }} />
+            <span className="hidden lg:inline">Search…</span>
+            <kbd className="hidden lg:inline-flex items-center gap-0.5 rounded px-1 text-[10px]" style={{ background: 'var(--bg-2)', color: 'var(--ink-4)', border: '1px solid var(--line)' }}>
+              <Command className="h-2.5 w-2.5" />K
+            </kbd>
+          </button>
+
+          {/* Credits pill */}
+          {usage && (
+            <div className="hidden lg:inline-flex items-center gap-[10px] h-[30px] rounded-full border" style={{ borderColor: 'var(--line)', background: 'var(--surface-2)', paddingLeft: 10, paddingRight: 4 }}>
+              <span className="uppercase tracking-[0.06em]" style={{ fontSize: 11, color: 'var(--ink-3)' }}>Credits</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink)', fontWeight: 500 }}>
+                {usage.usedCredits.toLocaleString()}<span style={{ color: 'var(--ink-4)' }}>/{(usage.includedCredits + usage.bonusCredits).toLocaleString()}</span>
+              </span>
+              <div className="h-1 w-14 rounded-full overflow-hidden" style={{ background: 'var(--line)' }}>
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${Math.min(100, Math.round(((usage.usedCredits) / (usage.includedCredits + usage.bonusCredits || 1)) * 100))}%`,
+                    background: 'var(--accent)',
+                  }}
+                />
+              </div>
+              <Link href={buildDashboardUrl(currentWorkspace.id, { subPath: 'settings/plans' })} className="inline-flex items-center h-6 rounded-full font-medium transition-opacity hover:opacity-80" style={{ paddingLeft: 10, paddingRight: 10, background: 'var(--ink)', color: 'white', fontSize: 11.5 }}>
+                Upgrade
+              </Link>
+            </div>
+          )}
+
+          <NotificationBell workspaceId={currentWorkspace?.id} />
+
+          {/* Avatar / user menu */}
           <div className="relative" ref={userMenuRef}>
             <button
               type="button"
               onClick={() => setUserMenuOpen((v) => !v)}
-              className={`rounded-lg p-2 text-slate-600 transition-colors duration-200 hover:bg-slate-100 hover:text-slate-900 ${
-                userMenuOpen ? 'bg-slate-100 text-slate-900' : ''
-              }`}
+              className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white transition-opacity hover:opacity-80"
+              style={{ background: 'var(--ink)' }}
               aria-label="Account"
               aria-expanded={userMenuOpen}
               aria-haspopup="true"
             >
-              <UserRound className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+              {user?.email?.slice(0, 2).toUpperCase() ?? 'U'}
             </button>
             <AnimatePresence>
               {userMenuOpen && (
@@ -1024,31 +1054,35 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                   key="account-menu"
                   role="menu"
                   aria-label="Account"
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
+                  initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.97 }}
                   transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
-                  className="absolute right-0 top-full z-50 mt-1.5 w-52 origin-top-right overflow-hidden rounded-xl border border-slate-200/90 bg-white py-1 shadow-[0_10px_40px_-12px_rgba(15,23,42,0.2)] backdrop-blur-md"
+                  className="absolute right-0 top-full z-50 mt-1.5 w-52 origin-top-right overflow-hidden rounded-xl py-1 shadow-[0_12px_40px_-8px_rgba(26,26,29,0.18)]"
+                  style={{ background: 'var(--surface)', border: '1px solid var(--line)' }}
                 >
+                  <div className="border-b px-3 py-2.5" style={{ borderColor: 'var(--line)' }}>
+                    <p className="text-sm font-medium truncate" style={{ color: 'var(--ink)' }}>{user?.email}</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--ink-3)' }}>{currentWorkspace.plan} plan</p>
+                  </div>
                   <Link
                     href="/account"
                     role="menuitem"
                     onClick={() => setUserMenuOpen(false)}
-                    className="flex items-center gap-2.5 px-3 py-2.5 text-sm text-slate-700 transition-colors duration-150 hover:bg-slate-50"
+                    className="flex items-center gap-2.5 px-3 py-2.5 text-sm transition-colors hover:bg-[var(--bg-2)]"
+                    style={{ color: 'var(--ink-2)' }}
                   >
-                    <Settings className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
-                    Account
+                    <Settings className="h-4 w-4 shrink-0" style={{ color: 'var(--ink-4)' }} aria-hidden />
+                    Account settings
                   </Link>
                   <button
                     type="button"
                     role="menuitem"
-                    onClick={() => {
-                      setUserMenuOpen(false)
-                      logout()
-                    }}
-                    className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-slate-700 transition-colors duration-150 hover:bg-slate-50"
+                    onClick={() => { setUserMenuOpen(false); logout() }}
+                    className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors hover:bg-[var(--bg-2)]"
+                    style={{ color: 'var(--ink-2)' }}
                   >
-                    <LogOut className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+                    <LogOut className="h-4 w-4 shrink-0" style={{ color: 'var(--ink-4)' }} aria-hidden />
                     Sign out
                   </button>
                 </motion.div>
@@ -1061,112 +1095,180 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
       <UpgradeProvider>
         <DashboardProvider currentWorkspace={currentWorkspace} agents={agentsInWorkspace} agentsLoading={agentsLoading} currentAgent={currentAgent} createAgent={createAgent} setAgentToDelete={setAgentToDelete} socket={socket} refreshUsage={fetchUsage} openAgentLimitModal={undefined} openMemberLimitModal={undefined} workspaceLimits={workspaceLimits} workspaceLimitsLoading={workspaceLimitsLoading} refreshWorkspaceLimits={refreshWorkspaceLimits}>
           <div className="flex min-h-0 flex-1">
-            {/* Left sidebar — matches main dashboard surface; clear active / nested hierarchy */}
-            <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200/80 bg-[rgb(248,250,252)]">
-              <nav className="flex flex-1 flex-col gap-px overflow-y-auto px-2 py-3" aria-label="Dashboard">
-                {navItems.map((item) => {
-                  const itemHref = getNavHref(item)
-                  const isActive = !('children' in item && (item as { children?: string[] }).children?.length) && pathname === itemHref
-                  const hasChildren = 'children' in item && Array.isArray((item as { children?: string[] }).children) && (item as { children: string[] }).children.length > 0
-                  const isChildRoute =
-                    hasChildren &&
-                    (item as { children: string[] }).children.some(
-                      (child) => pathname === getChildHrefForActive(item, child)
-                    )
-                  const sectionValue = `nav-${item.label}`
-                  const isSectionOpen = Boolean(expanded[item.label] || isChildRoute)
+            {/* �"��"� Sidebar �"��"� 248px flat nav groups */}
+            <motion.aside
+              className="flex w-[248px] shrink-0 flex-col border-r"
+              style={{ background: 'var(--bg)', borderColor: 'var(--line)' }}
+              initial={{ x: -8, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <nav className="flex flex-1 flex-col overflow-y-auto px-[10px] py-[14px]" aria-label="Dashboard">
+                {/* Agent nav: back link first */}
+                {!isWorkspaceLevelRoute && (
+                  <Link
+                    href={dashboardBase}
+                    className="mb-2 flex items-center gap-[8px] rounded-[6px] h-[28px] px-[10px] text-[12px] font-medium transition-colors hover:bg-[var(--bg-2)]"
+                    style={{ color: 'var(--ink-3)' }}
+                  >
+                    <ArrowLeft className="h-3.5 w-3.5" />
+                    Back to workspace
+                  </Link>
+                )}
 
-                  if (!hasChildren) {
-                    return (
-                      <div key={item.label}>
-                        <Link
-                          href={itemHref}
-                          className={`flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--v2-primary)]/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(248,250,252)] ${
-                            isActive
-                              ? 'bg-white font-semibold text-slate-900 shadow-[0_2px_8px_-2px_rgba(15,23,42,0.12)] ring-1 ring-slate-300/55'
-                              : 'font-medium text-slate-600 hover:bg-slate-100/90 hover:text-slate-900'
-                          }`}
-                        >
-                          <span className="inline-flex h-4 w-5 shrink-0 items-center justify-center" aria-hidden>
-                            <item.Icon
-                              className={`h-4 w-4 ${isActive ? 'text-[var(--v2-primary)]' : 'text-slate-400'}`}
-                              strokeWidth={2}
-                            />
-                          </span>
-                          <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                {/* Flat nav groups */}
+                {isWorkspaceLevelRoute ? (
+                  <>
+                    {/* Workspace group */}
+                    <p className="uppercase" style={{ fontSize: '10.5px', letterSpacing: '0.08em', padding: '4px 10px 6px', fontWeight: 500, color: 'var(--ink-4)' }}>Workspace</p>
+                    {[
+                      { href: '/dashboard', label: 'Agents', Icon: Bot },
+                      { href: 'usage', label: 'Usage', Icon: BarChart3 },
+                    ].map(({ href, label, Icon }) => {
+                      const fullHref = href === '/dashboard' ? dashboardBase : buildDashboardUrl(currentWorkspace.id, { subPath: href })
+                      const active = pathname === fullHref
+                      return (
+                        <Link key={label} href={fullHref} className="relative flex items-center gap-[10px] rounded-[6px] h-[30px] px-[10px] text-[13px] transition-colors mb-0.5 hover:bg-[var(--bg-2)]" style={{ color: active ? 'var(--ink)' : 'var(--ink-2)', fontWeight: active ? 500 : 400, background: active ? 'var(--surface)' : 'transparent', boxShadow: active ? '0 0 0 1px var(--line-2), 0 1px 1px rgba(0,0,0,0.02)' : undefined }}>
+                          {active && <span style={{ position: 'absolute', left: -10, top: 6, bottom: 6, width: 2, background: 'var(--accent)', borderRadius: 2 }} />}
+                          <Icon className="h-4 w-4 shrink-0" style={{ color: active ? 'var(--accent)' : 'var(--ink-4)' }} strokeWidth={active ? 2.2 : 1.75} />
+                          <span className="min-w-0 flex-1 truncate">{label}</span>
                         </Link>
-                      </div>
-                    )
-                  }
+                      )
+                    })}
 
-                  return (
-                    <Accordion
-                      key={item.label}
-                      type="single"
-                      collapsible
-                      value={isSectionOpen ? sectionValue : ''}
-                      onValueChange={(v) => {
-                        const nextOpen = v === sectionValue
-                        if (isChildRoute && !nextOpen) return
-                        setExpanded((prev) => ({ ...prev, [item.label]: nextOpen }))
-                      }}
-                    >
-                      <AccordionItem value={sectionValue} className="w-full border-0">
-                        {/* Parent row stays neutral: no “active” or “open” fill — only the child link shows selection. */}
-                        <AccordionTrigger className="w-full min-w-0 gap-2 rounded-lg px-2 py-1.5 text-left text-sm font-medium text-slate-600 transition-colors duration-200 hover:bg-slate-100/90 hover:text-slate-900 hover:no-underline focus-visible:ring-2 focus-visible:ring-[var(--v2-primary)]/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(248,250,252)] data-[state=open]:bg-transparent data-[state=open]:text-slate-600 data-[state=open]:shadow-none data-[state=open]:ring-0">
-                          <span className="inline-flex h-4 w-5 shrink-0 items-center justify-center" aria-hidden>
-                            <item.Icon className="h-4 w-4 shrink-0 text-slate-400" strokeWidth={2} />
-                          </span>
-                          <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
-                          <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 group-data-[state=open]:rotate-180" />
-                        </AccordionTrigger>
-                        <AccordionContent className="ml-4 space-y-px border-l border-slate-200/70 pb-0.5 pl-2.5 pt-1">
-                          {(item as { children: string[] }).children.map((child) => {
-                            const childHref = getNavHref(item, child)
-                            const isChildActive = pathname === getChildHrefForActive(item, child)
-                            return (
-                              <Link
-                                key={child}
-                                href={childHref}
-                                className={`block rounded-md py-1.5 pl-2 pr-1.5 text-xs transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--v2-primary)]/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(248,250,252)] ${
-                                  isChildActive
-                                    ? 'bg-white font-semibold text-slate-900 shadow-[0_2px_6px_-2px_rgba(15,23,42,0.1)] ring-1 ring-slate-300/55'
-                                    : 'text-slate-500 hover:bg-slate-100/90 hover:text-slate-800'
-                                }`}
-                              >
-                                {child}
-                              </Link>
-                            )
-                          })}
-                        </AccordionContent>
-                      </AccordionItem>
-                    </Accordion>
-                  )
-                })}
-              </nav>
-              <div className="border-t border-slate-200/80 bg-[rgb(248,250,252)] p-3">
-                {currentWorkspace.id ? (
-                  <CreditUsageWidget />
+                    {/* Settings group (owner only) */}
+                    {isOwner && (
+                      <>
+                        <p className="mt-4 uppercase" style={{ fontSize: '10.5px', letterSpacing: '0.08em', padding: '4px 10px 6px', fontWeight: 500, color: 'var(--ink-4)' }}>Settings</p>
+                        {[
+                          { sub: 'settings/general', label: 'General', Icon: Settings },
+                          { sub: 'members', label: 'Members', Icon: Users },
+                          { sub: 'settings/notifications', label: 'Notifications', Icon: Bell },
+                          { sub: 'settings/plans', label: 'Plans', Icon: Zap },
+                          { sub: 'settings/billing', label: 'Billing', Icon: CreditCard },
+                          { sub: 'settings/api-keys', label: 'API keys', Icon: Key },
+                        ].map(({ sub, label, Icon }) => {
+                          const fullHref = buildDashboardUrl(currentWorkspace.id, { subPath: sub })
+                          const active = pathname === fullHref
+                          return (
+                            <Link key={label} href={fullHref} className="relative flex items-center gap-[10px] rounded-[6px] h-[30px] px-[10px] text-[13px] transition-colors mb-0.5 hover:bg-[var(--bg-2)]" style={{ color: active ? 'var(--ink)' : 'var(--ink-2)', fontWeight: active ? 500 : 400, background: active ? 'var(--surface)' : 'transparent', boxShadow: active ? '0 0 0 1px var(--line-2), 0 1px 1px rgba(0,0,0,0.02)' : undefined }}>
+                              {active && <span style={{ position: 'absolute', left: -10, top: 6, bottom: 6, width: 2, background: 'var(--accent)', borderRadius: 2 }} />}
+                              <Icon className="h-4 w-4 shrink-0" style={{ color: active ? 'var(--accent)' : 'var(--ink-4)' }} strokeWidth={active ? 2.2 : 1.75} />
+                              <span className="min-w-0 flex-1 truncate">{label}</span>
+                            </Link>
+                          )
+                        })}
+                      </>
+                    )}
+                  </>
                 ) : (
                   <>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Credits</p>
-                    <p className="mt-1 text-xs leading-relaxed text-slate-500">Select a workspace to see usage.</p>
-                    <Link
-                      href="/pricing"
-                      className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors duration-200 hover:bg-slate-50"
-                    >
-                      <span aria-hidden>↑</span> Upgrade
-                    </Link>
+                    {/* Agent nav groups */}
+                    {[
+                      { label: 'Playground', icon: 'play', sub: 'playground' },
+                    ].map(({ label, icon, sub }) => {
+                      const fullHref = agentBase(sub)
+                      const active = pathname === fullHref
+                      return (
+                        <Link key={label} href={fullHref} className="relative flex items-center gap-[10px] rounded-[6px] h-[30px] px-[10px] text-[13px] transition-colors mb-0.5 hover:bg-[var(--bg-2)]" style={{ color: active ? 'var(--ink)' : 'var(--ink-2)', fontWeight: active ? 500 : 400, background: active ? 'var(--surface)' : 'transparent', boxShadow: active ? '0 0 0 1px var(--line-2), 0 1px 1px rgba(0,0,0,0.02)' : undefined }}>
+                          {active && <span style={{ position: 'absolute', left: -10, top: 6, bottom: 6, width: 2, background: 'var(--accent)', borderRadius: 2 }} />}
+                          <DesignIcon name={icon} active={active} />
+                          <span className="min-w-0 flex-1 truncate">{label}</span>
+                        </Link>
+                      )
+                    })}
+
+                    <p className="mt-3 uppercase" style={{ fontSize: '10.5px', letterSpacing: '0.08em', padding: '4px 10px 6px', fontWeight: 500, color: 'var(--ink-4)' }}>Activity</p>
+                    {[{ label: 'Chat logs', sub: 'activity/chat-logs', icon: 'scroll' }].map(({ label, sub, icon }) => {
+                      const fullHref = agentBase(sub)
+                      const active = pathname === fullHref
+                      return (
+                        <Link key={label} href={fullHref} className="relative flex items-center gap-[10px] rounded-[6px] h-[30px] px-[10px] text-[13px] transition-colors mb-0.5 hover:bg-[var(--bg-2)]" style={{ color: active ? 'var(--ink)' : 'var(--ink-2)', fontWeight: active ? 500 : 400, background: active ? 'var(--surface)' : 'transparent', boxShadow: active ? '0 0 0 1px var(--line-2), 0 1px 1px rgba(0,0,0,0.02)' : undefined }}>
+                          {active && <span style={{ position: 'absolute', left: -10, top: 6, bottom: 6, width: 2, background: 'var(--accent)', borderRadius: 2 }} />}
+                          <DesignIcon name={icon} active={active} />
+                          <span className="min-w-0 flex-1 truncate">{label}</span>
+                        </Link>
+                      )
+                    })}
+
+                    <p className="mt-3 uppercase" style={{ fontSize: '10.5px', letterSpacing: '0.08em', padding: '4px 10px 6px', fontWeight: 500, color: 'var(--ink-4)' }}>Analytics</p>
+                    {[{ label: 'Chats', sub: 'analytics/chats', icon: 'usage' }].map(({ label, sub, icon }) => {
+                      const fullHref = agentBase(sub)
+                      const active = pathname === fullHref
+                      return (
+                        <Link key={label} href={fullHref} className="relative flex items-center gap-[10px] rounded-[6px] h-[30px] px-[10px] text-[13px] transition-colors mb-0.5 hover:bg-[var(--bg-2)]" style={{ color: active ? 'var(--ink)' : 'var(--ink-2)', fontWeight: active ? 500 : 400, background: active ? 'var(--surface)' : 'transparent', boxShadow: active ? '0 0 0 1px var(--line-2), 0 1px 1px rgba(0,0,0,0.02)' : undefined }}>
+                          {active && <span style={{ position: 'absolute', left: -10, top: 6, bottom: 6, width: 2, background: 'var(--accent)', borderRadius: 2 }} />}
+                          <DesignIcon name={icon} active={active} />
+                          <span className="min-w-0 flex-1 truncate">{label}</span>
+                        </Link>
+                      )
+                    })}
+
+                    <p className="mt-3 uppercase" style={{ fontSize: '10.5px', letterSpacing: '0.08em', padding: '4px 10px 6px', fontWeight: 500, color: 'var(--ink-4)' }}>Data sources</p>
+                    {[
+                      { label: 'Files', sub: 'data-sources/files', icon: 'file' },
+                      { label: 'Q&A', sub: 'data-sources/qa', icon: 'book' },
+                      { label: 'Website', sub: 'data-sources/website', icon: 'globe' },
+                    ].map(({ label, sub, icon }) => {
+                      const fullHref = agentBase(sub)
+                      const active = pathname === fullHref
+                      return (
+                        <Link key={label} href={fullHref} className="relative flex items-center gap-[10px] rounded-[6px] h-[30px] px-[10px] text-[13px] transition-colors mb-0.5 hover:bg-[var(--bg-2)]" style={{ color: active ? 'var(--ink)' : 'var(--ink-2)', fontWeight: active ? 500 : 400, background: active ? 'var(--surface)' : 'transparent', boxShadow: active ? '0 0 0 1px var(--line-2), 0 1px 1px rgba(0,0,0,0.02)' : undefined }}>
+                          {active && <span style={{ position: 'absolute', left: -10, top: 6, bottom: 6, width: 2, background: 'var(--accent)', borderRadius: 2 }} />}
+                          <DesignIcon name={icon} active={active} />
+                          <span className="min-w-0 flex-1 truncate">{label}</span>
+                        </Link>
+                      )
+                    })}
+
+                    {[
+                      { label: 'Connected Apps', sub: 'connected-apps', icon: 'plug' },
+                      { label: 'Actions', sub: 'actions', icon: 'spark' },
+                      { label: 'Chat widget', sub: 'settings/chatbot', icon: 'bot' },
+                    ].map(({ label, sub, icon }) => {
+                      const fullHref = agentBase(sub)
+                      const active = pathname === fullHref || pathname?.startsWith(fullHref + '/')
+                      return (
+                        <Link key={label} href={fullHref} className="relative flex items-center gap-[10px] rounded-[6px] h-[30px] px-[10px] text-[13px] transition-colors mt-0.5 mb-0.5 hover:bg-[var(--bg-2)]" style={{ color: active ? 'var(--ink)' : 'var(--ink-2)', fontWeight: active ? 500 : 400, background: active ? 'var(--surface)' : 'transparent', boxShadow: active ? '0 0 0 1px var(--line-2), 0 1px 1px rgba(0,0,0,0.02)' : undefined }}>
+                          {active && <span style={{ position: 'absolute', left: -10, top: 6, bottom: 6, width: 2, background: 'var(--accent)', borderRadius: 2 }} />}
+                          <DesignIcon name={icon} active={active} />
+                          <span className="min-w-0 flex-1 truncate">{label}</span>
+                        </Link>
+                      )
+                    })}
+
+                    <p className="mt-3 uppercase" style={{ fontSize: '10.5px', letterSpacing: '0.08em', padding: '4px 10px 6px', fontWeight: 500, color: 'var(--ink-4)' }}>Settings</p>
+                    {[{ label: 'General', sub: 'settings/general', icon: 'settings' }].map(({ label, sub, icon }) => {
+                      const fullHref = agentBase(sub)
+                      const active = pathname === fullHref
+                      return (
+                        <Link key={label} href={fullHref} className="relative flex items-center gap-[10px] rounded-[6px] h-[30px] px-[10px] text-[13px] transition-colors mb-0.5 hover:bg-[var(--bg-2)]" style={{ color: active ? 'var(--ink)' : 'var(--ink-2)', fontWeight: active ? 500 : 400, background: active ? 'var(--surface)' : 'transparent', boxShadow: active ? '0 0 0 1px var(--line-2), 0 1px 1px rgba(0,0,0,0.02)' : undefined }}>
+                          {active && <span style={{ position: 'absolute', left: -10, top: 6, bottom: 6, width: 2, background: 'var(--accent)', borderRadius: 2 }} />}
+                          <DesignIcon name={icon} active={active} />
+                          <span className="min-w-0 flex-1 truncate">{label}</span>
+                        </Link>
+                      )
+                    })}
                   </>
                 )}
-              </div>
-            </aside>
+              </nav>
+
+              {/* Period note footer */}
+              {usagePeriodEndFormatted && (
+                <div style={{ padding: 10, borderTop: '1px dashed var(--line-2)' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--ink-3)' }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block', flexShrink: 0 }} />
+                    Period ends {usagePeriodEndFormatted}
+                  </div>
+                </div>
+              )}
+            </motion.aside>
 
             {/* Main content area */}
             <div className="flex min-h-0 flex-1 flex-col">
-          <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 {children}
-          </main>
+              </main>
             </div>
           </div>
         </DashboardProvider>
@@ -1174,27 +1276,29 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
 
       {/* Delete agent confirmation modal */}
       {agentToDelete && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4" onClick={() => !deleteLoading && setAgentToDelete(null)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ background: 'rgba(26,26,29,0.5)' }} onClick={() => !deleteLoading && setAgentToDelete(null)}>
           <div
-            className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl"
+            className="w-full max-w-md rounded-xl border p-6 shadow-xl"
+            style={{ background: 'var(--surface)', borderColor: 'var(--line)' }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full" style={{ background: 'var(--danger-soft)', color: 'var(--danger)' }}>
                 <AlertTriangle className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="text-lg font-semibold text-slate-900">Delete &quot;{agentToDelete.name}&quot;?</h3>
-                <p className="mt-2 text-sm text-slate-600">
+                <h3 className="text-lg font-semibold" style={{ color: 'var(--ink)' }}>Delete &quot;{agentToDelete.name}&quot;?</h3>
+                <p className="mt-2 text-sm" style={{ color: 'var(--ink-2)' }}>
                   This action cannot be undone. This will permanently delete this agent and all its data, including training files, Q&A, website crawls, and chat widget settings.
                 </p>
-                <p className="mt-3 text-sm font-medium text-slate-700">Type the agent name to confirm:</p>
+                <p className="mt-3 text-sm font-medium" style={{ color: 'var(--ink-2)' }}>Type the agent name to confirm:</p>
                 <input
                   type="text"
                   value={deleteConfirmText}
                   onChange={(e) => setDeleteConfirmText(e.target.value)}
                   placeholder={agentToDelete.name}
-                  className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                  className="mt-1.5 w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--danger)]/20"
+                  style={{ borderColor: 'var(--line)', color: 'var(--ink)', background: 'var(--surface)' }}
                   autoFocus
                 />
                 <div className="mt-6 flex justify-end gap-2">
@@ -1202,7 +1306,8 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                     type="button"
                     onClick={() => { setAgentToDelete(null); setDeleteConfirmText('') }}
                     disabled={deleteLoading}
-                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    className="rounded-lg border px-4 py-2 text-sm font-medium transition-colors hover:bg-[var(--bg-2)] disabled:opacity-50"
+                    style={{ borderColor: 'var(--line)', color: 'var(--ink-2)' }}
                   >
                     Cancel
                   </button>
@@ -1210,7 +1315,8 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                     type="button"
                     onClick={handleConfirmDelete}
                     disabled={deleteLoading || deleteConfirmText.trim() !== agentToDelete.name.trim()}
-                    className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:pointer-events-none"
+                    className="rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50 disabled:pointer-events-none"
+                    style={{ background: 'var(--danger)' }}
                   >
                     {deleteLoading ? 'Deleting…' : 'Delete permanently'}
                   </button>
@@ -1226,26 +1332,28 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
       {/* Create workspace modal */}
       {createWorkspaceOpen && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          style={{ background: 'rgba(26,26,29,0.5)' }}
           onClick={() => !createWorkspaceLoading && (setCreateWorkspaceOpen(false), setCreateWorkspaceError(''))}
           role="dialog"
           aria-modal="true"
           aria-labelledby="create-workspace-title"
         >
           <div
-            className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl"
+            className="w-full max-w-md rounded-xl border p-6 shadow-xl"
+            style={{ background: 'var(--surface)', borderColor: 'var(--line)' }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--v2-primary)]/10 text-[var(--v2-primary)]">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
                 <Plus className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
-                <h3 id="create-workspace-title" className="text-lg font-semibold text-slate-900">
+                <h3 id="create-workspace-title" className="text-lg font-semibold" style={{ color: 'var(--ink)' }}>
                   New workspace
                 </h3>
-                <p className="mt-1 text-sm text-slate-600">Separate agents, data, and billing by workspace.</p>
-                <label htmlFor="create-workspace-name" className="mt-4 block text-sm font-medium text-slate-700">
+                <p className="mt-1 text-sm" style={{ color: 'var(--ink-2)' }}>Separate agents, data, and billing by workspace.</p>
+                <label htmlFor="create-workspace-name" className="mt-4 block text-sm font-medium" style={{ color: 'var(--ink-2)' }}>
                   Name
                 </label>
                 <input
@@ -1256,12 +1364,13 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                   onChange={(e) => setCreateWorkspaceName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleCreateWorkspace()}
                   placeholder="e.g. Marketing, Support"
-                  className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm placeholder:text-slate-400 focus:border-[var(--v2-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--v2-primary)]/20"
+                  className="mt-1.5 w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
+                  style={{ borderColor: 'var(--line)', color: 'var(--ink)', background: 'var(--surface)' }}
                   disabled={createWorkspaceLoading}
                   autoComplete="off"
                 />
                 {createWorkspaceError && (
-                  <p className="mt-2 text-sm text-red-600" role="alert">
+                  <p className="mt-2 text-sm" style={{ color: 'var(--danger)' }} role="alert">
                     {createWorkspaceError}
                   </p>
                 )}
@@ -1275,7 +1384,8 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                       }
                     }}
                     disabled={createWorkspaceLoading}
-                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    className="rounded-lg border px-4 py-2 text-sm font-medium transition-colors hover:bg-[var(--bg-2)] disabled:opacity-50"
+                    style={{ borderColor: 'var(--line)', color: 'var(--ink-2)' }}
                   >
                     Cancel
                   </button>
@@ -1283,7 +1393,8 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                     type="button"
                     onClick={handleCreateWorkspace}
                     disabled={createWorkspaceLoading || !createWorkspaceName.trim()}
-                    className="rounded-lg bg-[var(--v2-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:pointer-events-none"
+                    className="rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50 disabled:pointer-events-none"
+                    style={{ background: 'var(--accent)' }}
                   >
                     {createWorkspaceLoading ? 'Creating…' : 'Create'}
                   </button>
@@ -1294,40 +1405,40 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      {/* Training progress — only on agent pages (not on agents list); real-time via socket */}
+      {/* Training progress �" only on agent pages (not on agents list); real-time via socket */}
       {parsed.isAgentRoute && (trainingStatus === 'training' || trainingStatus === 'complete') && (
         <div className="fixed bottom-4 right-4 z-50 w-[320px] max-w-[calc(100vw-2rem)]" aria-live="polite">
           {trainingStatus === 'training' ? (
-            <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-lg ring-1 ring-slate-200/50">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--v2-primary)]/10">
-                <Loader2 className="h-4 w-4 animate-spin text-[var(--v2-primary)]" />
+            <div className="flex items-start gap-3 rounded-xl border px-4 py-3 shadow-lg" style={{ background: 'var(--surface)', borderColor: 'var(--line)' }}>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: 'var(--accent-soft)' }}>
+                <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'var(--accent)' }} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-slate-900">Training website content</p>
-                <p className="mt-0.5 text-xs text-slate-600">
+                <p className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>Training website content</p>
+                <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-3)' }}>
                   {trainingProgress.totalLinks > 0
                     ? `${trainingProgress.fedLinks}/${trainingProgress.totalLinks} links (${Math.min(100, Math.round((trainingProgress.fedLinks / trainingProgress.totalLinks) * 100))}%). `
                     : ''}
                   You can chat now.
                 </p>
                 {trainingProgress.totalLinks > 0 && (
-                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full" style={{ background: 'var(--bg-2)' }}>
                     <div
-                      className="h-full rounded-full bg-[var(--v2-primary)] transition-all duration-300"
-                      style={{ width: `${Math.min(100, Math.round((trainingProgress.fedLinks / trainingProgress.totalLinks) * 100))}%` }}
+                      className="h-full rounded-full transition-all duration-300"
+                      style={{ width: `${Math.min(100, Math.round((trainingProgress.fedLinks / trainingProgress.totalLinks) * 100))}%`, background: 'var(--accent)' }}
                     />
                   </div>
                 )}
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-lg ring-1 ring-slate-200/50">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100">
-                <Check className="h-4 w-4 text-emerald-600" />
+            <div className="flex items-center gap-3 rounded-xl border px-4 py-3 shadow-lg" style={{ background: 'var(--surface)', borderColor: 'var(--line)' }}>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: 'var(--success-soft)' }}>
+                <Check className="h-4 w-4" style={{ color: 'var(--success)' }} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-slate-900">Training complete</p>
-                <p className="mt-0.5 text-xs text-slate-600">Website content is ready.</p>
+                <p className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>Training complete</p>
+                <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-3)' }}>Website content is ready.</p>
               </div>
               <button
                 type="button"
@@ -1338,7 +1449,8 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
                   }
                   setTrainingStatus('idle')
                 }}
-                className="shrink-0 rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                className="shrink-0 rounded p-1.5 transition-colors hover:bg-[var(--bg-2)]"
+                style={{ color: 'var(--ink-4)' }}
                 aria-label="Dismiss"
               >
                 <X className="h-4 w-4" />
@@ -1352,8 +1464,8 @@ function DashboardLayoutInner({ children }: { children: ReactNode }) {
 }
 
 const dashboardLayoutFallback = (
-  <div className="flex h-screen w-full items-center justify-center bg-white">
-    <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--v2-primary)] border-t-transparent" />
+  <div className="flex h-screen w-full items-center justify-center" style={{ background: 'var(--bg)' }}>
+    <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
   </div>
 )
 
@@ -1364,3 +1476,4 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     </Suspense>
   )
 }
+

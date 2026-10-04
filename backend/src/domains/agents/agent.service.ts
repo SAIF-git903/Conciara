@@ -12,12 +12,16 @@ export interface AgentInfo {
   id: number;
   workspaceId: number;
   name: string;
+  model: string | null;
+  messageCount: number;
+  lastRunAt: Date | null;
 }
 
 export interface AgentDetails extends AgentInfo {
   model: string | null;
   prePrompt: string | null;
   logoUrl: string | null;
+  temperature: number;
 }
 
 /**
@@ -52,6 +56,9 @@ export async function createAgent(
     id: agent.id,
     workspaceId: agent.workspaceId,
     name: agent.name,
+    model: agent.model ?? null,
+    messageCount: 0,
+    lastRunAt: null,
   };
 }
 
@@ -73,11 +80,22 @@ export async function getAgentsForWorkspace(workspaceId: number): Promise<AgentI
   const agents = await prisma.agent.findMany({
     where: { workspaceId },
     orderBy: { name: 'asc' },
+    include: {
+      _count: { select: { chatMessages: true } },
+      chatMessages: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: { createdAt: true },
+      },
+    },
   });
   return agents.map((a) => ({
     id: a.id,
     workspaceId: a.workspaceId,
     name: a.name,
+    model: a.model,
+    messageCount: a._count.chatMessages,
+    lastRunAt: a.chatMessages[0]?.createdAt ?? null,
   }));
 }
 
@@ -90,6 +108,14 @@ export async function getAgent(
 ): Promise<AgentDetails | null> {
   const agent = await prisma.agent.findFirst({
     where: { id: agentId, workspaceId },
+    include: {
+      _count: { select: { chatMessages: true } },
+      chatMessages: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: { createdAt: true },
+      },
+    },
   });
   if (!agent) return null;
   return {
@@ -99,6 +125,9 @@ export async function getAgent(
     model: agent.model,
     prePrompt: agent.prePrompt,
     logoUrl: agent.logoUrl,
+    temperature: agent.temperature ?? 0.7,
+    messageCount: agent._count.chatMessages,
+    lastRunAt: agent.chatMessages[0]?.createdAt ?? null,
   };
 }
 
@@ -108,13 +137,14 @@ export async function getAgent(
 export async function updateAgent(
   agentId: number,
   workspaceId: number,
-  updates: { model?: string; prePrompt?: string; name?: string; logoUrl?: string }
+  updates: { model?: string; prePrompt?: string; name?: string; logoUrl?: string; temperature?: number }
 ): Promise<AgentDetails | null> {
-  const data: { model?: string | null; prePrompt?: string | null; name?: string; logoUrl?: string | null } = {};
+  const data: { model?: string | null; prePrompt?: string | null; name?: string; logoUrl?: string | null; temperature?: number } = {};
   if (updates.model !== undefined) data.model = updates.model?.trim() || null;
   if (updates.prePrompt !== undefined) data.prePrompt = updates.prePrompt?.trim() || null;
   if (updates.name !== undefined) data.name = updates.name.trim() || undefined;
   if (updates.logoUrl !== undefined) data.logoUrl = updates.logoUrl?.trim() || null;
+  if (updates.temperature !== undefined) data.temperature = Math.min(1, Math.max(0, updates.temperature));
 
   const result = await prisma.agent.updateMany({
     where: { id: agentId, workspaceId },

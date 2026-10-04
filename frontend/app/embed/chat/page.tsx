@@ -252,6 +252,7 @@ function EmbedChatContent() {
           apiUrl={apiUrl}
           treeId={null}
           previewMode
+          hideLauncher
           onMessage={handleMessage}
           availableActions={availableActions}
           onEmbedClose={() => {

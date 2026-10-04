@@ -13,6 +13,9 @@ interface ActionTestResult {
   statusCode: number
   responseBody: unknown
   durationMs: number
+  debug?: { url: string; method: string }
+  responseHeaders?: Record<string, string>
+  responseSize?: number
 }
 
 function toId(value?: string): number | null {

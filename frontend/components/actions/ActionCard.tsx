@@ -7,7 +7,7 @@ interface ActionCardProps {
   title: string
   description: string
   example?: string
-  Icon: LucideIcon
+  Icon?: LucideIcon
   comingSoon: boolean
   activeCount: number
   totalCount: number
@@ -27,16 +27,26 @@ export default function ActionCard({
   const isConfigured = totalCount > 0
 
   return (
-    <div className="flex flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div style={{
+      display: 'flex', flexDirection: 'column',
+      background: 'var(--surface)',
+      border: '1px solid var(--line)',
+      borderRadius: 'var(--r-lg)',
+      padding: 16,
+    }}>
       <div className="flex items-start gap-3">
-        <div className="shrink-0 rounded-lg bg-slate-100 p-2">
-          <Icon className="h-4 w-4 text-slate-700" />
+        <div style={{
+          flexShrink: 0, width: 32, height: 32, borderRadius: 'var(--r-sm)',
+          background: 'var(--bg-2)', border: '1px solid var(--line)',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {Icon && <Icon style={{ width: 14, height: 14, color: 'var(--ink-3)' }} />}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-slate-900">{title}</p>
-          <p className="mt-0.5 text-xs text-slate-500">{description}</p>
+          <p style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)', margin: '0 0 2px' }}>{title}</p>
+          <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: 0, lineHeight: 1.5 }}>{description}</p>
           {example && !comingSoon && (
-            <p className="mt-1 text-xs italic text-slate-400">{example}</p>
+            <p style={{ fontSize: 12, color: 'var(--ink-4)', margin: '4px 0 0', fontStyle: 'italic' }}>{example}</p>
           )}
         </div>
       </div>
@@ -44,26 +54,30 @@ export default function ActionCard({
       {comingSoon ? (
         <ComingSoonCard />
       ) : (
-        <div className="mt-4 flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+        <div style={{
+          marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '8px 10px', borderRadius: 'var(--r-sm)',
+          border: '1px solid var(--line)', background: 'var(--bg)',
+        }}>
           <div className="flex items-center gap-1.5">
             {isConfigured ? (
               <>
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                <span className="text-xs text-slate-600">
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', flexShrink: 0, display: 'block' }} />
+                <span style={{ fontSize: 12, color: 'var(--ink-2)' }}>
                   {activeCount} of {totalCount} active
                 </span>
               </>
             ) : (
               <>
-                <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
-                <span className="text-xs text-slate-400">Not configured</span>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ink-5)', flexShrink: 0, display: 'block' }} />
+                <span style={{ fontSize: 12, color: 'var(--ink-4)' }}>Not configured</span>
               </>
             )}
           </div>
           <button
             type="button"
             onClick={onOpen}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            className="btn btn--secondary btn--sm"
           >
             {isConfigured ? 'Manage' : 'Set up'}
           </button>

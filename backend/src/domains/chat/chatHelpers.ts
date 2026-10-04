@@ -72,11 +72,13 @@ export function buildAgentChatSystemContent(params: AgentChatSystemParams): stri
       sessionState.lastProductViewed && (sessionState.userIntent === 'thanks' || sessionState.userIntent === 'goodbye')
         ? `\n\nOptional: You may briefly mention they can ask again if they need help with "${sessionState.lastProductViewed}"—but keep it to one short sentence.`
         : '';
-    // Keep actions available in short follow-up turns (e.g. user provides "4" as a required input).
-    return `${base}${actionsBlock}${CONVERSATION_RULES}${stateHint}`;
+    // Actions come last so they override the conversational rules (e.g. user provides an input value).
+    return `${base}${CONVERSATION_RULES}${stateHint}${actionsBlock}`;
   }
 
   const supportBlock =
     sessionState.userIntent === 'support_request' ? SUPPORT_INTENT_INSTRUCTIONS : '';
-  return `${base}${qaBlock}${contextBlock}${websiteBlock}${actionsBlock}${supportBlock}${CONVERSATION_RULES}`;
+  // Actions intentionally placed after CONVERSATION_RULES so the "MANDATORY ACTIONS" header
+  // takes precedence over the default "I don't have that info" fallback.
+  return `${base}${qaBlock}${contextBlock}${websiteBlock}${supportBlock}${CONVERSATION_RULES}${actionsBlock}`;
 }

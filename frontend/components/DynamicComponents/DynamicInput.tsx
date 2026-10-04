@@ -1,8 +1,8 @@
 'use client'
 
 import { ArrowUp, Mic } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { MergedSkinConfig } from '../../types/skinConfig'
-import { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react'
 
 // Web Speech API (SpeechRecognition) - not in all TS libs
 type SpeechRecognitionCtor = new () => {
@@ -19,7 +19,7 @@ type SpeechRecognitionCtor = new () => {
 const SpeechRecognitionAPI =
   typeof window !== 'undefined'
     ? ((window as unknown as { SpeechRecognition?: SpeechRecognitionCtor; webkitSpeechRecognition?: SpeechRecognitionCtor }).SpeechRecognition ||
-       (window as unknown as { webkitSpeechRecognition?: SpeechRecognitionCtor }).webkitSpeechRecognition)
+      (window as unknown as { webkitSpeechRecognition?: SpeechRecognitionCtor }).webkitSpeechRecognition)
     : undefined
 
 const LINE_HEIGHT_PX = 18
@@ -210,7 +210,7 @@ export default function DynamicInput({
           //
         }
         recognitionRef.current = null
-      }
+    }
       streamRef.current?.getTracks().forEach((t) => t.stop())
       audioContextRef.current?.close?.()
     }
@@ -338,11 +338,10 @@ export default function DynamicInput({
             type="submit"
             disabled={!value.trim() || isLoading}
             tabIndex={hidden ? -1 : 0}
-            className={`p-2 rounded-full transition-all duration-150 active:scale-95 disabled:cursor-not-allowed ${
-              value.trim() && !isLoading
+            className={`p-2 rounded-full transition-all duration-150 active:scale-95 disabled:cursor-not-allowed ${value.trim() && !isLoading
                 ? 'text-white shadow-sm hover:opacity-90'
                 : 'bg-gray-100 text-gray-400 hover:bg-gray-200 disabled:opacity-50 disabled:hover:bg-gray-100'
-            }`}
+              }`}
             style={value.trim() && !isLoading ? { backgroundColor: primaryColor } : undefined}
           >
             <ArrowUp className="w-4 h-4" />
@@ -355,9 +354,8 @@ export default function DynamicInput({
   return (
     <form onSubmit={handleSubmit} className="p-4 pt-2">
       <div
-        className={`relative flex flex-col border bg-white shadow-sm focus-within:ring-2 focus-within:ring-offset-0 transition-[padding,border-radius] duration-200 ease-out ${
-          isExpanded ? 'rounded-3xl p-3' : 'rounded-full p-2'
-        }`}
+        className={`relative flex flex-col border bg-white shadow-sm focus-within:ring-2 focus-within:ring-offset-0 transition-[padding,border-radius] duration-200 ease-out ${isExpanded ? 'rounded-3xl p-3' : 'rounded-full p-2'
+          }`}
         style={{
           borderColor,
           '--tw-ring-color': primaryColor,
@@ -373,9 +371,8 @@ export default function DynamicInput({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           rows={1}
-          className={`w-full border-0 focus:outline-none focus:ring-0 bg-transparent text-sm resize-none transition-[height,padding] duration-200 ease-out placeholder:text-gray-400 ${
-            isExpanded ? 'rounded-2xl px-2 py-2 pr-2' : 'rounded-full pl-3 pr-24 py-2'
-          }`}
+          className={`w-full border-0 focus:outline-none focus:ring-0 bg-transparent text-sm resize-none transition-[height,padding] duration-200 ease-out placeholder:text-gray-400 ${isExpanded ? 'rounded-2xl px-2 py-2 pr-2' : 'rounded-full pl-3 pr-24 py-2'
+            }`}
           style={{
             minHeight: MIN_HEIGHT_PX,
             maxHeight: MAX_HEIGHT_PX,
@@ -386,18 +383,15 @@ export default function DynamicInput({
 
         <div
           aria-hidden={isExpanded}
-          className={`absolute right-2 bottom-2 flex items-center gap-0.5 transition-[opacity,transform] duration-200 ease-out ${
-            isExpanded ? 'opacity-0 translate-y-1 pointer-events-none' : 'opacity-100 translate-y-0'
-          }`}
+          className={`absolute right-2 bottom-2 flex items-center gap-0.5 transition-[opacity,transform] duration-200 ease-out ${isExpanded ? 'opacity-0 translate-y-1 pointer-events-none' : 'opacity-100 translate-y-0'
+            }`}
         >
           {renderActionButtons('inline')}
         </div>
-
         <div
           aria-hidden={!isExpanded}
-          className={`overflow-hidden transition-[max-height,opacity,margin] duration-200 ease-out ${
-            isExpanded ? 'max-h-16 opacity-100 mt-2' : 'max-h-0 opacity-0 mt-0'
-          }`}
+          className={`overflow-hidden transition-[max-height,opacity,margin] duration-200 ease-out ${isExpanded ? 'max-h-16 opacity-100 mt-2' : 'max-h-0 opacity-0 mt-0'
+            }`}
         >
           <div className="flex items-center justify-end gap-0.5">
             {renderActionButtons('bottom')}

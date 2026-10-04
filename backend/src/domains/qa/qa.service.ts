@@ -236,8 +236,10 @@ export async function getQaUsageStats(
   const qa = await prisma.agentQa.findFirst({ where: { id: qaId, agentId } });
   if (!qa) return [];
 
-  const since = new Date();
-  since.setDate(since.getDate() - days);
+  // Build a range of `days` days ending today (inclusive), all dates in UTC
+  const todayUTCStr = new Date().toISOString().slice(0, 10); // e.g. "2026-06-18"
+  const since = new Date(`${todayUTCStr}T00:00:00Z`);
+  since.setUTCDate(since.getUTCDate() - (days - 1));
 
   const events = await prisma.agentQaUsage.findMany({
     where: { qaId, askedAt: { gte: since } },
@@ -253,7 +255,7 @@ export async function getQaUsageStats(
   const result: { date: string; count: number }[] = [];
   for (let i = 0; i < days; i++) {
     const d = new Date(since);
-    d.setDate(d.getDate() + i);
+    d.setUTCDate(d.getUTCDate() + i);
     const key = d.toISOString().slice(0, 10);
     result.push({ date: key, count: byDay.get(key) ?? 0 });
   }

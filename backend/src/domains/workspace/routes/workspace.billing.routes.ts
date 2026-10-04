@@ -229,4 +229,129 @@ router.post('/:workspaceId/checkout-context', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/workspaces/:workspaceId/billing-details
+ * Returns real payment method info and Paddle management URLs for the subscription.
+ */
+router.get('/:workspaceId/billing-details', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    if (Number.isNaN(workspaceId)) return res.status(400).json({ error: 'Invalid workspace ID' });
+    const userId = (req as express.Request & { user?: { id: number } }).user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+    const member = await getWorkspaceMember(workspaceId, userId);
+    if (!member) return res.status(403).json({ error: 'Access denied to this workspace' });
+
+    const subscription = await prisma.workspaceSubscription.findUnique({
+      where: { workspaceId },
+      select: { paddleSubscriptionId: true, status: true, cancelAtPeriodEnd: true },
+    });
+
+    if (!subscription?.paddleSubscriptionId || !PADDLE_API_KEY) {
+      return res.json({ paymentMethod: null, updatePaymentMethodUrl: null, cancelUrl: null });
+    }
+
+    const paddleRes = await fetch(
+      `${PADDLE_API_BASE}/subscriptions/${encodeURIComponent(subscription.paddleSubscriptionId)}`,
+      { headers: { Authorization: `Bearer ${PADDLE_API_KEY}` } }
+    );
+
+    if (!paddleRes.ok) {
+      return res.json({ paymentMethod: null, updatePaymentMethodUrl: null, cancelUrl: null });
+    }
+
+    const json = (await paddleRes.json()) as {
+      data?: {
+        payment_information?: {
+          payment_method?: string;
+          card_type?: string;
+          last_four?: string;
+          expiry_month?: number;
+          expiry_year?: number;
+        };
+        management_urls?: {
+          update_payment_method?: string | null;
+          cancel?: string | null;
+        };
+      };
+    };
+
+    const info = json.data?.payment_information;
+    const mgmt = json.data?.management_urls;
+
+    const paymentMethod = info
+      ? {
+          type: info.payment_method ?? 'card',
+          brand: info.card_type ?? null,
+          lastFour: info.last_four ?? null,
+          expiryMonth: info.expiry_month ?? null,
+          expiryYear: info.expiry_year ?? null,
+        }
+      : null;
+
+    return res.json({
+      paymentMethod,
+      updatePaymentMethodUrl: mgmt?.update_payment_method ?? null,
+      cancelUrl: mgmt?.cancel ?? null,
+    });
+  } catch (e) {
+    console.error('Billing details error:', e);
+    return res.status(500).json({ error: 'Failed to load billing details' });
+  }
+});
+
+/**
+ * POST /api/workspaces/:workspaceId/cancel-subscription
+ * Cancels the subscription at period end via Paddle API.
+ */
+router.post('/:workspaceId/cancel-subscription', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    if (Number.isNaN(workspaceId)) return res.status(400).json({ error: 'Invalid workspace ID' });
+    const userId = (req as express.Request & { user?: { id: number } }).user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+    const member = await getWorkspaceMember(workspaceId, userId);
+    if (!member || member.role !== 'owner') return res.status(403).json({ error: 'Only the workspace owner can cancel the subscription' });
+
+    const subscription = await prisma.workspaceSubscription.findUnique({
+      where: { workspaceId },
+      select: { paddleSubscriptionId: true, status: true },
+    });
+
+    if (!subscription?.paddleSubscriptionId) {
+      return res.status(404).json({ error: 'No active subscription found' });
+    }
+
+    if (!PADDLE_API_KEY) {
+      return res.status(503).json({ error: 'Billing service not configured' });
+    }
+
+    const paddleRes = await fetch(
+      `${PADDLE_API_BASE}/subscriptions/${encodeURIComponent(subscription.paddleSubscriptionId)}/cancel`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${PADDLE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ effective_from: 'next_billing_period' }),
+      }
+    );
+
+    if (!paddleRes.ok) {
+      const errText = await paddleRes.text();
+      console.error('Paddle cancel error:', paddleRes.status, errText);
+      return res.status(paddleRes.status).json({ error: 'Failed to cancel subscription with Paddle' });
+    }
+
+    // Mark locally so UI updates immediately
+    await prisma.workspaceSubscription.update({
+      where: { workspaceId },
+      data: { cancelAtPeriodEnd: true },
+    });
+
+    return res.json({ success: true, cancelAtPeriodEnd: true });
+  } catch (e) {
+    console.error('Cancel subscription error:', e);
+    return res.status(500).json({ error: 'Failed to cancel subscription' });
+  }
+});
+
 export default router;

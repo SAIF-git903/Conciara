@@ -1,14 +1,17 @@
 'use client'
 
-import { Bot, MessageCircle } from 'lucide-react'
+import { Bot, MessageCircle, X } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { MergedSkinConfig } from '../../types/skinConfig'
 
 interface DynamicButtonProps {
   config: MergedSkinConfig
   onClick: () => void
+  /** When true, shows a close (X) icon instead of the chat icon. */
+  isOpen?: boolean
 }
 
-export default function DynamicButton({ config, onClick }: DynamicButtonProps) {
+export default function DynamicButton({ config, onClick, isOpen = false }: DynamicButtonProps) {
   const buttonConfig = config.components?.button || {}
   const primaryColor = config.theme?.primaryColor || '#6366f1'
   
@@ -26,7 +29,7 @@ export default function DynamicButton({ config, onClick }: DynamicButtonProps) {
     square: 'rounded-none'
   }
 
-  const iconMap: Record<string, any> = {
+  const iconMap: Record<string, typeof Bot> = {
     bot: Bot,
     chat: MessageCircle,
     message: MessageCircle,
@@ -39,19 +42,49 @@ export default function DynamicButton({ config, onClick }: DynamicButtonProps) {
   return (
     <button
       onClick={onClick}
-      className={`${sizeMap[size]} ${borderRadiusMap[type]} shadow-lg flex items-center justify-center text-white transition-all hover:scale-110 overflow-hidden`}
+      className={`${sizeMap[size]} ${borderRadiusMap[type]} shadow-lg flex items-center justify-center text-white transition-shadow hover:shadow-xl overflow-hidden relative`}
       style={{ backgroundColor: primaryColor }}
-      aria-label={buttonConfig.label || 'Open chat'}
+      aria-label={isOpen ? 'Close chat' : (buttonConfig.label || 'Open chat')}
     >
-      {isCustomIcon ? (
-        <img src={buttonConfig.customIconUrl!} alt="" className={`${iconSize} object-contain`} />
-      ) : (
-        <Icon className={iconSize} />
-      )}
-      {buttonConfig.showLabel && buttonConfig.label && (
+      <AnimatePresence mode="wait" initial={false}>
+        {isOpen ? (
+          <motion.span
+            key="close"
+            initial={{ opacity: 0, rotate: -90, scale: 0.5 }}
+            animate={{ opacity: 1, rotate: 0, scale: 1 }}
+            exit={{ opacity: 0, rotate: 90, scale: 0.5 }}
+            transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+            className="flex items-center justify-center"
+          >
+            <X className={iconSize} strokeWidth={2.5} />
+          </motion.span>
+        ) : isCustomIcon ? (
+          <motion.img
+            key="custom"
+            src={buttonConfig.customIconUrl!}
+            alt=""
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.5 }}
+            transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+            className={`${iconSize} object-contain`}
+          />
+        ) : (
+          <motion.span
+            key="icon"
+            initial={{ opacity: 0, rotate: 90, scale: 0.5 }}
+            animate={{ opacity: 1, rotate: 0, scale: 1 }}
+            exit={{ opacity: 0, rotate: -90, scale: 0.5 }}
+            transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+            className="flex items-center justify-center"
+          >
+            <Icon className={iconSize} />
+          </motion.span>
+        )}
+      </AnimatePresence>
+      {buttonConfig.showLabel && buttonConfig.label && !isOpen && (
         <span className="ml-2 text-sm font-medium">{buttonConfig.label}</span>
       )}
     </button>
   )
 }
-

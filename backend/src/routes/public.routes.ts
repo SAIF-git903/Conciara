@@ -415,6 +415,17 @@ router.post('/public/workspaces/:workspaceId/agents/:agentId/chat/stream', publi
     if (isNaN(workspaceId) || isNaN(agentId)) {
       return res.status(400).json({ error: 'Invalid workspace or agent ID' });
     }
+    const agent = await prisma.agent.findFirst({
+      where: { id: agentId, workspaceId },
+      select: { widgetConfig: true },
+    });
+    if (!agent) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+    const widgetCfg = agent.widgetConfig as Record<string, unknown> | null;
+    if (!widgetCfg?.allowPublicEmbed) {
+      return res.status(403).json({ error: 'Public embed is not enabled for this agent' });
+    }
     await handlePublicAgentChatStream(workspaceId, agentId, req.body, res);
   } catch (error: unknown) {
     console.error('Public chat stream error:', error);

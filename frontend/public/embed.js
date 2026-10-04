@@ -169,23 +169,123 @@
   launcher.style.cssText = 'width:' + launcherSize + 'px;height:' + launcherSize + 'px;border:none;border-radius:50%;'
     + 'background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);color:#fff;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,0.2);'
     + 'display:flex;align-items:center;justify-content:center;transition:transform 0.2s,box-shadow 0.2s;';
-  launcher.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  var LAUNCHER_GAP = 12;
+
+  function panelTransformOrigin(pos) {
+    if (pos === 'top-left') return 'top left';
+    if (pos === 'top-right') return 'top right';
+    if (pos === 'bottom-left') return 'bottom left';
+    return 'bottom right';
+  }
+
+  function panelEdgeOffset() {
+    return (launcherSize + LAUNCHER_GAP) + 'px';
+  }
+  var chatIconSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  var botIconSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>';
+  var closeIconSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+  var isPanelOpen = false;
+  var launcherChatIcon = chatIconSvg;
+
+  function sizePx(size) {
+    if (size === 'small') return 48;
+    if (size === 'medium') return 56;
+    return 64;
+  }
+
+  function borderRadiusFor(type) {
+    if (type === 'square') return '0';
+    if (type === 'rounded') return '12px';
+    return '50%';
+  }
+
+  function applyPosition(pos) {
+    position = pos;
+    container.style.top = '';
+    container.style.bottom = '';
+    container.style.left = '';
+    container.style.right = '';
+    panel.style.top = '';
+    panel.style.bottom = '';
+    if (pos === 'bottom-left') {
+      container.style.left = gap + 'px';
+      container.style.bottom = gap + 'px';
+    } else if (pos === 'top-right') {
+      container.style.right = gap + 'px';
+      container.style.top = gap + 'px';
+    } else if (pos === 'top-left') {
+      container.style.left = gap + 'px';
+      container.style.top = gap + 'px';
+    } else {
+      container.style.right = gap + 'px';
+      container.style.bottom = gap + 'px';
+    }
+    if (pos === 'top-left' || pos === 'top-right') {
+      panel.style.top = panelEdgeOffset();
+    } else {
+      panel.style.bottom = panelEdgeOffset();
+    }
+    panel.style.transformOrigin = panelTransformOrigin(pos);
+  }
+
+  function applyLauncherStyle(btn, theme) {
+    if (!btn && !theme) return;
+    var px = sizePx(btn && btn.size);
+    launcherSize = px;
+    launcher.style.width = px + 'px';
+    launcher.style.height = px + 'px';
+    launcher.style.borderRadius = borderRadiusFor(btn && btn.type);
+    var primary = (theme && theme.primaryColor) || '#0f172a';
+    launcher.style.background = primary;
+    if (btn && btn.icon === 'custom' && btn.customIconUrl) {
+      launcherChatIcon = '<img src="' + btn.customIconUrl.replace(/"/g, '&quot;') + '" alt="" style="width:28px;height:28px;object-fit:contain" />';
+    } else if (btn && btn.icon === 'bot') {
+      launcherChatIcon = botIconSvg;
+    } else {
+      launcherChatIcon = chatIconSvg;
+    }
+    if (!isPanelOpen) launcher.innerHTML = launcherChatIcon;
+  }
+
+  function setPanelOpen(open) {
+    isPanelOpen = open;
+    launcher.innerHTML = open ? closeIconSvg : launcherChatIcon;
+    launcher.setAttribute('aria-label', open ? 'Close chat' : 'Open chat');
+    if (open) {
+      panel.style.transition = panelOpenTransition;
+      panel.style.display = 'block';
+      panel.style.opacity = '0';
+      panel.style.transform = 'scale(0)';
+      void panel.offsetWidth;
+      panel.style.opacity = '1';
+      panel.style.transform = 'scale(1)';
+    } else {
+      panel.style.transition = panelCloseTransition;
+      panel.style.opacity = '0';
+      panel.style.transform = 'scale(0)';
+      setTimeout(function () {
+        if (!isPanelOpen) panel.style.display = 'none';
+      }, 320);
+    }
+  }
+
+  launcher.innerHTML = chatIconSvg;
   launcher.onmouseover = function () { launcher.style.transform = 'scale(1.05)'; launcher.style.boxShadow = '0 6px 24px rgba(0,0,0,0.25)'; };
   launcher.onmouseout = function () { launcher.style.transform = 'scale(1)'; launcher.style.boxShadow = '0 4px 20px rgba(0,0,0,0.2)'; };
 
   var panel = document.createElement('div');
   panel.style.cssText = 'display:none;position:absolute;width:' + width + 'px;height:' + height + 'px;'
-    + 'border-radius:20px;box-shadow:0 4px 24px rgba(0,0,0,0.15);overflow:hidden;background:#fff;';
+    + 'border-radius:20px;box-shadow:0 4px 24px rgba(0,0,0,0.15);overflow:hidden;background:#fff;'
+    +     'opacity:0;transform:scale(0);transform-origin:' + panelTransformOrigin(position) + ';'
+    + 'transition:transform 0.34s cubic-bezier(0.16,1,0.3,1),opacity 0.34s cubic-bezier(0.16,1,0.3,1);';
+  var panelOpenTransition = 'transform 0.34s cubic-bezier(0.16,1,0.3,1),opacity 0.22s cubic-bezier(0.16,1,0.3,1) 0.14s';
+  var panelCloseTransition = 'transform 0.34s cubic-bezier(0.16,1,0.3,1),opacity 0.34s cubic-bezier(0.16,1,0.3,1)';
   if (position === 'bottom-left' || position === 'top-left') {
     panel.style.left = '0';
   } else {
     panel.style.right = '0';
   }
-  if (position === 'top-left' || position === 'top-right') {
-    panel.style.top = (launcherSize + 8) + 'px';
-  } else {
-    panel.style.bottom = (launcherSize + 8) + 'px';
-  }
+  applyPosition(position);
 
   var iframe = document.createElement('iframe');
   iframe.src = iframeSrc;
@@ -198,14 +298,12 @@
   }
 
   launcher.onclick = function () {
-    launcher.style.display = 'none';
-    panel.style.display = 'block';
+    setPanelOpen(!isPanelOpen);
   };
 
   window.addEventListener('message', function (event) {
     if (event.data && event.data.type === 'conciara-embed-close') {
-      panel.style.display = 'none';
-      launcher.style.display = 'flex';
+      setPanelOpen(false);
     }
   });
 
@@ -221,4 +319,27 @@
   } else {
     appendContainer();
   }
+
+  fetch(apiUrl + '/public/widget-config?workspaceId=' + encodeURIComponent(workspaceId) + '&agentId=' + encodeURIComponent(agentId))
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      var cfg = data && data.config;
+      if (!cfg) return;
+      var btn = cfg.components && cfg.components.button;
+      var theme = cfg.theme;
+      if (btn && btn.position) {
+        applyPosition(btn.position);
+      }
+      if (cfg.components && cfg.components.window) {
+        if (cfg.components.window.width) width = cfg.components.window.width;
+        if (cfg.components.window.height) height = cfg.components.window.height;
+        panel.style.width = width + 'px';
+        panel.style.height = height + 'px';
+        if (cfg.components.window.borderRadius != null) {
+          panel.style.borderRadius = cfg.components.window.borderRadius + 'px';
+        }
+      }
+      applyLauncherStyle(btn, theme);
+    })
+    .catch(function () { /* use defaults */ });
 })();

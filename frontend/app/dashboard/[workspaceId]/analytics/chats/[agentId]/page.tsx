@@ -13,11 +13,9 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { BarChart3, RefreshCw, TrendingUp, MessageSquare, Calendar, ChevronDown } from 'lucide-react'
+import { RefreshCw, MessageSquare, Calendar, ChevronDown, Loader2, BarChart2 } from 'lucide-react'
 import { useDashboard } from '@/contexts/DashboardContext'
 import api from '@/lib/api'
-
-const CHART_COLOR = '#0f172a' // --v2-primary
 
 interface ChatAnalytics {
   totalMessages: number
@@ -40,18 +38,49 @@ function getDefaultCustomRange() {
 function formatRangeLabel(start: string, end: string) {
   const s = new Date(start)
   const e = new Date(end)
-  return `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} – ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
+  const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return `${fmt(s)} – ${fmt(e)}`
 }
 
 function formatChartLabel(dateStr: string) {
-  const d = new Date(dateStr)
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+function StatCard({
+  eyebrow,
+  big,
+  bigColor,
+  sub,
+}: {
+  eyebrow: string
+  big: string | number
+  bigColor?: string
+  sub: string
+}) {
+  return (
+    <div className="rounded-xl border" style={{ background: 'var(--surface)', borderColor: 'var(--line)', padding: 18 }}>
+      <p style={{
+        fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em',
+        color: 'var(--ink-4)', fontWeight: 500, fontFamily: 'var(--font-mono)', marginBottom: 12,
+      }}>
+        {eyebrow}
+      </p>
+      <div style={{ marginBottom: 6 }}>
+        <span style={{
+          fontSize: 32, fontWeight: 600, letterSpacing: '-0.02em',
+          color: bigColor || 'var(--ink)', lineHeight: 1,
+        }}>
+          {big}
+        </span>
+      </div>
+      <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: 0, lineHeight: 1.5 }}>{sub}</p>
+    </div>
+  )
 }
 
 export default function AnalyticsChatsPage() {
   const { currentWorkspace, currentAgent } = useDashboard()
   const [customRange, setCustomRange] = useState(getDefaultCustomRange)
-  /** Pending range in the date picker; only applied when user clicks Apply */
   const [pendingRange, setPendingRange] = useState(getDefaultCustomRange)
   const [analytics, setAnalytics] = useState<ChatAnalytics | null>(null)
   const [loading, setLoading] = useState(true)
@@ -65,7 +94,6 @@ export default function AnalyticsChatsPage() {
     [customRange.start, customRange.end]
   )
 
-  /** Selection shown in the date picker (pending until Apply) */
   const selectionRange = useMemo(
     () => ({
       startDate: new Date(pendingRange.start),
@@ -102,7 +130,17 @@ export default function AnalyticsChatsPage() {
     fetchAnalytics()
   }, [fetchAnalytics])
 
-  /** Update only the pending range while user is picking; Apply will commit it */
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dateFilterRef.current?.contains(e.target as Node)) return
+      setDateFilterOpen(false)
+    }
+    if (dateFilterOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [dateFilterOpen])
+
   const handleRangeSelect = (ranges: Record<string, { startDate: Date; endDate: Date }>) => {
     const sel = ranges.selection
     if (!sel?.startDate) return
@@ -116,23 +154,6 @@ export default function AnalyticsChatsPage() {
     setCustomRange(pendingRange)
     setDateFilterOpen(false)
   }
-
-  /** When opening the picker, sync pending range to current applied range */
-  const handleOpenDateFilter = () => {
-    setPendingRange(customRange)
-    setDateFilterOpen((v) => !v)
-  }
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dateFilterRef.current?.contains(e.target as Node)) return
-      setDateFilterOpen(false)
-    }
-    if (dateFilterOpen) {
-      document.addEventListener('mousedown', handleClickOutside)
-      return () => document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [dateFilterOpen])
 
   const handleRefresh = () => {
     setIsRefreshing(true)
@@ -151,192 +172,230 @@ export default function AnalyticsChatsPage() {
     [analytics?.chatsByDay]
   )
 
+  const total = analytics?.totalMessages ?? 0
+  const convos = analytics?.totalConversations ?? 0
+  const avgPerConvo = convos > 0 ? (total / convos).toFixed(1) : '0'
+  const trendPct = analytics?.trendPct ?? 0
+  const trendColor = trendPct >= 0 ? 'var(--success)' : 'var(--danger)'
+  const trendPrefix = trendPct >= 0 ? '+' : ''
+
   if (!currentAgent) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center p-6 text-center">
-        <p className="text-sm text-slate-600">Select an agent from the header to view chat analytics.</p>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10 }}>
+        <span style={{
+          width: 44, height: 44, borderRadius: 'var(--r-lg)',
+          background: 'var(--bg-2)', border: '1px solid var(--line)',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <MessageSquare style={{ width: 20, height: 20, color: 'var(--ink-4)' }} />
+        </span>
+        <p style={{ fontSize: 13, color: 'var(--ink-3)', margin: 0 }}>Select an agent to view chat analytics.</p>
       </div>
     )
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="shrink-0 border-b border-slate-200 bg-white px-6 py-4">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-          Chats
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Chat volume and trends for {currentAgent.name}.
-        </p>
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto" style={{ background: 'var(--bg)' }}>
+      <div className="mx-auto w-full max-w-[1080px] px-8 py-7 pb-20">
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="relative" ref={dateFilterRef}>
+        {/* Page header */}
+        <div
+          className="mb-6 flex items-start justify-between gap-6 pb-6"
+          style={{ borderBottom: '1px solid var(--line)' }}
+        >
+          <div>
+            <h1
+              className="text-[22px] font-semibold leading-tight tracking-[-0.015em]"
+              style={{ color: 'var(--ink)', marginBottom: 4 }}
+            >
+              Chats
+            </h1>
+            <p className="text-[13.5px] leading-relaxed" style={{ color: 'var(--ink-3)', maxWidth: '60ch' }}>
+              Volume and trends for {currentAgent.name}.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            {/* Date range */}
+            <div style={{ position: 'relative' }} ref={dateFilterRef}>
+              <button
+                type="button"
+                onClick={() => { setPendingRange(customRange); setDateFilterOpen((v) => !v) }}
+                style={{
+                  height: 32, display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '0 10px', border: '1px solid var(--line-2)', borderRadius: 'var(--r-sm)',
+                  background: 'var(--surface)', fontSize: 13, color: 'var(--ink-2)', cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <Calendar style={{ width: 12, height: 12, color: 'var(--ink-4)', flexShrink: 0 }} />
+                <span>{rangeLabel}</span>
+                <ChevronDown style={{
+                  width: 11, height: 11, color: 'var(--ink-4)', flexShrink: 0,
+                  transform: dateFilterOpen ? 'rotate(180deg)' : undefined, transition: 'transform .15s',
+                }} />
+              </button>
+
+              {dateFilterOpen && (
+                <div style={{
+                  position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 60,
+                  background: 'var(--surface)', border: '1px solid var(--line-2)',
+                  borderRadius: 'var(--r-lg)', boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+                  overflow: 'hidden',
+                }}>
+                  <div className="analytics-date-range-picker" style={{ padding: '12px 12px 0' }}>
+                    <DateRangePicker
+                      ranges={[selectionRange]}
+                      onChange={handleRangeSelect}
+                      months={1}
+                      direction="vertical"
+                      rangeColors={['#5b6cff']}
+                      showMonthAndYearPickers={false}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px', borderTop: '1px solid var(--line)' }}>
+                    <button type="button" onClick={handleApplyRange} className="btn btn--primary btn--sm">
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Refresh */}
             <button
               type="button"
-              onClick={handleOpenDateFilter}
-              className="flex min-w-[240px] items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-left text-sm text-slate-900 shadow-sm outline-none transition hover:border-slate-400 focus:border-[var(--v2-primary)] focus:ring-2 focus:ring-[var(--v2-primary)]/20"
-              aria-expanded={dateFilterOpen}
-              aria-haspopup="dialog"
+              onClick={handleRefresh}
+              disabled={isRefreshing || loading}
+              style={{
+                height: 32, display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '0 12px', border: '1px solid var(--line-2)', borderRadius: 'var(--r-sm)',
+                background: 'var(--surface)', fontSize: 13, fontWeight: 500, color: 'var(--ink-2)',
+                cursor: isRefreshing || loading ? 'not-allowed' : 'pointer',
+                opacity: isRefreshing || loading ? 0.6 : 1,
+              }}
             >
-              <Calendar className="h-4 w-4 shrink-0 text-slate-500" />
-              <span className="flex-1 truncate">
-                {rangeLabel}
-              </span>
-              <ChevronDown
-                className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${dateFilterOpen ? 'rotate-180' : ''}`}
+              <RefreshCw
+                style={{ width: 12, height: 12 }}
+                className={isRefreshing ? 'animate-spin' : ''}
               />
+              Refresh
             </button>
-            {dateFilterOpen && (
-              <div
-                className="absolute left-0 top-full z-50 mt-1.5 rounded-xl border border-slate-200 bg-white shadow-lg"
-                role="dialog"
-                aria-label="Date range filter"
-              >
-                <div className="analytics-date-range-picker p-4 pb-0">
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Date range
-                  </p>
-                  <DateRangePicker
-                    ranges={[selectionRange]}
-                    onChange={handleRangeSelect}
-                    months={2}
-                    direction="horizontal"
-                    rangeColors={['var(--v2-primary, #0f172a)']}
-                    showMonthAndYearPickers={false}
-                  />
-                </div>
-                <div className="flex justify-end border-t border-slate-100 p-3">
-                  <button
-                    type="button"
-                    onClick={handleApplyRange}
-                    className="rounded-lg bg-[var(--v2-primary)] px-4 py-2 text-sm font-medium text-[var(--v2-primary-foreground)] transition hover:opacity-90"
-                  >
-                    Apply
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
-            aria-label="Refresh analytics"
-          >
-            <RefreshCw
-              className={`h-4 w-4 text-slate-500 ${isRefreshing ? 'animate-spin' : ''}`}
-            />
-            Refresh
-          </button>
         </div>
-      </div>
 
-      <div className="flex-1 overflow-auto p-6">
+        {/* Error */}
         {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <div className="mb-5 rounded-lg border px-4 py-3 text-[13px]" style={{ borderColor: 'var(--danger-soft)', background: 'var(--danger-soft)', color: 'var(--danger)' }}>
             {error}
           </div>
         )}
+
+        {/* Loading */}
         {loading && !analytics ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--v2-primary)] border-t-transparent" />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 80, gap: 10 }}>
+            <Loader2 style={{ width: 20, height: 20, color: 'var(--ink-4)' }} className="animate-spin" />
+            <span style={{ fontSize: 13, color: 'var(--ink-4)' }}>Loading analytics…</span>
           </div>
         ) : (
           <>
-            {/* Metric cards */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-slate-500">
-                  <MessageSquare className="h-4 w-4" />
-                  <span className="text-sm font-medium">Total Messages</span>
-                </div>
-                <p className="mt-2 text-2xl font-bold text-slate-900">
-                  {analytics?.totalMessages ?? 0}
-                </p>
-                <p className="mt-0.5 text-xs text-slate-500">In selected period</p>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-slate-500">
-                  <BarChart3 className="h-4 w-4" />
-                  <span className="text-sm font-medium">Total Conversations</span>
-                </div>
-                <p className="mt-2 text-2xl font-bold text-slate-900">
-                  {analytics?.totalConversations ?? 0}
-                </p>
-                <p className="mt-0.5 text-xs text-slate-500">In selected period</p>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-slate-500">
-                  <TrendingUp className="h-4 w-4" />
-                  <span className="text-sm font-medium">Trends</span>
-                </div>
-                <p className={`mt-2 text-2xl font-bold ${(analytics?.trendPct ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {(analytics?.trendPct ?? 0) >= 0 ? '+' : ''}{analytics?.trendPct ?? 0}%
-                </p>
-                <p className="mt-0.5 text-xs text-slate-500">vs previous period</p>
-              </div>
+            {/* Stat cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 18 }}>
+              <StatCard
+                eyebrow="Total messages"
+                big={total}
+                sub="In selected period"
+              />
+              <StatCard
+                eyebrow="Conversations"
+                big={convos}
+                sub={`Avg ${avgPerConvo} messages each`}
+              />
+              <StatCard
+                eyebrow="Trend"
+                big={`${trendPrefix}${trendPct}%`}
+                bigColor={trendColor}
+                sub="vs. previous period"
+              />
             </div>
 
-            {/* Line chart - Recharts */}
-            <div className="mt-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-900">
-                Chats over time
-              </h2>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Daily chat count: {rangeLabel}
-              </p>
-              <div className="mt-6 h-[280px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart
-                    key={`${customRange.start}-${customRange.end}`}
-                    data={chartData}
-                    margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
-                    aria-label="Daily chats line chart"
-                  >
-                <defs>
-                  <linearGradient id="chatsAreaFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={CHART_COLOR} stopOpacity={0.25} />
-                    <stop offset="100%" stopColor={CHART_COLOR} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fontSize: 12, fill: '#64748b' }}
-                  tickLine={false}
-                  axisLine={{ stroke: '#e2e8f0' }}
-                />
-                <YAxis
-                  dataKey="chats"
-                  tick={{ fontSize: 12, fill: '#64748b' }}
-                  tickLine={false}
-                  axisLine={false}
-                  allowDecimals={false}
-                  width={28}
-                />
-                <Tooltip
-                  contentStyle={{
-                    borderRadius: 8,
-                    border: '1px solid #e2e8f0',
-                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-                    fontSize: 12,
-                  }}
-                  labelStyle={{ color: '#0f172a', fontWeight: 600 }}
-                  formatter={(value: number | undefined) => [`${value ?? 0} chats`, 'Chats']}
-                  labelFormatter={(label) => label}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="chats"
-                  stroke={CHART_COLOR}
-                  strokeWidth={2}
-                  fill="url(#chatsAreaFill)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+            {/* Chart card */}
+            <div className="rounded-xl border overflow-hidden" style={{ background: 'var(--surface)', borderColor: 'var(--line)' }}>
+              <div style={{
+                padding: '16px 20px', borderBottom: '1px solid var(--line)',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>Chats over time</div>
+                  <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 2 }}>
+                    Daily conversations · {rangeLabel}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ padding: '8px 20px 20px' }}>
+                {chartData.length === 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 0', gap: 8 }}>
+                    <BarChart2 style={{ width: 24, height: 24, color: 'var(--ink-5)' }} />
+                    <p style={{ fontSize: 13, color: 'var(--ink-4)', margin: 0 }}>No data for this period</p>
+                  </div>
+                ) : (
+                  <div style={{ height: 260, width: '100%' }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart
+                        key={`${customRange.start}-${customRange.end}`}
+                        data={chartData}
+                        margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                      >
+                        <defs>
+                          <linearGradient id="chatsAreaFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#5b6cff" stopOpacity={0.18} />
+                            <stop offset="100%" stopColor="#5b6cff" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="2 3" stroke="#ececea" vertical={false} />
+                        <XAxis
+                          dataKey="label"
+                          tick={{ fontSize: 10.5, fill: '#a3a3ad', fontFamily: 'JetBrains Mono, monospace' }}
+                          tickLine={false}
+                          axisLine={{ stroke: '#ececea' }}
+                        />
+                        <YAxis
+                          dataKey="chats"
+                          tick={{ fontSize: 10.5, fill: '#a3a3ad', fontFamily: 'JetBrains Mono, monospace' }}
+                          tickLine={false}
+                          axisLine={false}
+                          allowDecimals={false}
+                          width={28}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            borderRadius: 8,
+                            border: '1px solid #e3e2df',
+                            background: '#ffffff',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                            fontSize: 12,
+                            color: '#1a1a1d',
+                          }}
+                          labelStyle={{ color: '#1a1a1d', fontWeight: 600 }}
+                          labelFormatter={(label) => label}
+                          cursor={{ stroke: '#cfcec9', strokeWidth: 1 }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="chats"
+                          stroke="#5b6cff"
+                          strokeWidth={1.8}
+                          fill="url(#chatsAreaFill)"
+                          dot={false}
+                          activeDot={{ r: 4, fill: '#ffffff', stroke: '#5b6cff', strokeWidth: 1.8 }}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+            </div>
           </>
         )}
       </div>

@@ -204,7 +204,6 @@ function validateCustomActionConfig(config: JsonObject): string[] {
     errors.push('executionMode must be server_side or client_side');
   }
   if (!fnName) errors.push('actionFunctionName is required');
-  if (inputFields.length === 0) errors.push('At least one input field is required');
 
   if (mode === 'server_side') {
     const apiUrl = getString(config, 'apiUrl');
@@ -626,6 +625,9 @@ async function executeServerSideCustomAction(params: {
   durationMs: number;
   error?: string;
   message?: string;
+  debug?: { url: string; method: string };
+  responseHeaders?: Record<string, string>;
+  responseSize?: number;
 }> {
   const config = parseBodyObject(params.action.config);
   const executionMode = getString(config, 'executionMode');
@@ -657,9 +659,11 @@ async function executeServerSideCustomAction(params: {
   const shouldAttachBody = !['GET', 'DELETE'].includes(methodUpper);
   const startedAt = Date.now();
 
+  const RESPONSE_HEADER_DENYLIST = new Set(['set-cookie', 'www-authenticate', 'authorization']);
+
   const doFetch = async (
     forceAuthRefresh: boolean,
-  ): Promise<{ response: Response; parsedBody: unknown }> => {
+  ): Promise<{ response: Response; parsedBody: unknown; rawBodySize: number; responseHeaders: Record<string, string> }> => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
     try {
@@ -677,13 +681,20 @@ async function executeServerSideCustomAction(params: {
         signal: controller.signal,
       });
       const text = await response.text();
+      const rawBodySize = text.length;
+      const responseHeaders: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        if (!RESPONSE_HEADER_DENYLIST.has(key.toLowerCase())) {
+          responseHeaders[key.toLowerCase()] = value;
+        }
+      });
       let parsedBody: unknown = text;
       try {
         parsedBody = text ? JSON.parse(text) : null;
       } catch {
         // Keep raw text.
       }
-      return { response, parsedBody };
+      return { response, parsedBody, rawBodySize, responseHeaders };
     } catch (error: unknown) {
       if (controller.signal.aborted) {
         throw Object.assign(new Error('timeout'), { __timeout: true });
@@ -695,13 +706,15 @@ async function executeServerSideCustomAction(params: {
   };
 
   try {
-    let { response, parsedBody } = await doFetch(false);
+    let { response, parsedBody, rawBodySize, responseHeaders } = await doFetch(false);
 
     if (response.status === 401 && authConfig?.type === 'oauth_bearer') {
       try {
         const retry = await doFetch(true);
         response = retry.response;
         parsedBody = retry.parsedBody;
+        rawBodySize = retry.rawBodySize;
+        responseHeaders = retry.responseHeaders;
       } catch (retryError: unknown) {
         console.warn(
           `[actions-proxy] ts=${new Date().toISOString()} actionId=${params.action.id} oauthRefreshRetryFailed=${retryError instanceof Error ? retryError.message : 'unknown'}`,
@@ -727,11 +740,19 @@ async function executeServerSideCustomAction(params: {
     console.info(
       `[actions-proxy] ts=${new Date().toISOString()} actionId=${params.action.id} statusCode=${response.status}`,
     );
+    const resolvedBody = parsedBody !== null && parsedBody !== undefined
+      ? parsedBody
+      : (params.isTest ? { _note: `Server returned ${response.status} with an empty response body.` } : null);
     return {
       success: response.ok,
       statusCode: response.status,
-      responseBody: parsedBody,
+      responseBody: resolvedBody,
       durationMs,
+      ...(params.isTest ? {
+        debug: { url: requestPayload.url, method: methodUpper },
+        responseHeaders,
+        responseSize: rawBodySize,
+      } : {}),
     };
   } catch (error: unknown) {
     const durationMs = Date.now() - startedAt;
@@ -742,8 +763,9 @@ async function executeServerSideCustomAction(params: {
       return {
         success: false,
         statusCode: 408,
-        responseBody: { error: 'Proxy request timed out after 10 seconds' },
+        responseBody: { error: 'Request timed out after 10 seconds. Check the URL is publicly reachable and responding promptly.' },
         durationMs,
+        ...(params.isTest ? { debug: { url: requestPayload.url, method: methodUpper } } : {}),
       };
     }
     throw error;
@@ -763,6 +785,9 @@ export async function executeServerSideActionProxyRuntime(params: {
   durationMs: number;
   error?: string;
   message?: string;
+  debug?: { url: string; method: string };
+  responseHeaders?: Record<string, string>;
+  responseSize?: number;
 }> {
   const action = await prisma.action.findFirst({
     where: {

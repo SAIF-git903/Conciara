@@ -1,12 +1,143 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
+import { Send } from 'lucide-react'
 import api from '@/lib/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { getOnboardingWorkspaceId, getOnboardingAgentName, getOnboardingAgentLogoUrl, setOnboardingAgentName, setOnboardingAgentLogoUrl } from '@/lib/onboarding'
-import SkinRenderer from '@/components/SkinRenderer'
-import type { SkinConfig } from '@/types/skinConfig'
+
+// ── Static chat preview ───────────────────────────────────────
+interface PreviewMsg { id: string; from: 'bot' | 'user'; text: string }
+
+const PREVIEW_MSGS: PreviewMsg[] = [
+  { id: '1', from: 'bot',  text: 'Hi there! How can I help you today? 👋' },
+  { id: '2', from: 'user', text: "Hello! I'm interested in your services." },
+  { id: '3', from: 'bot',  text: 'Great! I can help with information about our services. What would you like to know?' },
+  { id: '4', from: 'user', text: 'What are your pricing plans?' },
+  { id: '5', from: 'bot',  text: 'We offer Hobby, Standard, and Pro plans. Would you like me to walk you through them?' },
+]
+
+function StaticChatPreview({ name, logoUrl }: { name: string; logoUrl: string }) {
+  const title = name.trim() || 'Chat Assistant'
+  return (
+    <div style={{
+      width: '100%', maxWidth: 380,
+      borderRadius: 20, overflow: 'hidden',
+      boxShadow: '0 20px 60px rgba(0,0,0,0.15), 0 4px 16px rgba(0,0,0,0.08)',
+      border: '1px solid rgba(0,0,0,0.06)',
+      background: '#fff',
+      display: 'flex', flexDirection: 'column',
+      height: 520,
+      userSelect: 'none',
+    }}>
+
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '14px 16px',
+        background: 'var(--v2-primary, #6366f1)',
+        flexShrink: 0,
+      }}>
+        {/* Traffic lights */}
+        <div style={{ display: 'flex', gap: 5, marginRight: 2 }}>
+          {['#ff5f57','#febc2e','#28c840'].map(c => (
+            <span key={c} style={{ width: 10, height: 10, borderRadius: '50%', background: c, display: 'inline-block' }} />
+          ))}
+        </div>
+
+        {/* Avatar */}
+        <div style={{
+          width: 32, height: 32, borderRadius: '50%', flexShrink: 0, overflow: 'hidden',
+          background: 'rgba(255,255,255,0.25)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {logoUrl
+            ? <img src={logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : <span style={{ fontSize: 14, fontWeight: 700, color: 'white' }}>{title.charAt(0).toUpperCase()}</span>
+          }
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {title}
+          </div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', display: 'inline-block' }} />
+            Online
+          </div>
+        </div>
+
+        {/* × button (decorative) */}
+        <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M1 1l8 8M9 1L1 9" stroke="rgba(255,255,255,0.9)" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 10, background: '#f8fafc' }}>
+        {PREVIEW_MSGS.map((msg) => (
+          <div key={msg.id} style={{ display: 'flex', justifyContent: msg.from === 'user' ? 'flex-end' : 'flex-start', gap: 8, alignItems: 'flex-end' }}>
+
+            {/* Bot avatar dot */}
+            {msg.from === 'bot' && (
+              <div style={{
+                width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
+                background: 'var(--v2-primary, #6366f1)', overflow: 'hidden',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 2,
+              }}>
+                {logoUrl
+                  ? <img src={logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <span style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>{title.charAt(0).toUpperCase()}</span>
+                }
+              </div>
+            )}
+
+            <div style={{
+              maxWidth: '72%',
+              padding: '9px 13px',
+              borderRadius: msg.from === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+              background: msg.from === 'user' ? 'var(--v2-primary, #6366f1)' : '#fff',
+              color: msg.from === 'user' ? '#fff' : '#1e293b',
+              fontSize: 13,
+              lineHeight: 1.5,
+              boxShadow: msg.from === 'bot' ? '0 1px 4px rgba(0,0,0,0.07)' : 'none',
+              border: msg.from === 'bot' ? '1px solid rgba(0,0,0,0.05)' : 'none',
+            }}>
+              {msg.text}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Input bar */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '10px 14px',
+        borderTop: '1px solid #e2e8f0',
+        background: '#fff', flexShrink: 0,
+      }}>
+        <div style={{
+          flex: 1, height: 38, borderRadius: 19,
+          border: '1.5px solid #e2e8f0', background: '#f8fafc',
+          display: 'flex', alignItems: 'center', padding: '0 14px',
+          fontSize: 13, color: '#94a3b8',
+        }}>
+          Type your message…
+        </div>
+        <div style={{
+          width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
+          background: 'var(--v2-primary, #6366f1)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Send size={15} color="#fff" />
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const container = {
   hidden: { opacity: 0 },
@@ -21,13 +152,6 @@ const item = {
   show: { opacity: 1 },
 }
 
-const PREVIEW_MESSAGES = [
-  { id: '1', type: 'bot' as const, content: 'Hi there! How can I help you today?', timestamp: new Date() },
-  { id: '2', type: 'user' as const, content: `Hello! I'm interested in your services.`, timestamp: new Date() },
-  { id: '3', type: 'bot' as const, content: 'Great! I can help with information about our services. What would you like to know?', timestamp: new Date() },
-  { id: '4', type: 'user' as const, content: 'What are your pricing plans?', timestamp: new Date() },
-  { id: '5', type: 'bot' as const, content: 'We offer various plans. Would you like me to list them?', timestamp: new Date() },
-]
 
 export interface ConfigureStepProps {
   nextPath: string
@@ -108,35 +232,6 @@ export default function ConfigureStep({ nextPath, router, onForbidden }: Configu
     router.push(nextPath)
   }
 
-  const previewConfig = useMemo<SkinConfig>(() => ({
-    theme: {
-      primaryColor: 'var(--v2-primary)', // use CSS variable so it matches app theme
-      backgroundColor: '#ffffff',
-      textColor: '#000000',
-      borderColor: '#e2e8f0',
-    },
-    components: {
-      window: { width: 384, height: 520, minWidth: 320, minHeight: 400, borderRadius: 20, shadow: 'large' },
-      header: {
-        show: true,
-        showTitle: true,
-        title: name.trim() || 'Chat Assistant',
-        showAvatar: !!logoUrl,
-        avatarIcon: logoUrl || undefined,
-        showMinimize: false,
-        showClose: false,
-      },
-      messages: {
-        layout: 'list',
-        bubbleStyle: 'minimal',
-        showAvatars: true,
-        showBotAvatar: false, // no bot picture next to messages in this preview
-        showUserAvatar: false,
-      },
-      input: { placeholder: 'Type your message...', showSendButton: true },
-    },
-    states: {},
-  }), [name, logoUrl])
 
   return (
     <div className="grid gap-12 lg:grid-cols-2">
@@ -281,21 +376,12 @@ export default function ConfigureStep({ nextPath, router, onForbidden }: Configu
       </div>
 
       <motion.div
-        className="flex flex-col p-4 lg:sticky lg:top-4 lg:self-start"
+        className="flex justify-center p-4 lg:sticky lg:top-4 lg:self-start lg:justify-start"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.35, delay: 0.15 }}
       >
-        <div className="min-h-[420px] w-full max-w-[400px] max-h-[min(80vh,640px)] mx-auto lg:mx-0">
-          <SkinRenderer
-            config={previewConfig}
-            apiUrl=""
-            treeId={null}
-            initialMessages={PREVIEW_MESSAGES}
-            previewMode
-            onMessage={async () => {}}
-          />
-        </div>
+        <StaticChatPreview name={name} logoUrl={logoUrl} />
       </motion.div>
     </div>
   )

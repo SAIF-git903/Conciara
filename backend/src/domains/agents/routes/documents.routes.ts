@@ -207,6 +207,63 @@ router.post('/:workspaceId/agents/:agentId/documents/train', async (req, res) =>
  *     responses:
  *       200: { description: Deleted }
  */
+/** GET extracted text content of a single document. */
+router.get('/:workspaceId/agents/:agentId/documents/:documentId/content', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    const documentId = parseInt(req.params.documentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId) || isNaN(documentId)) {
+      return res.status(400).json({ error: 'Invalid ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const doc = await prisma.agentDocument.findFirst({
+      where: { id: documentId, agentId },
+      select: { id: true, fileName: true, mimeType: true, content: true, status: true },
+    });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    return res.json({ content: doc.content ?? '', fileName: doc.fileName, mimeType: doc.mimeType, status: doc.status });
+  } catch (error: any) {
+    console.error('Get document content error:', error);
+    res.status(500).json({ error: 'Failed to get document content' });
+  }
+});
+
+/** PUT (replace) extracted text content of a document and mark it pending re-training. */
+router.put('/:workspaceId/agents/:agentId/documents/:documentId/content', async (req, res) => {
+  try {
+    const workspaceId = parseInt(req.params.workspaceId, 10);
+    const agentId = parseInt(req.params.agentId, 10);
+    const documentId = parseInt(req.params.documentId, 10);
+    if (isNaN(workspaceId) || isNaN(agentId) || isNaN(documentId)) {
+      return res.status(400).json({ error: 'Invalid ID' });
+    }
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+    const canManage = await canManageAgent(userId, agentId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+
+    const { content } = req.body;
+    if (typeof content !== 'string') return res.status(400).json({ error: 'content must be a string' });
+
+    const doc = await prisma.agentDocument.findFirst({ where: { id: documentId, agentId } });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+    const updated = await prisma.agentDocument.update({
+      where: { id: documentId },
+      data: { content, status: 'PENDING', errorMessage: null },
+    });
+    return res.json({ document: { id: updated.id, status: updated.status.toLowerCase() } });
+  } catch (error: any) {
+    console.error('Update document content error:', error);
+    res.status(500).json({ error: 'Failed to update document content' });
+  }
+});
+
 router.delete('/:workspaceId/agents/:agentId/documents/:documentId', async (req, res) => {
   try {
     const workspaceId = parseInt(req.params.workspaceId, 10);
