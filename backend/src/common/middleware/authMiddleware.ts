@@ -6,6 +6,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyJWT, hasPermission, UserPayload } from '../../domains/auth/auth.service.js';
 import { getUserById } from '../../domains/users/user.service.js';
+import { isPlatformAdmin } from '../platformAdmin.js';
 
 // Extend Express Request type to include user
 declare global {
@@ -158,11 +159,17 @@ export function requirePermission(permission: string) {
 }
 
 /**
- * Middleware to require owner role (full access)
+ * Middleware to require a platform admin (PLATFORM_ADMIN_EMAILS allowlist).
+ * Never use the global users.role for this: every signup is created as 'owner'.
  */
-export const requireAdmin = requireRole('owner');
-
-/**
- * Middleware to require owner role (same as requireAdmin)
- */
-export const requireManager = requireRole('owner');
+export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
+  if (!isPlatformAdmin(req.user)) {
+    res.status(403).json({ error: 'Insufficient permissions' });
+    return;
+  }
+  next();
+}

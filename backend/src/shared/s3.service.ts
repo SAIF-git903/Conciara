@@ -294,16 +294,22 @@ const WIDGET_HEADER_PRESIGN_EXPIRES = 7 * 24 * 3600; // 7 days
  */
 export async function injectPresignedWidgetHeaderIcon(
   config: Record<string, unknown> | null,
+  workspaceId: number,
+  agentId: number,
   expiresIn: number = WIDGET_HEADER_PRESIGN_EXPIRES
 ): Promise<Record<string, unknown> | null> {
   if (!config || typeof config !== 'object') return config;
+  // Widget config is client-supplied JSON, so only sign keys inside this agent's own upload
+  // folders; otherwise any object in the bucket could be exposed via the public endpoint.
+  const isOwnKey = (key: string, folder: 'widget-header' | 'widget-button') =>
+    key.startsWith(`${folder}/${workspaceId}/${agentId}/`) && !key.includes('..');
 
   let out = { ...config };
   const components = out.components as Record<string, unknown> | undefined;
 
   const header = components?.header as Record<string, unknown> | undefined;
   const headerKey = header?.avatarIconKey;
-  if (typeof headerKey === 'string' && headerKey) {
+  if (typeof headerKey === 'string' && isOwnKey(headerKey, 'widget-header')) {
     try {
       const presignedUrl = await getPresignedUrl(headerKey, expiresIn);
       const outComponents = { ...(out.components as Record<string, unknown>) };
@@ -318,7 +324,7 @@ export async function injectPresignedWidgetHeaderIcon(
 
   const button = (out.components as Record<string, unknown> | undefined)?.button as Record<string, unknown> | undefined;
   const buttonKey = button?.customIconKey;
-  if (typeof buttonKey === 'string' && buttonKey) {
+  if (typeof buttonKey === 'string' && isOwnKey(buttonKey, 'widget-button')) {
     try {
       const presignedUrl = await getPresignedUrl(buttonKey, expiresIn);
       const outComponents = { ...(out.components as Record<string, unknown>) };

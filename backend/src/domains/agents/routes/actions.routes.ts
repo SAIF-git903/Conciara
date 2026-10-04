@@ -7,6 +7,7 @@ import express from 'express';
 import { ActionType, Prisma } from '@prisma/client';
 import { prisma } from '../../../db/prisma.js';
 import { canManageAgent } from '../agent.service.js';
+import { safeFetch, assertPublicHttpUrl, type SafeFetchResponse } from '../../../shared/safeFetch.js';
 
 const router = express.Router();
 
@@ -14,6 +15,7 @@ type JsonObject = Record<string, unknown>;
 type RequestLike = express.Request;
 
 const PROXY_TIMEOUT_MS = 10_000;
+const MAX_ACTION_RESPONSE_BYTES = 1024 * 1024;
 const PROXY_RATE_LIMIT_WINDOW_MS = 60_000;
 const PROXY_RATE_LIMIT_MAX = 60;
 const INTERNAL_HEADER_DENYLIST = new Set([
@@ -93,40 +95,10 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-function isPrivateOrLocalhostHost(hostname: string): boolean {
-  const h = hostname.toLowerCase();
-  if (h === 'localhost' || h.endsWith('.localhost')) return true;
-  if (h.startsWith('127.')) return true;
-  if (h.startsWith('10.')) return true;
-  if (h.startsWith('192.168.')) return true;
-  if (h.startsWith('169.254.')) return true;
-  if (h.startsWith('172.16.') || h.startsWith('172.17.') || h.startsWith('172.18.') || h.startsWith('172.19.')) return true;
-  if (h.startsWith('172.2')) return h.startsWith('172.20.') || h.startsWith('172.21.') || h.startsWith('172.22.') || h.startsWith('172.23.') || h.startsWith('172.24.') || h.startsWith('172.25.') || h.startsWith('172.26.') || h.startsWith('172.27.') || h.startsWith('172.28.') || h.startsWith('172.29.');
-  if (h.startsWith('172.30.') || h.startsWith('172.31.')) return true;
-  if (h === '::1' || h.startsWith('fc') || h.startsWith('fd')) return true;
-  return false;
-}
 
 async function validateTargetUrlForProxy(apiUrl: string): Promise<void> {
-  if (!isHttpUrl(apiUrl)) {
-    throw new Error('API URL must start with http:// or https://');
-  }
-  const parsed = new URL(apiUrl);
-  if (isPrivateOrLocalhostHost(parsed.hostname)) {
-    throw new Error('Target URL points to a private or local address');
-  }
-
-  // DNS resolution for SSRF safety.
-  const dns = await import('node:dns/promises');
-  const records = await dns.lookup(parsed.hostname, { all: true });
-  if (!records.length) {
-    throw new Error('Target URL host could not be resolved');
-  }
-  for (const record of records) {
-    if (isPrivateOrLocalhostHost(record.address)) {
-      throw new Error('Target URL resolves to a private or local address');
-    }
-  }
+  // Blocks private/internal targets (SSRF); safeFetch re-checks every hop at connect time.
+  await assertPublicHttpUrl(apiUrl);
 }
 
 function maskConfigForClient(config: unknown): unknown {
@@ -499,13 +471,15 @@ async function resolveOAuthToken(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
     try {
-      const response = await fetch(authConfig.refreshEndpoint!, {
+      const response = await safeFetch(authConfig.refreshEndpoint!, {
         method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
         body: form.toString(),
         signal: controller.signal,
+        timeoutMs: PROXY_TIMEOUT_MS,
+        maxBytes: MAX_ACTION_RESPONSE_BYTES,
       });
-      const text = await response.text();
+      const text = response.text;
       let parsed: JsonObject = {};
       try {
         parsed = text ? (JSON.parse(text) as JsonObject) : {};
@@ -663,7 +637,7 @@ async function executeServerSideCustomAction(params: {
 
   const doFetch = async (
     forceAuthRefresh: boolean,
-  ): Promise<{ response: Response; parsedBody: unknown; rawBodySize: number; responseHeaders: Record<string, string> }> => {
+  ): Promise<{ response: SafeFetchResponse; parsedBody: unknown; rawBodySize: number; responseHeaders: Record<string, string> }> => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PROXY_TIMEOUT_MS);
     try {
@@ -674,13 +648,15 @@ async function executeServerSideCustomAction(params: {
       const headersWithAuth = authConfig
         ? await injectAuthHeaders(finalHeaders, authConfig, params.action.id, forceAuthRefresh)
         : finalHeaders;
-      const response = await fetch(requestPayload.url, {
+      const response = await safeFetch(requestPayload.url, {
         method: methodUpper,
         headers: headersWithAuth,
         body: shouldAttachBody ? JSON.stringify(requestPayload.body) : undefined,
         signal: controller.signal,
+        timeoutMs: PROXY_TIMEOUT_MS,
+        maxBytes: MAX_ACTION_RESPONSE_BYTES,
       });
-      const text = await response.text();
+      const text = response.text;
       const rawBodySize = text.length;
       const responseHeaders: Record<string, string> = {};
       response.headers.forEach((value, key) => {
@@ -841,6 +817,17 @@ router.get('/:workspaceId/agents/:chatbotId/active-actions', async (req, res) =>
   try {
     const ids = parseWorkspaceAndChatbotIds(req);
     if (!ids) return res.status(400).json({ error: 'Invalid workspace or chatbot ID' });
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+    const canManage = await canManageAgent(userId, ids.chatbotId);
+    if (!canManage) return res.status(403).json({ error: 'Access denied' });
+    const agent = await prisma.agent.findUnique({
+      where: { id: ids.chatbotId },
+      select: { workspaceId: true },
+    });
+    if (!agent || agent.workspaceId !== ids.workspaceId) {
+      return res.status(404).json({ error: 'Chatbot not found' });
+    }
     const actions = await prisma.action.findMany({
       where: { chatbotId: ids.chatbotId, isEnabled: true },
       orderBy: { createdAt: 'asc' },
@@ -1119,48 +1106,6 @@ router.post('/:workspaceId/agents/:chatbotId/actions/:actionId/test', async (req
     console.error('Test action error:', error);
     const message = error instanceof Error ? error.message : 'Action test failed';
     return res.status(400).json({ success: false, statusCode: 400, responseBody: { error: message }, durationMs: 0 });
-  }
-});
-
-router.post('/:workspaceId/agents/:chatbotId/actions/proxy', async (req, res) => {
-  try {
-    const ids = parseWorkspaceAndChatbotIds(req);
-    if (!ids) return res.status(400).json({ error: 'Invalid workspace or chatbot ID' });
-    const payload = parseBodyObject(req.body);
-    const actionId = getString(payload, 'actionId');
-    if (!actionId) return res.status(400).json({ error: 'actionId is required' });
-
-    const action = await prisma.action.findFirst({
-      where: {
-        id: actionId,
-        chatbotId: ids.chatbotId,
-        type: ActionType.CUSTOM_ACTION,
-        isEnabled: true,
-      },
-      select: { id: true, chatbotId: true, config: true },
-    });
-    if (!action) return res.status(404).json({ error: 'Enabled server-side custom action not found' });
-
-    const collectedInputs = parseBodyObject(payload.collectedInputs);
-    const result = await executeServerSideCustomAction({
-      action,
-      collectedInputs,
-      isTest: false,
-      context: {
-        currentUrl: getString(payload, 'currentUrl'),
-        sessionId: getString(payload, 'sessionId'),
-      },
-    });
-    return res.status(result.success ? 200 : 502).json(result);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Proxy execution failed';
-    const statusCode = message.toLowerCase().includes('rate limit') ? 429 : 400;
-    return res.status(statusCode).json({
-      success: false,
-      statusCode,
-      responseBody: { error: message },
-      durationMs: 0,
-    });
   }
 });
 

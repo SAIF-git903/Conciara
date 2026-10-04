@@ -6,8 +6,11 @@
 
 import * as cheerio from 'cheerio';
 import { prisma } from '../../db/prisma.js';
+import { safeFetch, assertPublicHttpUrl } from '../../shared/safeFetch.js';
 
 const FETCH_TIMEOUT_MS = 15000;
+/** Skip pages larger than this (HTML) */
+const MAX_PAGE_BYTES = 5 * 1024 * 1024;
 const MAX_BODY_LENGTH = 50000;
 const DEFAULT_MAX_PAGES = 50;
 const DEFAULT_CONCURRENCY = 3;
@@ -99,21 +102,18 @@ async function fetchAndParsePage(
   url: string,
   baseOrigin: string
 ): Promise<{ html: string; finalUrl: string }> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  const response = await fetch(url, {
-    signal: controller.signal,
+  // safeFetch blocks private/internal addresses (SSRF), re-checks redirects, and caps size/time.
+  const response = await safeFetch(url, {
+    timeoutMs: FETCH_TIMEOUT_MS,
+    maxBytes: MAX_PAGE_BYTES,
     headers: {
       'User-Agent':
         'Mozilla/5.0 (compatible; ConciaraCrawler/1.0; +https://conciara.com)',
       Accept: 'text/html,application/xhtml+xml',
     },
-    redirect: 'follow',
   });
-  clearTimeout(timeout);
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const html = await response.text();
-  return { html, finalUrl: response.url || url };
+  return { html: response.text, finalUrl: response.url || url };
 }
 
 /** Normalize phone to digits only; return empty if too short. Used for wa.me links. */
@@ -338,6 +338,8 @@ export async function crawlWebsite(
   const priorityPatterns = options.priorityPatterns ?? [];
 
   const normalized = url.startsWith('http') ? url : `https://${url.replace(/^\/*/, '')}`;
+  // Reject internal/private targets with a clear error before crawling (safeFetch also enforces it).
+  await assertPublicHttpUrl(normalized);
   const baseOrigin = getOrigin(normalized);
 
   const crawledPages: Array<{ url: string; title?: string }> = [];
