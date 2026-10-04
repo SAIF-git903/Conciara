@@ -13,6 +13,7 @@ import {
   assignCrawlToAgent,
 } from '../../websites/crawl.service.js';
 import { deleteWebsiteCrawlDocuments } from '../../training/services/document.service.js';
+import { UnsafeUrlError } from '../../../shared/safeFetch.js';
 
 const router = express.Router();
 
@@ -89,10 +90,19 @@ router.post('/:workspaceId/crawl', async (req, res) => {
     if (agentId != null && (isNaN(agentIdNum as number) || agentIdNum === 0)) {
       return res.status(400).json({ error: 'Invalid agentId' });
     }
+    if (agentIdNum != null) {
+      const agent = await prisma.agent.findUnique({ where: { id: agentIdNum } });
+      if (!agent || agent.workspaceId !== workspaceId) {
+        return res.status(404).json({ error: 'Agent not found' });
+      }
+    }
 
     const crawl = await crawlAndStore(workspaceId, url.trim(), useCase ?? 'general', agentIdNum);
     return res.status(201).json({ crawl });
   } catch (error: any) {
+    if (error instanceof UnsafeUrlError) {
+      return res.status(400).json({ error: `Can't crawl this URL: ${error.message}` });
+    }
     console.error('Crawl error:', error);
     const message = error?.message?.includes('fetch') ? 'Could not reach the URL. Check the link and try again.' : 'Failed to crawl website';
     res.status(500).json({ error: message, details: error?.message });
