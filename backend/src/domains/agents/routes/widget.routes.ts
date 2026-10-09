@@ -50,7 +50,7 @@ router.get('/:workspaceId/agents/:agentId/widget-config', async (req, res) => {
       return res.status(404).json({ error: 'Agent not found' });
     }
     let config = agent.widgetConfig as Record<string, unknown> | null;
-    config = await injectPresignedWidgetHeaderIcon(config);
+    config = await injectPresignedWidgetHeaderIcon(config, workspaceId, agentId);
     return res.json({ config: config ?? null });
   } catch (error: any) {
     console.error('Get widget config error:', error);

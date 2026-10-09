@@ -772,7 +772,8 @@ export async function runAgentChatStream(
     res.write('data: [DONE]\n\n');
   } catch (streamErr: any) {
     console.error('Agent chat stream error:', streamErr);
-    res.write(`data: ${JSON.stringify({ error: streamErr.message || 'Stream failed' })}\n\n`);
+    // Never forward upstream (OpenAI/DB) error text: this stream also serves anonymous widget visitors.
+    res.write(`data: ${JSON.stringify({ error: 'Sorry, something went wrong. Please try again.' })}\n\n`);
   }
   res.end();
 }
