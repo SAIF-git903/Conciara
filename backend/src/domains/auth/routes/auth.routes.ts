@@ -16,6 +16,7 @@ import {
   hashPassword,
   generatePasswordResetToken,
   verifyPasswordResetToken,
+  passwordFingerprint,
   revokeRefreshToken,
   revokeAllUserRefreshTokens,
   revokeSession,
@@ -250,7 +251,7 @@ router.post('/forgot-password', async (req, res) => {
     if (!user || !user.isActive) {
       return res.json({ message: 'If an account exists with this email, you will receive a reset link.' });
     }
-    const token = generatePasswordResetToken(user.id, user.email);
+    const token = generatePasswordResetToken(user.id, user.email, user.passwordHash);
     const { sendPasswordResetEmail } = await import('../../../shared/email.service.js');
     const baseUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
     const resetLink = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
@@ -288,14 +289,15 @@ router.post('/reset-password', async (req, res) => {
     if (!raw || raw.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters' });
     }
-    let payload: { userId: number; email: string };
+    let payload: { userId: number; email: string; pwf?: string };
     try {
       payload = verifyPasswordResetToken(token);
     } catch (e: any) {
       return res.status(400).json({ error: e.message || 'Invalid or expired reset link' });
     }
     const user = await getUserById(payload.userId);
-    if (!user || !user.isActive) {
+    // The fingerprint no longer matches once the password has changed, so each link works once.
+    if (!user || !user.isActive || payload.pwf !== passwordFingerprint(user.passwordHash)) {
       return res.status(400).json({ error: 'Invalid or expired reset link' });
     }
     const passwordHash = await hashPassword(raw);
@@ -303,6 +305,8 @@ router.post('/reset-password', async (req, res) => {
       where: { id: payload.userId },
       data: { passwordHash, updatedAt: new Date() },
     });
+    // Sign out every existing session: whoever triggered the reset may not be the only holder.
+    await revokeAllUserRefreshTokens(payload.userId);
     return res.json({ message: 'Your password has been reset. You can sign in with your new password.' });
   } catch (error: any) {
     console.error('Reset password error:', error);
