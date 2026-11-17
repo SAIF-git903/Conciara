@@ -9,7 +9,17 @@ import crypto from 'crypto';
 import { prisma } from '../../db/prisma.js';
 
 const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || '12');
-const JWT_SECRET: string = process.env.JWT_SECRET || 'change-this-secret-in-production';
+const JWT_SECRET: string = resolveJwtSecret();
+
+function resolveJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (secret && secret.length >= 32) return secret;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET must be set to at least 32 characters in production');
+  }
+  console.warn('[auth] JWT_SECRET is missing or shorter than 32 characters; using an insecure development fallback');
+  return secret || 'dev-only-insecure-jwt-secret';
+}
 const JWT_EXPIRES_IN: string = process.env.JWT_EXPIRES_IN || '15m';
 const JWT_REFRESH_EXPIRES_IN: string = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 const PASSWORD_RESET_EXPIRES_IN = process.env.PASSWORD_RESET_EXPIRES_IN || '1h';
@@ -50,6 +60,7 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
  */
 export function generateJWT(user: UserPayload): string {
   const payload = {
+    type: 'access',
     id: user.id,
     email: user.email,
     role: user.role,
@@ -83,9 +94,10 @@ export function verifyJWT(token: string): UserPayload {
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as any;
 
-    // Ensure it's not a refresh token
-    if (decoded.type === 'refresh') {
-      throw new Error('Invalid token type');
+    // Only access tokens authenticate requests. Refresh and password-reset tokens are signed
+    // with the same secret, so reject anything typed otherwise (untyped = pre-'access' tokens).
+    if (decoded.type !== undefined && decoded.type !== 'access') {
+      throw new Error('Invalid token');
     }
 
     return {
@@ -105,27 +117,34 @@ export function verifyJWT(token: string): UserPayload {
   }
 }
 
+/** Fingerprint of the current password hash; changes whenever the password does. */
+export function passwordFingerprint(passwordHash: string): string {
+  return crypto.createHash('sha256').update(passwordHash).digest('hex').slice(0, 16);
+}
+
 /**
  * Generate a one-time JWT for password reset (short-lived, e.g. 1h).
+ * It embeds a fingerprint of the current password hash, so it stops working once used.
  */
-export function generatePasswordResetToken(userId: number, email: string): string {
+export function generatePasswordResetToken(userId: number, email: string, passwordHash: string): string {
   return jwt.sign(
-    { type: 'password-reset', id: userId, email },
+    { type: 'password-reset', id: userId, email, pwf: passwordFingerprint(passwordHash) },
     JWT_SECRET,
     { expiresIn: PASSWORD_RESET_EXPIRES_IN } as SignOptions
   );
 }
 
 /**
- * Verify password reset token and return userId and email.
+ * Verify password reset token and return userId, email and password fingerprint.
+ * Callers must compare `pwf` with the user's current password hash.
  */
-export function verifyPasswordResetToken(token: string): { userId: number; email: string } {
+export function verifyPasswordResetToken(token: string): { userId: number; email: string; pwf?: string } {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { type?: string; id: number; email: string };
+    const decoded = jwt.verify(token, JWT_SECRET) as { type?: string; id: number; email: string; pwf?: string };
     if (decoded.type !== 'password-reset') {
       throw new Error('Invalid token type');
     }
-    return { userId: decoded.id, email: decoded.email };
+    return { userId: decoded.id, email: decoded.email, pwf: decoded.pwf };
   } catch (error: any) {
     if (error.name === 'TokenExpiredError') {
       throw new Error('Reset link has expired');

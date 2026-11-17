@@ -7,6 +7,7 @@ import express from 'express';
 import { pool } from '../../../db/connection.js';
 import { createAPIKey, revokeAPIKey } from '../auth.service.js';
 import { requireAuth, requireAdmin } from '../../../common/middleware/authMiddleware.js';
+import { isPlatformAdmin } from '../../../common/platformAdmin.js';
 
 const router = express.Router();
 
@@ -64,7 +65,7 @@ router.use(requireAuth);
 router.get('/', async (req, res) => {
   try {
     const currentUser = req.user!;
-    const isOwner = currentUser.role === 'owner';
+    const isOwner = isPlatformAdmin(currentUser);
 
     let query: string;
     let params: any[];
@@ -315,7 +316,7 @@ router.delete('/:id', async (req, res) => {
   try {
     const apiKeyId = parseInt(req.params.id);
     const currentUser = req.user!;
-    const isOwner = currentUser.role === 'owner';
+    const isOwner = isPlatformAdmin(currentUser);
 
     // Check if key exists and belongs to user (unless owner)
     const keyResult = await pool.query(
